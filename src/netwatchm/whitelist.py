@@ -15,6 +15,7 @@ class WhitelistChecker:
                 if "/" in entry:
                     self._networks.append(ip_network(entry, strict=False))
                 else:
+                    ip_address(entry)  # validate before storing
                     self._ips.add(entry)
             except ValueError:
                 pass
