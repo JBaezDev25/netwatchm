@@ -86,12 +86,19 @@ class InventoryConfig:
 
 
 @dataclass
+class WhitelistConfig:
+    enabled: bool = False
+    ips: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     interface: str = "auto"
     baseline_period: int = 300
     thresholds: Thresholds = field(default_factory=Thresholds)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     inventory: InventoryConfig = field(default_factory=InventoryConfig)
+    whitelist: WhitelistConfig = field(default_factory=WhitelistConfig)
 
     def __post_init__(self) -> None:
         # Always load email password from env var
@@ -192,6 +199,14 @@ def load_config(path: str | Path | None = None) -> Config:
             export_dir=inv_raw.get("export_dir", "."),
         ),
     )
+
+    wl_raw = raw.get("whitelist", {})
+    if wl_raw:
+        config.whitelist = WhitelistConfig(
+            enabled=wl_raw.get("enabled", False),
+            ips=wl_raw.get("ips", []),
+        )
+
     # Post-init to load env var password
     config.__post_init__()
     return config

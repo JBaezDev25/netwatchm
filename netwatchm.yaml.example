@@ -42,3 +42,12 @@ inventory:
   dns_timeout: 2          # seconds before giving up on reverse DNS lookup
   dns_cache_ttl: 300      # seconds to cache failed lookups
   export_dir: .           # default directory for CSV exports (. = cwd)
+
+whitelist:
+  enabled: true
+  ips:
+    - 192.168.1.1          # gateway/router
+    - 192.168.1.180        # this machine
+    - 107.170.66.130       # Twingate relay (DigitalOcean NJ)
+    - 162.243.34.191       # Twingate relay (DigitalOcean NJ)
+    - 167.99.149.114       # Twingate relay (DigitalOcean NJ)

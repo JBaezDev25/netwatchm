@@ -28,6 +28,7 @@ from .inventory.resolver import DNSResolver
 from .inventory.store import DeviceStore
 from .models import Alert, Packet, ThreatLevel
 from .scorer import ThreatScorer
+from .whitelist import WhitelistChecker
 
 logger = logging.getLogger("netwatchm")
 
@@ -75,6 +76,9 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
 
     # --- Scorer ---
     scorer = ThreatScorer()
+
+    # --- Whitelist ---
+    _whitelist = WhitelistChecker(config.whitelist.ips) if config.whitelist.enabled else None
 
     # --- Alert handlers ---
     handlers = []
@@ -143,6 +147,10 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
             try:
                 alert = await asyncio.wait_for(alert_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
+                continue
+
+            if _whitelist and _whitelist.is_whitelisted(alert):
+                alert_queue.task_done()
                 continue
 
             scorer.add_alert(alert)
