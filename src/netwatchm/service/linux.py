@@ -14,15 +14,15 @@ UNIT_TEMPLATE = """\
 Description=NetWatchM Network Monitor
 After=network.target
 OnFailure=netwatchm-notify@%n.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
 ExecStart={exec_start}
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=120
-StartLimitBurst=5
-Environment=NETWATCHM_EMAIL_PASSWORD={email_password}
+EnvironmentFile=-/etc/netwatchm/env
 
 [Install]
 WantedBy=multi-user.target
@@ -35,11 +35,9 @@ def install_service(config_path: str = "/etc/netwatchm/netwatchm.yaml") -> None:
         raise RuntimeError("Use service/windows.py on Windows")
 
     exec_path = shutil.which("netwatchm") or sys.executable + " -m netwatchm"
-    email_password = os.environ.get("NETWATCHM_EMAIL_PASSWORD", "")
 
     unit_content = UNIT_TEMPLATE.format(
         exec_start=f"{exec_path} --config {config_path} --no-ui",
-        email_password=email_password,
     )
 
     try:

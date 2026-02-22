@@ -4,6 +4,8 @@ Documentation=file:///var/lib/netwatchm/report.html
 After=network.target netwatchm.service
 Wants=netwatchm.service
 OnFailure=netwatchm-notify@%n.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -11,8 +13,6 @@ WorkingDirectory=/var/lib/netwatchm
 ExecStart=/usr/bin/python3 -m http.server 8765
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=120
-StartLimitBurst=5
 User=root
 
 [Install]
