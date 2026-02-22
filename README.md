@@ -34,7 +34,7 @@ cd netwatchm
 sudo bash install.sh
 ```
 
-The installer handles everything: Python deps, config, log directories, and two systemd services.
+The installer handles everything: Python deps, config, log directories, and three systemd services (`netwatchm`, `netwatchm-web`, `netwatchm-notify@`).
 
 ---
 
@@ -94,7 +94,8 @@ netwatchm/
 ├── netwatchm-logrotate      # Daily logrotate safety net
 ├── report.html              # Browser inventory dashboard
 ├── NetWatchM-guide.pdf      # 17-phase beginner build guide
-├── install.sh               # Linux one-shot installer
+├── install.sh               # Linux one-shot installer (10 steps)
+├── deploy-services.sh       # Re-deploy service units without full reinstall
 └── netwatchm.yaml.example   # Annotated config template
 ```
 
@@ -114,6 +115,15 @@ Installs and enables two services:
 |---------|-------------|-----|
 | `netwatchm` | Packet capture + threat detection | — |
 | `netwatchm-web` | Browser dashboard HTTP server | http://localhost:8765/report.html |
+
+### Re-deploy services only
+
+If the Python package is already installed and you only need to (re-)deploy the
+systemd units, notify script, and journald limits:
+
+```bash
+sudo bash deploy-services.sh
+```
 
 ### Manual (development)
 
@@ -251,7 +261,8 @@ Uses `netwatchm-notify@.service` triggered by `OnFailure=` in each service unit.
 | systemd journal | 200 MB, 30-day retention | `netwatchm-journald.conf` drop-in |
 | Alert log (backup) | 7 days compressed | `netwatchm-logrotate` |
 
-Apply journal limits:
+Journal limits are applied automatically by `deploy-services.sh` (and by `install.sh`). To apply them manually:
+
 ```bash
 sudo mkdir -p /etc/systemd/journald.conf.d
 sudo cp netwatchm-journald.conf /etc/systemd/journald.conf.d/netwatchm.conf
