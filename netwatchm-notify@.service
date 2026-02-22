@@ -1,0 +1,12 @@
+[Unit]
+Description=NetWatchM Down Alert — notify on failure of %i
+After=network.target
+
+[Service]
+Type=oneshot
+# %i is replaced by the name of the failed service (e.g. netwatchm, netwatchm-web)
+ExecStart=/usr/local/bin/netwatchm-notify %i
+EnvironmentFile=-/etc/netwatchm/env
+
+[Install]
+WantedBy=multi-user.target

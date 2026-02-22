@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Network Monitor</title>
+<style>
+  :root[data-theme="dark"] {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --surface2:  #252837;
+    --border:    #2e3148;
+    --text:      #e2e8f0;
+    --text-muted:#8892a4;
+    --accent:    #4f8ef7;
+    --high:      #ef4444;
+    --high-bg:   #2d1212;
+    --med:       #f59e0b;
+    --med-bg:    #2d2010;
+    --low:       #22c55e;
+    --low-bg:    #0f2d1a;
+    --card-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+  :root[data-theme="light"] {
+    --bg:        #f1f5f9;
+    --surface:   #ffffff;
+    --surface2:  #f8fafc;
+    --border:    #e2e8f0;
+    --text:      #1e293b;
+    --text-muted:#64748b;
+    --accent:    #2563eb;
+    --high:      #dc2626;
+    --high-bg:   #fee2e2;
+    --med:       #d97706;
+    --med-bg:    #fef3c7;
+    --low:       #16a34a;
+    --low-bg:    #dcfce7;
+    --card-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo svg { width: 28px; height: 28px; }
+  .logo h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .live-dot {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--low);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.5; transform: scale(1.3); }
+  }
+  .last-updated { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+  .refresh-ring {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    animation: spin linear infinite;
+    animation-duration: 30s; /* matches refresh interval */
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes flash {
+    0%   { background: rgba(79,142,247,0.08); }
+    100% { background: transparent; }
+  }
+  .flash-row { animation: flash 0.6s ease-out; }
+  .btn-theme {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+  }
+  .btn-theme:hover { background: var(--border); }
+
+  /* ── Main ── */
+  main { padding: 24px; max-width: 1600px; margin: 0 auto; }
+
+  /* ── Summary Cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    box-shadow: var(--card-shadow);
+  }
+  .card-label { font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px; }
+  .card-value { font-size: 32px; font-weight: 700; line-height: 1; }
+  .card-sub   { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .card.high  { border-left: 3px solid var(--high); }
+  .card.med   { border-left: 3px solid var(--med); }
+  .card.low   { border-left: 3px solid var(--low); }
+  .card.total { border-left: 3px solid var(--accent); }
+  .card.high  .card-value { color: var(--high); }
+  .card.med   .card-value { color: var(--med); }
+  .card.low   .card-value { color: var(--low); }
+  .card.total .card-value { color: var(--accent); }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; }
+  .search-wrap input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px 8px 36px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-icon {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--text-muted);
+  }
+  .filter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-btn {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: 1.5px solid transparent; transition: all 0.15s;
+  }
+  .filter-btn.all   { border-color: var(--border); background: var(--surface); color: var(--text-muted); }
+  .filter-btn.HIGH  { border-color: var(--high); background: var(--high-bg); color: var(--high); }
+  .filter-btn.MEDIUM{ border-color: var(--med);  background: var(--med-bg);  color: var(--med); }
+  .filter-btn.LOW   { border-color: var(--low);  background: var(--low-bg);  color: var(--low); }
+  .filter-btn.active, .filter-btn:hover { opacity: 1; filter: brightness(1.15); }
+  .filter-btn:not(.active) { opacity: 0.65; }
+  .export-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: opacity 0.2s;
+    margin-left: auto;
+  }
+  .export-btn:hover { opacity: 0.88; }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--surface2);
+    padding: 12px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  thead th:hover { color: var(--text); }
+  thead th .sort-arrow { margin-left: 4px; opacity: 0.4; font-size: 10px; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 11px 14px; vertical-align: middle; }
+
+  .badge-threat {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  }
+  .badge-threat.HIGH   { background: var(--high-bg); color: var(--high); }
+  .badge-threat.MEDIUM { background: var(--med-bg);  color: var(--med); }
+  .badge-threat.LOW    { background: var(--low-bg);  color: var(--low); }
+
+  .ip-cell { font-family: monospace; font-size: 13px; font-weight: 600; }
+  .hostname { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+  .ports-cell { display: flex; flex-wrap: wrap; gap: 4px; max-width: 300px; }
+  .port-badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-muted);
+  }
+  .port-badge.known { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.3); color: var(--accent); }
+  .port-more {
+    font-size: 11px; color: var(--text-muted); cursor: pointer;
+    padding: 1px 6px; border-radius: 4px;
+    border: 1px dashed var(--border);
+  }
+  .port-more:hover { color: var(--accent); }
+
+  .bytes-cell { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+  .bytes-cell .up   { color: var(--accent); }
+  .bytes-cell .down { color: var(--low); }
+
+  .time-cell { font-size: 12px; color: var(--text-muted); }
+  .time-abs  { font-size: 11px; color: var(--border); margin-top: 2px; }
+
+  .no-data {
+    text-align: center; padding: 60px 20px;
+    color: var(--text-muted); font-size: 15px;
+  }
+  .no-data .icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 32px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="14" cy="14" r="13" stroke="#4f8ef7" stroke-width="2"/>
+      <circle cx="14" cy="14" r="6"  stroke="#4f8ef7" stroke-width="1.5" stroke-dasharray="3 2"/>
+      <circle cx="14" cy="14" r="2"  fill="#4f8ef7"/>
+      <line x1="14" y1="1" x2="14" y2="5"   stroke="#4f8ef7" stroke-width="1.5"/>
+      <line x1="14" y1="23" x2="14" y2="27" stroke="#4f8ef7" stroke-width="1.5"/>
+      <line x1="1"  y1="14" x2="5"  y2="14" stroke="#4f8ef7" stroke-width="1.5"/>
+      <line x1="23" y1="14" x2="27" y2="14" stroke="#4f8ef7" stroke-width="1.5"/>
+    </svg>
+    <h1>Net<span>Watch</span>M</h1>
+  </div>
+  <div class="header-right">
+    <div class="live-dot"><div class="dot"></div> LIVE</div>
+    <div class="last-updated">
+      <div class="refresh-ring" id="refreshRing"></div>
+      <span id="lastUpdated">Loading…</span>
+    </div>
+    <button class="btn-theme" onclick="toggleTheme()">☀ / ☾</button>
+  </div>
+</header>
+
+<main>
+  <!-- Summary cards -->
+  <div class="cards">
+    <div class="card total">
+      <div class="card-label">Total Devices</div>
+      <div class="card-value" id="cTotal">—</div>
+      <div class="card-sub">on network</div>
+    </div>
+    <div class="card high">
+      <div class="card-label">High Threat</div>
+      <div class="card-value" id="cHigh">—</div>
+      <div class="card-sub">require attention</div>
+    </div>
+    <div class="card med">
+      <div class="card-label">Medium Threat</div>
+      <div class="card-value" id="cMed">—</div>
+      <div class="card-sub">worth monitoring</div>
+    </div>
+    <div class="card low">
+      <div class="card-label">Low Threat</div>
+      <div class="card-value" id="cLow">—</div>
+      <div class="card-sub">normal activity</div>
+    </div>
+    <div class="card total">
+      <div class="card-label">Total Traffic</div>
+      <div class="card-value" id="cTraffic">—</div>
+      <div class="card-sub" id="cTrafficSub">observed</div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input id="searchBox" type="text" placeholder="Search IP, hostname, port…" oninput="applyFilters()">
+    </div>
+    <div class="filter-btns">
+      <button class="filter-btn all active" onclick="setThreatFilter('ALL', this)">All</button>
+      <button class="filter-btn HIGH"   onclick="setThreatFilter('HIGH', this)">HIGH</button>
+      <button class="filter-btn MEDIUM" onclick="setThreatFilter('MEDIUM', this)">MEDIUM</button>
+      <button class="filter-btn LOW"    onclick="setThreatFilter('LOW', this)">LOW</button>
+    </div>
+    <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('ip')"           class="sorted" data-col="ip">          IP / Hostname     <span class="sort-arrow">▲</span></th>
+          <th onclick="sortBy('threat_level')" data-col="threat_level">               Threat            <span class="sort-arrow">▼</span></th>
+          <th onclick="sortBy('ports')"        data-col="ports">                       Ports Observed    <span class="sort-arrow">▼</span></th>
+          <th onclick="sortBy('bytes_sent')"   data-col="bytes_sent">                 Sent ↑            <span class="sort-arrow">▼</span></th>
+          <th onclick="sortBy('bytes_received')" data-col="bytes_received">           Received ↓        <span class="sort-arrow">▼</span></th>
+          <th onclick="sortBy('first_seen')"   data-col="first_seen">                 First Seen        <span class="sort-arrow">▼</span></th>
+          <th onclick="sortBy('last_seen')"    data-col="last_seen">                  Last Seen         <span class="sort-arrow">▼</span></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="7" class="no-data"><div class="icon">⏳</div>Loading data…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  NetWatchM · Auto-refreshes every 30 s · Data from <code>/var/lib/netwatchm/inventory.json</code>
+</footer>
+
+<script>
+// ── Known ports map ──────────────────────────────────────────────────────────
+const KNOWN_PORTS = {
+  20:'FTP-data', 21:'FTP', 22:'SSH', 23:'Telnet', 25:'SMTP', 53:'DNS',
+  67:'DHCP', 68:'DHCP', 80:'HTTP', 110:'POP3', 123:'NTP', 143:'IMAP',
+  161:'SNMP', 179:'BGP', 443:'HTTPS', 445:'SMB', 465:'SMTPS', 514:'Syslog',
+  587:'SMTP', 636:'LDAPS', 993:'IMAPS', 995:'POP3S', 1433:'MSSQL',
+  1900:'UPnP', 3306:'MySQL', 3389:'RDP', 3478:'STUN', 5353:'mDNS',
+  5432:'PostgreSQL', 5900:'VNC', 6379:'Redis', 8080:'HTTP-alt',
+  8443:'HTTPS-alt', 9200:'Elasticsearch', 27017:'MongoDB',
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let allDevices   = [];
+let sortCol      = 'ip';
+let sortAsc      = true;
+let threatFilter = 'ALL';
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function fmtBytes(n) {
+  if (n === null || n === undefined) return '—';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + ' GB';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + ' MB';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+function relTime(isoStr) {
+  if (!isoStr) return '—';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)    return s + 's ago';
+  if (s < 3600)  return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
+function fmtDate(isoStr) {
+  if (!isoStr) return '—';
+  return new Date(isoStr).toLocaleString();
+}
+
+function threatOrder(t) {
+  return t === 'HIGH' ? 0 : t === 'MEDIUM' ? 1 : 2;
+}
+
+// ── Fetch & Render ───────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    // Support data injected by Avalonia host via window.__INVENTORY_DATA__,
+    // otherwise fetch inventory.json from the same directory.
+    let data;
+    if (window.__INVENTORY_DATA__) {
+      data = window.__INVENTORY_DATA__;
+    } else {
+      const res = await fetch('./inventory.json?_=' + Date.now());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      data = await res.json();
+    }
+    allDevices = Array.isArray(data) ? data : [];
+    updateCards();
+    applyFilters();
+    document.getElementById('lastUpdated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById('tableBody').innerHTML =
+      `<tr><td colspan="7" class="no-data">
+         <div class="icon">⚠</div>
+         Could not load inventory.json<br>
+         <small style="color:var(--text-muted)">${e.message}</small>
+       </td></tr>`;
+    document.getElementById('lastUpdated').textContent = 'Load failed';
+  }
+}
+
+function updateCards() {
+  const high = allDevices.filter(d => d.threat_level === 'HIGH').length;
+  const med  = allDevices.filter(d => d.threat_level === 'MEDIUM').length;
+  const low  = allDevices.filter(d => d.threat_level === 'LOW').length;
+  const totalBytes = allDevices.reduce(
+    (s, d) => s + (d.bytes_sent || 0) + (d.bytes_received || 0), 0);
+  const parts = fmtBytes(totalBytes).split(' ');
+
+  document.getElementById('cTotal').textContent     = allDevices.length;
+  document.getElementById('cHigh').textContent      = high;
+  document.getElementById('cMed').textContent       = med;
+  document.getElementById('cLow').textContent       = low;
+  document.getElementById('cTraffic').textContent   = parts[0];
+  document.getElementById('cTrafficSub').textContent = (parts[1] || '') + ' observed';
+}
+
+function applyFilters() {
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  let rows = allDevices.filter(d => {
+    if (threatFilter !== 'ALL' && d.threat_level !== threatFilter) return false;
+    if (!q) return true;
+    return (d.ip || '').toLowerCase().includes(q)
+        || (d.hostname || '').toLowerCase().includes(q)
+        || (d.mac || '').toLowerCase().includes(q)
+        || (d.ports_observed || []).some(p => String(p).includes(q));
+  });
+  rows = sortRows(rows);
+  renderTable(rows);
+}
+
+function sortRows(rows) {
+  return [...rows].sort((a, b) => {
+    let av, bv;
+    if (sortCol === 'ports')           { av = (a.ports_observed||[]).length; bv = (b.ports_observed||[]).length; }
+    else if (sortCol === 'threat_level') { av = threatOrder(a.threat_level); bv = threatOrder(b.threat_level); }
+    else { av = a[sortCol] ?? ''; bv = b[sortCol] ?? ''; }
+    if (av < bv) return sortAsc ? -1 : 1;
+    if (av > bv) return sortAsc ?  1 : -1;
+    return 0;
+  });
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('tableBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="no-data">
+      <div class="icon">🔍</div>No devices match your filter.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((d, i) => {
+    const ports = (d.ports_observed || []).slice().sort((a, b) => a - b);
+    const SHOW  = 6;
+    const badges = ports.slice(0, SHOW).map(p => {
+      const name = KNOWN_PORTS[p];
+      return `<span class="port-badge${name ? ' known' : ''}" title="${name||''}">${p}${name ? ' ' + name : ''}</span>`;
+    }).join('');
+    const moreData = JSON.stringify(ports).replace(/"/g, '&quot;');
+    const extra = ports.length > SHOW
+      ? `<span class="port-more" onclick="expandPorts(this, '${moreData}')">+${ports.length - SHOW} more</span>`
+      : '';
+
+    return `<tr class="flash-row" style="animation-delay:${i * 20}ms">
+      <td>
+        <div class="ip-cell">${d.ip || '—'}</div>
+        ${d.hostname ? `<div class="hostname">${d.hostname}</div>` : ''}
+        ${d.mac ? `<div class="hostname">${d.mac}${d.vendor ? ' · ' + d.vendor : ''}</div>` : ''}
+      </td>
+      <td><span class="badge-threat ${d.threat_level || 'LOW'}">${d.threat_level || 'LOW'}</span></td>
+      <td><div class="ports-cell">${badges}${extra}</div></td>
+      <td class="bytes-cell"><span class="up">↑ ${fmtBytes(d.bytes_sent)}</span></td>
+      <td class="bytes-cell"><span class="down">↓ ${fmtBytes(d.bytes_received)}</span></td>
+      <td class="time-cell">
+        ${relTime(d.first_seen)}
+        <div class="time-abs">${fmtDate(d.first_seen)}</div>
+      </td>
+      <td class="time-cell">
+        ${relTime(d.last_seen)}
+        <div class="time-abs">${fmtDate(d.last_seen)}</div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function expandPorts(el, dataStr) {
+  const ports = JSON.parse(dataStr);
+  const cell = el.parentNode;
+  cell.innerHTML = ports.map(p => {
+    const name = KNOWN_PORTS[p];
+    return `<span class="port-badge${name ? ' known' : ''}" title="${name||''}">${p}${name ? ' ' + name : ''}</span>`;
+  }).join('');
+}
+
+// ── Sorting ───────────────────────────────────────────────────────────────────
+function sortBy(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = true; }
+  document.querySelectorAll('thead th').forEach(th => {
+    const active = th.dataset.col === col;
+    th.classList.toggle('sorted', active);
+    th.querySelector('.sort-arrow').textContent =
+      active ? (sortAsc ? '▲' : '▼') : '▼';
+  });
+  applyFilters();
+}
+
+// ── Threat filter ─────────────────────────────────────────────────────────────
+function setThreatFilter(level, btn) {
+  threatFilter = level;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const cols = ['IP','Hostname','MAC','Vendor','Threat','Ports','Sent','Received','First Seen','Last Seen'];
+  const rows = [cols.join(',')];
+  allDevices.forEach(d => {
+    rows.push([
+      d.ip, d.hostname || '', d.mac || '', d.vendor || '',
+      d.threat_level,
+      '"' + (d.ports_observed || []).join(';') + '"',
+      d.bytes_sent, d.bytes_received,
+      d.first_seen, d.last_seen,
+    ].join(','));
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'netwatchm_inventory_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+const REFRESH_MS = 30000;
+let nextRefresh  = Date.now() + REFRESH_MS;
+
+function resetRing() {
+  // Restart the CSS animation so the ring sweeps from 0 each refresh
+  const ring = document.getElementById('refreshRing');
+  ring.style.animation = 'none';
+  ring.offsetHeight;   // force reflow
+  ring.style.animation = '';
+  nextRefresh = Date.now() + REFRESH_MS;
+}
+
+function updateCountdown() {
+  const secs = Math.max(0, Math.round((nextRefresh - Date.now()) / 1000));
+  const el = document.getElementById('lastUpdated');
+  if (el && !el.textContent.startsWith('Load')) {
+    const base = el.dataset.base || el.textContent.split(' · ')[0];
+    el.dataset.base = base;
+    el.textContent  = base + (secs > 0 ? ` · refresh in ${secs}s` : ' · refreshing…');
+  }
+}
+
+async function refresh() {
+  await loadData();
+  resetRing();
+}
+
+// Patch loadData to record the base timestamp
+const _origLoad = loadData;
+loadData = async function() {
+  await _origLoad();
+  const el = document.getElementById('lastUpdated');
+  if (el) el.dataset.base = el.textContent.split(' · ')[0];
+};
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+setInterval(updateCountdown, 1000);
+</script>
+</body>
+</html>

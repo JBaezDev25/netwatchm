@@ -1,0 +1,44 @@
+interface: auto          # or exact name e.g. enp6s0
+baseline_period: 300     # seconds to learn "known" IPs before alerting on new ones
+
+thresholds:
+  port_scan:
+    ports_per_window: 15
+    window_seconds: 10
+  brute_force:
+    attempts_per_window: 10
+    window_seconds: 30
+    ports: [22, 3389, 21, 3306, 5900]
+  exfiltration:
+    bytes_per_window: 10485760   # 10 MB
+    window_seconds: 60
+  new_ip:
+    enabled: true
+
+alerts:
+  terminal: true
+  log:
+    enabled: true
+    path: /var/log/netwatchm/netwatchm.log
+    max_bytes: 10485760    # 10 MB
+    backup_count: 5
+  sound:
+    enabled: true
+    file: assets/alert.wav
+    min_level: HIGH        # only play for HIGH or CRITICAL
+  email:
+    enabled: false
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    username: jbaez120@gmail.com
+    password: ""           # set via NETWATCHM_EMAIL_PASSWORD env var
+    recipient: jbaez120@gmail.com
+    min_level: HIGH
+    cooldown_seconds: 300  # min gap between emails for same alert type
+
+inventory:
+  enabled: true
+  persist_interval: 60    # seconds between auto-saves to inventory.json
+  dns_timeout: 2          # seconds before giving up on reverse DNS lookup
+  dns_cache_ttl: 300      # seconds to cache failed lookups
+  export_dir: .           # default directory for CSV exports (. = cwd)

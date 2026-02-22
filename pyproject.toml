@@ -1,0 +1,33 @@
+[project]
+name = "netwatchm"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "rich>=13.7",
+    "pyyaml>=6.0",
+    "pygame>=2.5",
+]
+
+[project.optional-dependencies]
+windows = ["pywin32>=306"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+netwatchm = "netwatchm.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/netwatchm"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]

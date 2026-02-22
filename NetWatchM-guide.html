@@ -1,0 +1,2569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NetWatchM — Complete Beginner Build Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --blue:    #1d4ed8;
+    --blue-lt: #eff6ff;
+    --blue-bd: #bfdbfe;
+    --green:   #15803d;
+    --green-lt:#f0fdf4;
+    --green-bd:#bbf7d0;
+    --yellow:  #92400e;
+    --yellow-lt:#fffbeb;
+    --yellow-bd:#fde68a;
+    --red:     #991b1b;
+    --red-lt:  #fef2f2;
+    --red-bd:  #fecaca;
+    --gray:    #374151;
+    --gray-lt: #f9fafb;
+    --gray-bd: #e5e7eb;
+    --text:    #111827;
+    --muted:   #6b7280;
+    --code-bg: #1e293b;
+    --code-fg: #e2e8f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.7;
+    color: var(--text);
+    background: #fff;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* ── Cover Page ── */
+  .cover {
+    page-break-after: always;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0f172a 100%);
+    padding: 60px 40px;
+    color: #fff;
+  }
+  .cover-radar {
+    width: 100px; height: 100px;
+    border: 3px solid #4f8ef7;
+    border-radius: 50%;
+    position: relative;
+    margin: 0 auto 32px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cover-radar::before {
+    content: '';
+    width: 60px; height: 60px;
+    border: 2px dashed rgba(79,142,247,0.5);
+    border-radius: 50%;
+    position: absolute;
+  }
+  .cover-radar::after {
+    content: '';
+    width: 10px; height: 10px;
+    background: #4f8ef7;
+    border-radius: 50%;
+    position: absolute;
+  }
+  .cover h1 {
+    font-size: 36pt;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 10px;
+  }
+  .cover h1 span { color: #4f8ef7; }
+  .cover-subtitle {
+    font-size: 15pt;
+    color: #94a3b8;
+    margin-bottom: 40px;
+    font-weight: 300;
+  }
+  .cover-meta {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 24px 40px;
+    margin-top: 40px;
+  }
+  .cover-meta p { color: #cbd5e1; font-size: 10pt; line-height: 2; }
+  .cover-meta strong { color: #fff; }
+  .cover-badge {
+    display: inline-block;
+    background: rgba(79,142,247,0.2);
+    border: 1px solid rgba(79,142,247,0.4);
+    color: #93c5fd;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  /* ── TOC Page ── */
+  .toc-page {
+    page-break-after: always;
+    padding: 60px 70px;
+  }
+  .toc-page h2 {
+    font-size: 18pt;
+    font-weight: 700;
+    margin-bottom: 30px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid var(--blue);
+    color: var(--blue);
+  }
+  .toc-list { list-style: none; }
+  .toc-list li {
+    padding: 6px 0;
+    border-bottom: 1px dotted #e5e7eb;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .toc-phase {
+    background: var(--blue);
+    color: #fff;
+    font-size: 8pt;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .toc-title { font-weight: 500; font-size: 11pt; }
+  .toc-desc  { color: var(--muted); font-size: 9pt; margin-left: auto; padding-left: 16px; white-space: nowrap; }
+
+  /* ── Main Content ── */
+  .content { padding: 50px 70px; max-width: 100%; }
+
+  /* ── Phase Header ── */
+  .phase-header {
+    page-break-before: always;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+    color: #fff;
+    border-radius: 14px;
+    padding: 32px 36px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .phase-header::after {
+    content: attr(data-num);
+    position: absolute;
+    right: 30px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 80pt;
+    font-weight: 800;
+    color: rgba(255,255,255,0.06);
+    line-height: 1;
+  }
+  .phase-label {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4f8ef7;
+    margin-bottom: 6px;
+  }
+  .phase-header h2 {
+    font-size: 20pt;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+  .phase-header p { color: #94a3b8; font-size: 10.5pt; max-width: 70%; }
+
+  /* ── Section headings inside phase ── */
+  h3 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 28px 0 12px;
+    padding-left: 14px;
+    border-left: 4px solid var(--blue);
+  }
+  h4 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: var(--gray);
+    margin: 20px 0 8px;
+  }
+
+  p { margin-bottom: 12px; }
+
+  /* ── Step boxes ── */
+  .steps { margin: 20px 0; }
+  .step {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    background: var(--blue);
+    color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11pt;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .step-body { flex: 1; }
+  .step-title {
+    font-weight: 600;
+    font-size: 11pt;
+    margin-bottom: 6px;
+    color: #1e293b;
+  }
+  .step-body p { margin-bottom: 8px; }
+
+  /* ── Code blocks ── */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin: 12px 0 16px;
+    
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 9pt;
+    line-height: 1.6;
+    border-left: 4px solid #4f8ef7;
+  }
+  code {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 8.5pt;
+    background: #f1f5f9;
+    color: #0f4c81;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  /* Command comments */
+  .cmd-comment { color: #64748b; font-style: italic; }
+  .cmd-output  { color: #86efac; }
+  .cmd-prompt  { color: #4f8ef7; }
+
+  /* ── Callout boxes ── */
+  .callout {
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin: 16px 0;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .callout-icon { font-size: 18pt; flex-shrink: 0; line-height: 1.2; }
+  .callout-body { flex: 1; }
+  .callout-title { font-weight: 700; font-size: 10pt; margin-bottom: 4px; }
+  .callout p { margin: 0; font-size: 10pt; line-height: 1.6; }
+
+  .callout.tip    { background: var(--green-lt); border: 1px solid var(--green-bd); }
+  .callout.tip    .callout-title { color: var(--green); }
+  .callout.warn   { background: var(--yellow-lt); border: 1px solid var(--yellow-bd); }
+  .callout.warn   .callout-title { color: var(--yellow); }
+  .callout.info   { background: var(--blue-lt); border: 1px solid var(--blue-bd); }
+  .callout.info   .callout-title { color: var(--blue); }
+  .callout.danger { background: var(--red-lt); border: 1px solid var(--red-bd); }
+  .callout.danger .callout-title { color: var(--red); }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; margin: 12px 0 16px; }
+  .checklist li {
+    padding: 6px 0 6px 32px;
+    position: relative;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 10.5pt;
+  }
+  .checklist li::before {
+    content: '☐';
+    position: absolute; left: 0;
+    color: var(--blue);
+    font-size: 13pt;
+  }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 10pt;
+  }
+  thead th {
+    background: #1e293b;
+    color: #fff;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9.5pt;
+  }
+  tbody td {
+    padding: 9px 14px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  tbody tr:nth-child(even) td { background: #f9fafb; }
+  tbody tr:hover td { background: #eff6ff; }
+
+  /* ── Architecture diagram ── */
+  .arch-box {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 12px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5pt;
+    line-height: 1.8;
+    margin: 16px 0;
+  }
+  .arch-box .arch-blue   { color: #60a5fa; }
+  .arch-box .arch-green  { color: #4ade80; }
+  .arch-box .arch-yellow { color: #facc15; }
+  .arch-box .arch-pink   { color: #f472b6; }
+
+  /* ── Inline highlight ── */
+  .hl-blue   { color: var(--blue); font-weight: 600; }
+  .hl-green  { color: var(--green); font-weight: 600; }
+  .hl-red    { color: #b91c1c; font-weight: 600; }
+  .hl-yellow { color: #78350f; font-weight: 600; }
+
+  /* ── Key badge ── */
+  .key {
+    display: inline-block;
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1px 8px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 9pt;
+    font-weight: 600;
+    border-bottom: 2px solid #475569;
+  }
+
+  /* ── File path ── */
+  .path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9pt;
+    background: #f1f5f9;
+    color: #0f4c81;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+  }
+
+  /* ── Summary box (end of phase) ── */
+  .phase-summary {
+    background: var(--green-lt);
+    border: 2px solid var(--green-bd);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-top: 28px;
+  }
+  .phase-summary h4 { color: var(--green); margin: 0 0 8px; font-size: 11pt; }
+  .phase-summary ul { list-style: none; padding: 0; }
+  .phase-summary li { padding: 3px 0 3px 20px; position: relative; font-size: 10pt; }
+  .phase-summary li::before { content: '✓'; position: absolute; left: 0; color: var(--green); font-weight: 700; }
+
+  /* ── Horizontal rule ── */
+  hr {
+    border: none;
+    border-top: 2px solid #e5e7eb;
+    margin: 30px 0;
+  }
+
+  /* ── Print / PDF ── */
+  @media print {
+    body { font-size: 10pt; }
+    .phase-header { page-break-before: always; }
+    pre { white-space: pre-wrap; word-break: break-all; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ COVER ═══ -->
+<div class="cover">
+  <div class="cover-badge">Beginner Build Guide</div>
+  <div class="cover-radar"></div>
+  <h1>Net<span>Watch</span>M</h1>
+  <p class="cover-subtitle">Real-Time Network Threat Monitor</p>
+  <p style="color:#64748b; font-size:11pt;">A complete, step-by-step guide for beginners —<br>
+  from zero to a fully running network security monitor.</p>
+
+  <div class="cover-meta">
+    <p><strong>What you will build:</strong> A live network monitor that watches all traffic on your<br>
+    network and alerts you when something suspicious is detected.</p>
+    <p style="margin-top:10px"><strong>Version:</strong> 0.1.0 &nbsp;·&nbsp; <strong>Platform:</strong> Linux (Ubuntu / Debian) &nbsp;·&nbsp; <strong>Date:</strong> February 2026</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ TOC ═══════ -->
+<div class="toc-page">
+  <h2>Table of Contents</h2>
+  <ul class="toc-list">
+    <li>
+      <span class="toc-phase">Phase 1</span>
+      <span class="toc-title">What is NetWatchM and How Does It Work?</span>
+      <span class="toc-desc">Overview &amp; architecture</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 2</span>
+      <span class="toc-title">Before You Begin — Prerequisites</span>
+      <span class="toc-desc">Checklist &amp; installs</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 3</span>
+      <span class="toc-title">Getting the Code</span>
+      <span class="toc-desc">Clone &amp; explore</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 4</span>
+      <span class="toc-title">Installing NetWatchM</span>
+      <span class="toc-desc">Automated installer walkthrough</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 5</span>
+      <span class="toc-title">Understanding the Configuration File</span>
+      <span class="toc-desc">Every setting explained</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 6</span>
+      <span class="toc-title">Running NetWatchM for the First Time</span>
+      <span class="toc-desc">Interactive &amp; service modes</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 7</span>
+      <span class="toc-title">Reading the Dashboard</span>
+      <span class="toc-desc">Keyboard shortcuts &amp; panels</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 8</span>
+      <span class="toc-title">Understanding Alerts</span>
+      <span class="toc-desc">What each alert means</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 9</span>
+      <span class="toc-title">The Web Dashboard (HTML Report)</span>
+      <span class="toc-desc">Browser-based device viewer</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 10</span>
+      <span class="toc-title">Running as a Background Service</span>
+      <span class="toc-desc">Systemd setup &amp; management</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 11</span>
+      <span class="toc-title">Querying the Device Inventory</span>
+      <span class="toc-desc">CLI &amp; CSV export</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 12</span>
+      <span class="toc-title">Setting Up Email Alerts</span>
+      <span class="toc-desc">Gmail App Password setup</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 13</span>
+      <span class="toc-title">Running the Tests</span>
+      <span class="toc-desc">Verify everything works</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 14</span>
+      <span class="toc-title">Troubleshooting Common Problems</span>
+      <span class="toc-desc">Step-by-step fixes</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 15</span>
+      <span class="toc-title">Log Management &amp; Disk Protection</span>
+      <span class="toc-desc">Preventing log saturation</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 16</span>
+      <span class="toc-title">Service-Down Email Alerts</span>
+      <span class="toc-desc">Get notified when a service stops</span>
+    </li>
+    <li>
+      <span class="toc-phase">Phase 17</span>
+      <span class="toc-title">PowerShell Log Watcher</span>
+      <span class="toc-desc">Real-time HIGH alert detection</span>
+    </li>
+    <li>
+      <span class="toc-phase">Appendix</span>
+      <span class="toc-title">Glossary &amp; Quick Reference</span>
+      <span class="toc-desc">Key terms &amp; commands</span>
+    </li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 1 — WHAT IS NETWATCHM
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="content">
+
+<div class="phase-header" data-num="1">
+  <div class="phase-label">Phase 1</div>
+  <h2>What is NetWatchM and How Does It Work?</h2>
+  <p>Understand what the tool does before you build it. No commands yet — just concepts.</p>
+</div>
+
+<h3>What Does NetWatchM Do?</h3>
+
+<p>NetWatchM is a <strong>network security monitor</strong> that runs quietly in the background
+on your Linux computer. It watches every packet of data that travels through your network
+interface and raises an <strong>alert</strong> when it spots something dangerous.</p>
+
+<p>Think of it like a smoke detector for your network — it runs silently until it notices
+something wrong, then it alerts you immediately.</p>
+
+<p>It can detect four types of threats:</p>
+
+<table>
+  <thead><tr><th>Threat Type</th><th>What it means</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td><span class="hl-red">Port Scan</span></td><td>Someone probing many ports rapidly</td><td>A hacker mapping your network with nmap</td></tr>
+    <tr><td><span class="hl-red">Brute Force</span></td><td>Repeated login attempts</td><td>A bot hammering your SSH password</td></tr>
+    <tr><td><span class="hl-red">Exfiltration</span></td><td>Huge data upload in a short time</td><td>A compromised PC uploading files to the internet</td></tr>
+    <tr><td><span class="hl-yellow">New Device</span></td><td>Unknown device joins the network</td><td>A stranger's phone connecting to your WiFi</td></tr>
+  </tbody>
+</table>
+
+<h3>How Does It Work? (The Big Picture)</h3>
+
+<p>NetWatchM uses <strong>tshark</strong> (the command-line version of Wireshark) to capture packets,
+then analyses them in real time using Python. Here is the flow from packet to alert:</p>
+
+<div class="arch-box">
+<span class="arch-blue">Your Network Interface (e.g. enp6s0)</span>
+         │
+         ▼
+<span class="arch-green">[ tshark subprocess ]</span>  ← captures raw packets, outputs one JSON line per packet
+         │
+         ▼
+<span class="arch-green">[ capture.py ]</span>         ← reads each JSON line, creates a Packet object
+         │
+         ▼
+<span class="arch-yellow">[ 4 Detectors ]</span>        ← each packet is checked by all four detectors
+  ├── PortScanDetector
+  ├── BruteForceDetector
+  ├── ExfiltrationDetector
+  └── NewIPDetector
+         │ (if suspicious → Alert)
+         ▼
+<span class="arch-yellow">[ Alert Handlers ]</span>     ← delivers the alert via all enabled channels
+  ├── Terminal (coloured text on screen)
+  ├── Log file (/var/log/netwatchm/)
+  ├── Sound   (beep!)
+  └── Email   (Gmail)
+         │
+         ▼
+<span class="arch-pink">[ Device Inventory ]</span>   ← every device seen is recorded in inventory.json
+         │
+         ▼
+<span class="arch-pink">[ report.html ]</span>        ← browser dashboard — refreshes every 30 seconds
+</div>
+
+<h3>Key Technologies Used</h3>
+
+<table>
+  <thead><tr><th>Technology</th><th>What it is</th><th>Why NetWatchM uses it</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Python 3.12</strong></td><td>Programming language</td><td>Everything is written in Python</td></tr>
+    <tr><td><strong>asyncio</strong></td><td>Python's async library</td><td>Handles many tasks at once without threads</td></tr>
+    <tr><td><strong>tshark</strong></td><td>CLI packet capture tool</td><td>The engine that reads raw network traffic</td></tr>
+    <tr><td><strong>Rich</strong></td><td>Python terminal library</td><td>The colourful dashboard you see on screen</td></tr>
+    <tr><td><strong>uv</strong></td><td>Python package manager</td><td>Installs dependencies and runs the app</td></tr>
+    <tr><td><strong>systemd</strong></td><td>Linux service manager</td><td>Keeps NetWatchM running after reboot</td></tr>
+  </tbody>
+</table>
+
+<div class="phase-summary">
+  <h4>Phase 1 Complete — You now know:</h4>
+  <ul>
+    <li>What NetWatchM does (real-time network threat detection)</li>
+    <li>The four threats it detects (port scan, brute force, exfiltration, new device)</li>
+    <li>How data flows from network → packet → alert → dashboard</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 2 — PREREQUISITES
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="2">
+  <div class="phase-label">Phase 2</div>
+  <h2>Before You Begin — Prerequisites</h2>
+  <p>Check and install everything NetWatchM needs before you touch the code.</p>
+</div>
+
+<h3>What You Need</h3>
+
+<ul class="checklist">
+  <li>A Linux computer running Ubuntu 22.04 / 24.04 or any Debian-based distro</li>
+  <li>A terminal (press <span class="key">Ctrl</span>+<span class="key">Alt</span>+<span class="key">T</span> to open one)</li>
+  <li>sudo (administrator) access</li>
+  <li>An internet connection for the initial install</li>
+  <li>Python 3.12 or newer</li>
+  <li>tshark (Wireshark's command-line tool)</li>
+  <li>uv (a fast Python package manager)</li>
+</ul>
+
+<h3>Step-by-Step: Check and Install Prerequisites</h3>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Check your Python version</div>
+      <p>Open a terminal and type:</p>
+<pre><code>python3 --version</code></pre>
+      <p>You should see something like <code>Python 3.12.x</code>. If the number is
+      lower than 3.12, you need to upgrade Python before continuing.</p>
+      <div class="callout info">
+        <div class="callout-icon">ℹ</div>
+        <div class="callout-body">
+          <div class="callout-title">How to upgrade Python on Ubuntu</div>
+          <p><code>sudo apt update &amp;&amp; sudo apt install python3.12 python3.12-dev</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Install tshark</div>
+      <p>tshark is the packet capture engine that NetWatchM uses to read network traffic.
+      Install it with:</p>
+<pre><code>sudo apt update
+sudo apt install tshark</code></pre>
+      <p>During the install, a dialog will ask:</p>
+      <p><em>"Should non-superusers be able to capture packets?"</em></p>
+      <div class="callout warn">
+        <div class="callout-icon">⚠</div>
+        <div class="callout-body">
+          <div class="callout-title">Choose "Yes" only if you plan to run without sudo</div>
+          <p>For simplicity, choose <strong>No</strong> — you will run NetWatchM with sudo anyway.
+          You can always change this later.</p>
+        </div>
+      </div>
+      <p>Verify it installed correctly:</p>
+<pre><code>tshark --version</code></pre>
+      <p>You should see <code>TShark (Wireshark) x.x.x</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Install uv (Python package manager)</div>
+      <p>uv is a fast modern Python package manager. It replaces pip and venv in one tool.</p>
+<pre><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code></pre>
+      <p>This downloads and installs uv into <code>~/.local/bin/</code>. Now tell your shell
+      where to find it:</p>
+<pre><code>export PATH="$HOME/.local/bin:$PATH"</code></pre>
+      <p>To make this permanent (so it works every time you open a terminal), add it to
+      your shell profile:</p>
+<pre><code>echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc</code></pre>
+      <p>Verify uv is working:</p>
+<pre><code>uv --version</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Find your network interface name</div>
+      <p>You need to know the name of your network card so NetWatchM knows what to monitor.
+      Run:</p>
+<pre><code>ip addr</code></pre>
+      <p>Look for the interface with your local IP address (usually starts with
+      <code>192.168.</code> or <code>10.</code>). Common names are:</p>
+      <table>
+        <thead><tr><th>Name</th><th>What it usually is</th></tr></thead>
+        <tbody>
+          <tr><td><code>enp6s0</code>, <code>eth0</code></td><td>Wired Ethernet</td></tr>
+          <tr><td><code>wlan0</code>, <code>wlp2s0</code></td><td>Wireless / WiFi</td></tr>
+          <tr><td><code>lo</code></td><td>Loopback (localhost only — not useful for monitoring)</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Write down your interface name</strong> — you will use it in the config file.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 2 Complete — You now have:</h4>
+  <ul>
+    <li>Python 3.12+ confirmed</li>
+    <li>tshark installed and working</li>
+    <li>uv installed and on your PATH</li>
+    <li>Your network interface name noted</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 3 — GETTING THE CODE
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="3">
+  <div class="phase-label">Phase 3</div>
+  <h2>Getting the Code</h2>
+  <p>Download the NetWatchM source code and understand how the project is laid out.</p>
+</div>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Go to your projects folder</div>
+<pre><code>cd ~
+mkdir -p ai-projects
+cd ai-projects</code></pre>
+      <p>This creates a folder called <code>ai-projects</code> in your home directory and
+      moves you into it.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Clone the repository</div>
+<pre><code>git clone https://github.com/yourrepo/netwatchm.git</code></pre>
+      <p>This downloads all the source code into a folder called <code>netwatchm/</code>.</p>
+      <div class="callout info">
+        <div class="callout-icon">ℹ</div>
+        <div class="callout-body">
+          <div class="callout-title">No git installed?</div>
+          <p><code>sudo apt install git</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Explore the project layout</div>
+      <p>Move into the project folder and look around:</p>
+<pre><code>cd netwatchm
+ls -la</code></pre>
+      <p>You will see these important files and folders:</p>
+      <table>
+        <thead><tr><th>File / Folder</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td><span class="path">src/netwatchm/</span></td><td>All the Python source code</td></tr>
+          <tr><td><span class="path">tests/</span></td><td>57 automated tests</td></tr>
+          <tr><td><span class="path">netwatchm.yaml.example</span></td><td>Template configuration file</td></tr>
+          <tr><td><span class="path">install.sh</span></td><td>One-command Linux installer</td></tr>
+          <tr><td><span class="path">pyproject.toml</span></td><td>Python project metadata and dependencies</td></tr>
+          <tr><td><span class="path">assets/alert.wav</span></td><td>The beep sound played for HIGH alerts</td></tr>
+          <tr><td><span class="path">report.html</span></td><td>Browser-based inventory dashboard</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 3 Complete — You now have:</h4>
+  <ul>
+    <li>The NetWatchM source code on your machine</li>
+    <li>An understanding of what each file and folder does</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 4 — INSTALLATION
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="4">
+  <div class="phase-label">Phase 4</div>
+  <h2>Installing NetWatchM</h2>
+  <p>Use the automated installer to set up everything in one command.</p>
+</div>
+
+<h3>What the Installer Does</h3>
+
+<p>The <code>install.sh</code> script automates the entire setup. Before you run it, here is exactly
+what it will do — no surprises:</p>
+
+<table>
+  <thead><tr><th>#</th><th>Step</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Verifies Python ≥ 3.12</td><td>Stops with an error if too old</td></tr>
+    <tr><td>2</td><td>Verifies tshark is installed</td><td>Tries to install it automatically if missing</td></tr>
+    <tr><td>3</td><td>Installs uv if missing</td><td>Downloads to <code>/root/.local/bin/uv</code></td></tr>
+    <tr><td>4</td><td>Runs <code>uv sync</code></td><td>Installs all Python dependencies into <code>.venv/</code></td></tr>
+    <tr><td>5</td><td>Creates <code>/etc/netwatchm/netwatchm.yaml</code></td><td>Copies the example config (only if file doesn't exist)</td></tr>
+    <tr><td>6</td><td>Creates log and data directories</td><td><code>/var/log/netwatchm/</code> and <code>/var/lib/netwatchm/</code></td></tr>
+    <tr><td>7</td><td>Prompts for Gmail App Password</td><td>Saves it securely to <code>/etc/netwatchm/env</code></td></tr>
+    <tr><td>8</td><td>Installs systemd service</td><td>NetWatchM starts automatically on every boot</td></tr>
+  </tbody>
+</table>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Run the installer</div>
+      <p>From inside the <code>netwatchm/</code> folder:</p>
+<pre><code>sudo bash install.sh</code></pre>
+      <p>Enter your password when prompted. Then watch the output — each step is shown
+      with a green <code>[INFO]</code> label.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">What success looks like</div>
+      <p>A successful install produces output like this:</p>
+<pre><code><span class="cmd-output">[INFO] Python 3.12 OK
+[INFO] tshark found: /usr/bin/tshark
+[INFO] Installing uv...
+[INFO] uv found: /root/.local/bin/uv
+[INFO] Installing Python dependencies...
+Resolved 15 packages in 0.71ms
+[INFO] Creating /etc/netwatchm/netwatchm.yaml...
+[INFO] Installing systemd service...
+Wrote /etc/systemd/system/netwatchm.service
+[INFO] NetWatchM installed successfully!</span></code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Verify the service is running</div>
+<pre><code>systemctl status netwatchm</code></pre>
+      <p>Look for <code>Active: active (running)</code> in the output. If you see that,
+      NetWatchM is already monitoring your network!</p>
+      <div class="callout tip">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <div class="callout-title">View live logs at any time</div>
+          <p><code>journalctl -u netwatchm -f</code><br>
+          Press <span class="key">Ctrl</span>+<span class="key">C</span> to stop following the log.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">What got created on your system</div>
+      <table>
+        <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td><span class="path">/etc/netwatchm/netwatchm.yaml</span></td><td>Main configuration file</td></tr>
+          <tr><td><span class="path">/etc/netwatchm/env</span></td><td>Secret environment variables (email password)</td></tr>
+          <tr><td><span class="path">/var/log/netwatchm/netwatchm.log</span></td><td>Alert log file</td></tr>
+          <tr><td><span class="path">/var/lib/netwatchm/inventory.json</span></td><td>Device inventory database</td></tr>
+          <tr><td><span class="path">/etc/systemd/system/netwatchm.service</span></td><td>Systemd service definition</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 4 Complete — You now have:</h4>
+  <ul>
+    <li>NetWatchM installed and running as a system service</li>
+    <li>Config file at <code>/etc/netwatchm/netwatchm.yaml</code></li>
+    <li>Inventory database at <code>/var/lib/netwatchm/inventory.json</code></li>
+    <li>Logs flowing to <code>/var/log/netwatchm/netwatchm.log</code></li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 5 — CONFIGURATION
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="5">
+  <div class="phase-label">Phase 5</div>
+  <h2>Understanding the Configuration File</h2>
+  <p>Learn every setting and what changing it means for your monitoring.</p>
+</div>
+
+<p>The configuration file lives at <span class="path">/etc/netwatchm/netwatchm.yaml</span>.
+Open it with any text editor:</p>
+<pre><code>sudo nano /etc/netwatchm/netwatchm.yaml</code></pre>
+
+<h3>Section 1 — Basic Settings</h3>
+<pre><code>interface: auto          <span class="cmd-comment"># Which network card to watch</span>
+baseline_period: 300     <span class="cmd-comment"># Learning period in seconds (5 minutes)</span></code></pre>
+
+<table>
+  <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>interface</code></td>
+      <td><code>auto</code></td>
+      <td>Set to <code>auto</code> to let NetWatchM pick the right NIC automatically, or set
+      an exact name like <code>enp6s0</code> or <code>wlan0</code>.</td>
+    </tr>
+    <tr>
+      <td><code>baseline_period</code></td>
+      <td><code>300</code></td>
+      <td>When NetWatchM first starts, it spends this many seconds silently learning which
+      devices are normally on the network. After this period, any new device triggers
+      an alert. Lower this number for faster alerting; raise it if your network is large.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Section 2 — Threat Detection Thresholds</h3>
+
+<pre><code>thresholds:
+  port_scan:
+    ports_per_window: 15     <span class="cmd-comment"># alert after hitting this many distinct ports</span>
+    window_seconds: 10       <span class="cmd-comment"># within this time window</span>
+
+  brute_force:
+    attempts_per_window: 10  <span class="cmd-comment"># alert after this many connection attempts</span>
+    window_seconds: 30       <span class="cmd-comment"># within this time window</span>
+    ports: [22, 3389, 21, 3306, 5900]  <span class="cmd-comment"># ports to watch (SSH, RDP, FTP, MySQL, VNC)</span>
+
+  exfiltration:
+    bytes_per_window: 10485760   <span class="cmd-comment"># 10 MB — alert if one device sends this much</span>
+    window_seconds: 60           <span class="cmd-comment"># within 60 seconds</span>
+
+  new_ip:
+    enabled: true            <span class="cmd-comment"># alert when a device never seen before appears</span></code></pre>
+
+<div class="callout tip">
+  <div class="callout-icon">💡</div>
+  <div class="callout-body">
+    <div class="callout-title">Tuning tip for home networks</div>
+    <p>If you get too many false alerts (e.g. your own computer triggering port-scan
+    alerts during a software update), raise <code>ports_per_window</code> to 25–30.
+    If you want earlier warnings, lower it to 10.</p>
+  </div>
+</div>
+
+<h3>Section 3 — Alert Channels</h3>
+
+<pre><code>alerts:
+  terminal: true           <span class="cmd-comment"># show alerts on screen (disable with --no-ui)</span>
+
+  log:
+    enabled: true
+    path: /var/log/netwatchm/netwatchm.log
+    max_bytes: 10485760    <span class="cmd-comment"># rotate log at 10 MB</span>
+    backup_count: 5        <span class="cmd-comment"># keep 5 old log files</span>
+
+  sound:
+    enabled: true
+    file: assets/alert.wav
+    min_level: HIGH        <span class="cmd-comment"># only beep for HIGH or CRITICAL</span>
+
+  email:
+    enabled: false         <span class="cmd-comment"># set to true to enable email alerts</span>
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    username: you@gmail.com
+    recipient: you@gmail.com
+    min_level: HIGH
+    cooldown_seconds: 300  <span class="cmd-comment"># wait 5 min before sending same alert type again</span></code></pre>
+
+<h3>Section 4 — Device Inventory</h3>
+
+<pre><code>inventory:
+  enabled: true
+  persist_interval: 60    <span class="cmd-comment"># save inventory.json every 60 seconds</span>
+  dns_timeout: 2          <span class="cmd-comment"># seconds to wait for reverse DNS lookup</span>
+  dns_cache_ttl: 300      <span class="cmd-comment"># cache failed DNS for 5 minutes</span>
+  export_dir: .           <span class="cmd-comment"># where to save CSV exports (. = current folder)</span></code></pre>
+
+<div class="callout warn">
+  <div class="callout-icon">⚠</div>
+  <div class="callout-body">
+    <div class="callout-title">Always restart after changing the config</div>
+    <p><code>sudo systemctl restart netwatchm</code><br>
+    Changes to <code>netwatchm.yaml</code> do not take effect until the service restarts.</p>
+  </div>
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 5 Complete — You now understand:</h4>
+  <ul>
+    <li>How to set your network interface manually</li>
+    <li>What each detection threshold controls</li>
+    <li>How to enable/disable each alert channel</li>
+    <li>How the device inventory is saved</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 6 — RUNNING FOR THE FIRST TIME
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="6">
+  <div class="phase-label">Phase 6</div>
+  <h2>Running NetWatchM for the First Time</h2>
+  <p>Start the monitor manually in interactive mode so you can see exactly what it does.</p>
+</div>
+
+<div class="callout info">
+  <div class="callout-icon">ℹ</div>
+  <div class="callout-body">
+    <div class="callout-title">Two ways to run NetWatchM</div>
+    <p><strong>Interactive mode</strong> — you run it in a terminal and see the live dashboard.<br>
+    <strong>Service mode</strong> — systemd runs it in the background, no dashboard.</p>
+    <p>For your first run, use interactive mode so you can see what happens.</p>
+  </div>
+</div>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Stop the background service first</div>
+      <p>The service might already be running. Stop it temporarily so you can run
+      interactively without conflicts:</p>
+<pre><code>sudo systemctl stop netwatchm</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Run NetWatchM interactively</div>
+<pre><code>cd /home/$USER/ai-projects/netwatchm
+sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml</code></pre>
+      <p>The Rich dashboard will appear immediately. You will see your network interface
+      name, a threat level indicator, and an alert panel.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Override the interface from the command line</div>
+      <p>If you want to specify the interface without editing the config file:</p>
+<pre><code>sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml --interface enp6s0</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Quit when you are done</div>
+      <p>Press <span class="key">Q</span> to quit cleanly. NetWatchM will save the inventory
+      to disk before exiting.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Restart the background service</div>
+<pre><code>sudo systemctl start netwatchm</code></pre>
+    </div>
+  </div>
+
+</div>
+
+<h3>All Command-Line Options</h3>
+
+<table>
+  <thead><tr><th>Option</th><th>Example</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>--config PATH</code></td><td><code>--config /etc/netwatchm/netwatchm.yaml</code></td><td>Which config file to use</td></tr>
+    <tr><td><code>--interface NAME</code></td><td><code>--interface wlan0</code></td><td>Override the network interface</td></tr>
+    <tr><td><code>--no-ui</code></td><td><code>--no-ui</code></td><td>Disable the dashboard (log only)</td></tr>
+    <tr><td><code>--log-level LEVEL</code></td><td><code>--log-level DEBUG</code></td><td>Set verbosity: DEBUG / INFO / WARNING / ERROR</td></tr>
+    <tr><td><code>--install-service</code></td><td><code>--install-service</code></td><td>Install/update the systemd service and exit</td></tr>
+  </tbody>
+</table>
+
+<div class="phase-summary">
+  <h4>Phase 6 Complete — You can now:</h4>
+  <ul>
+    <li>Run NetWatchM interactively with the live dashboard</li>
+    <li>Override the interface from the command line</li>
+    <li>Quit cleanly with the Q key</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 7 — READING THE DASHBOARD
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="7">
+  <div class="phase-label">Phase 7</div>
+  <h2>Reading the Dashboard</h2>
+  <p>Understand every panel and keyboard shortcut in the terminal UI.</p>
+</div>
+
+<h3>Dashboard Layout</h3>
+
+<div class="arch-box">
+┌─────────────────────────────────────────────────────────────────────┐
+│  NetWatchM  │  Interface: enp6s0  │  Threat: <span class="arch-green">LOW</span>  │  Pkts/s: 142     │
+├─────────────────────────────────────────────────────────────────────┤
+│                         RECENT ALERTS                               │
+│  [16:45:12]  <span class="arch-yellow">MEDIUM</span>  NEW_IP   192.168.1.250 — new device detected     │
+│  [16:31:05]  <span class="arch-pink">HIGH  </span>  PORT_SCAN 203.0.113.42 — 18 ports in 10s         │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│  Traffic: ↑ 12.1 MB  ↓ 1.3 MB  │  Press I=Inventory  Q=Quit      │
+└─────────────────────────────────────────────────────────────────────┘
+</div>
+
+<h3>Panel Descriptions</h3>
+
+<table>
+  <thead><tr><th>Panel Element</th><th>What it shows</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Interface</strong></td><td>The network card currently being monitored</td></tr>
+    <tr><td><strong>Threat level</strong></td><td>The current highest active threat: LOW (green) / MEDIUM (yellow) / HIGH (red) / CRITICAL (bold red)</td></tr>
+    <tr><td><strong>Pkts/s</strong></td><td>How many network packets per second are flowing through your interface</td></tr>
+    <tr><td><strong>Recent Alerts</strong></td><td>Scrolling list of the most recent detections with timestamp, level, type, source IP, and description</td></tr>
+    <tr><td><strong>Traffic</strong></td><td>Total bytes sent ↑ and received ↓ since NetWatchM started</td></tr>
+  </tbody>
+</table>
+
+<h3>Keyboard Shortcuts</h3>
+
+<table>
+  <thead><tr><th>Key</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><span class="key">Q</span></td><td>Quit NetWatchM (saves inventory first)</td></tr>
+    <tr><td><span class="key">I</span></td><td>Switch to Inventory view — shows all devices seen on the network</td></tr>
+    <tr><td><span class="key">M</span></td><td>Switch back to main dashboard from Inventory view</td></tr>
+    <tr><td><span class="key">E</span></td><td>(Inventory view only) Export device list to a CSV file</td></tr>
+    <tr><td><span class="key">/</span></td><td>(Inventory view only) Start typing to filter devices by IP or hostname</td></tr>
+    <tr><td><span class="key">Esc</span></td><td>(Inventory view only) Clear the current filter</td></tr>
+    <tr><td><span class="key">Backspace</span></td><td>(Inventory view only) Delete the last character of the filter</td></tr>
+  </tbody>
+</table>
+
+<h3>Inventory View Columns</h3>
+
+<table>
+  <thead><tr><th>Column</th><th>What it shows</th></tr></thead>
+  <tbody>
+    <tr><td><strong>IP</strong></td><td>The device's IP address</td></tr>
+    <tr><td><strong>Hostname</strong></td><td>The device's name from DNS (may take a few seconds to appear)</td></tr>
+    <tr><td><strong>MAC</strong></td><td>Hardware address (only visible for devices on the same LAN segment)</td></tr>
+    <tr><td><strong>Threat</strong></td><td>The highest threat level this device has triggered</td></tr>
+    <tr><td><strong>Last Seen</strong></td><td>When this device last sent or received a packet</td></tr>
+    <tr><td><strong>Bytes</strong></td><td>Total data sent and received by this device</td></tr>
+  </tbody>
+</table>
+
+<div class="phase-summary">
+  <h4>Phase 7 Complete — You can now:</h4>
+  <ul>
+    <li>Read every panel in the dashboard</li>
+    <li>Interpret threat levels and alert descriptions</li>
+    <li>Navigate between dashboard and inventory views</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 8 — UNDERSTANDING ALERTS
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="8">
+  <div class="phase-label">Phase 8</div>
+  <h2>Understanding Alerts</h2>
+  <p>What each type of alert means and how the detection works.</p>
+</div>
+
+<h3>Alert Levels</h3>
+
+<table>
+  <thead><tr><th>Level</th><th>Colour</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr><td><span class="hl-green">LOW</span></td><td>Green</td><td>Normal — no active threats</td></tr>
+    <tr><td><span class="hl-yellow">MEDIUM</span></td><td>Yellow</td><td>Worth checking — possibly suspicious</td></tr>
+    <tr><td><span class="hl-red">HIGH</span></td><td>Red</td><td>Likely malicious — act now</td></tr>
+    <tr><td><span class="hl-red">CRITICAL</span></td><td>Bold Red</td><td>Confirmed serious threat</td></tr>
+  </tbody>
+</table>
+
+<h3>PORT_SCAN — HIGH</h3>
+
+<p><strong>What triggered it:</strong> A single IP address contacted 15+ different ports
+on your machine within 10 seconds.</p>
+
+<p><strong>What it usually means:</strong> Someone is running a port scanner (like nmap) to
+map which services are running on your network. This is often the first step
+before an attack.</p>
+
+<p><strong>Alert example:</strong></p>
+<pre><code>PORT_SCAN from 203.0.113.42: 18 distinct ports in 10s window</code></pre>
+
+<p><strong>What to do:</strong> Check if the source IP is on your LAN. If it's external,
+consider blocking it with your firewall (<code>sudo ufw deny from 203.0.113.42</code>).</p>
+
+<h3>BRUTE_FORCE — HIGH</h3>
+
+<p><strong>What triggered it:</strong> A single IP made 10+ connection attempts to a sensitive
+port (SSH=22, RDP=3389, FTP=21, MySQL=3306, VNC=5900) within 30 seconds.</p>
+
+<p><strong>What it usually means:</strong> An automated bot is trying to guess your password.
+This happens constantly on internet-facing servers.</p>
+
+<p><strong>Alert example:</strong></p>
+<pre><code>BRUTE_FORCE from 198.51.100.7 on port 22: 14 attempts in 30s window</code></pre>
+
+<p><strong>What to do:</strong> Install <code>fail2ban</code> to automatically block IPs after repeated
+failures. Use SSH key authentication instead of passwords.</p>
+
+<h3>EXFILTRATION — HIGH</h3>
+
+<p><strong>What triggered it:</strong> A device sent more than 10 MB of data within 60 seconds.</p>
+
+<p><strong>What it usually means:</strong> Either a compromised device is uploading data
+(e.g. a keylogger exfiltrating screenshots), or a legitimate backup/upload
+running at an unusual time.</p>
+
+<p><strong>Alert example:</strong></p>
+<pre><code>EXFILTRATION from 192.168.1.45: 15.2 MB sent in 60s window</code></pre>
+
+<p><strong>What to do:</strong> Identify the device (check the inventory view), then investigate
+what process is sending that data.</p>
+
+<h3>NEW_IP — MEDIUM</h3>
+
+<p><strong>What triggered it:</strong> An IP address appeared that was never seen during the
+5-minute baseline learning period.</p>
+
+<p><strong>What it usually means:</strong> A new device joined the network. Could be innocent
+(a guest's phone) or suspicious (an attacker who gained network access).</p>
+
+<p><strong>Alert example:</strong></p>
+<pre><code>NEW_IP detected: 192.168.1.250 — not seen during baseline period</code></pre>
+
+<p><strong>What to do:</strong> Check the inventory view to see if you can identify the device
+by its hostname or MAC address.</p>
+
+<div class="phase-summary">
+  <h4>Phase 8 Complete — You now understand:</h4>
+  <ul>
+    <li>The four threat levels and what each colour means</li>
+    <li>What triggers each type of alert</li>
+    <li>What each alert type means in practice</li>
+    <li>What action to take for each alert type</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 9 — WEB DASHBOARD
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="9">
+  <div class="phase-label">Phase 9</div>
+  <h2>The Web Dashboard (HTML Report)</h2>
+  <p>View your network inventory in a browser with live auto-refresh — running as a permanent service.</p>
+</div>
+
+<p>The <code>report.html</code> file is a self-contained web dashboard that reads
+<code>inventory.json</code> and displays all devices in a searchable, sortable table.
+It auto-refreshes every 30 seconds — no page reload needed.</p>
+
+<div class="callout warn">
+  <div class="callout-icon">⚠</div>
+  <div class="callout-body">
+    <div class="callout-title">Don't use a terminal to run the web server</div>
+    <p>Running <code>python3 -m http.server</code> in a terminal means the dashboard
+    <strong>stops the moment you close that terminal</strong>. Use the
+    <code>netwatchm-web</code> systemd service instead — it stays up permanently and
+    restarts automatically on reboot or crash.</p>
+  </div>
+</div>
+
+<h3>First-Time Setup</h3>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Copy the dashboard file into the data directory</div>
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/report.html /var/lib/netwatchm/</code></pre>
+      <p>Both <code>report.html</code> and <code>inventory.json</code> now live together
+      in <code>/var/lib/netwatchm/</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Install the web dashboard systemd service</div>
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/netwatchm-web.service \
+        /etc/systemd/system/netwatchm-web.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now netwatchm-web</code></pre>
+      <p><code>enable --now</code> does two things at once: marks the service to start
+      on every future boot, and starts it immediately right now.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Verify it is running</div>
+<pre><code>systemctl status netwatchm-web</code></pre>
+      <p>You should see <code>Active: active (running)</code>. The service definition
+      also declares <code>Restart=always</code>, so if it ever crashes systemd will
+      bring it back within 5 seconds — no manual intervention needed.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Open the dashboard in your browser</div>
+<pre><code>http://localhost:8765/report.html</code></pre>
+      <p>The dashboard is now always available at this address — even after a reboot.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="callout info">
+  <div class="callout-icon">ℹ</div>
+  <div class="callout-body">
+    <div class="callout-title">The installer handles this automatically</div>
+    <p>If you ran <code>sudo bash install.sh</code>, steps 1–3 were already done for you.
+    The installer copies <code>report.html</code> and installs <code>netwatchm-web.service</code>
+    as part of step 9.</p>
+  </div>
+</div>
+
+<h3>Managing the Web Service</h3>
+
+<table>
+  <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>systemctl status netwatchm-web</code></td><td>Is it running?</td></tr>
+    <tr><td><code>sudo systemctl start netwatchm-web</code></td><td>Start it now</td></tr>
+    <tr><td><code>sudo systemctl stop netwatchm-web</code></td><td>Stop it</td></tr>
+    <tr><td><code>sudo systemctl restart netwatchm-web</code></td><td>Restart (e.g. after copying a new report.html)</td></tr>
+    <tr><td><code>sudo systemctl enable netwatchm-web</code></td><td>Start automatically on boot</td></tr>
+    <tr><td><code>sudo systemctl disable netwatchm-web</code></td><td>Stop starting on boot</td></tr>
+    <tr><td><code>journalctl -u netwatchm-web -f</code></td><td>Follow live web server logs</td></tr>
+  </tbody>
+</table>
+
+<h3>Dashboard Features</h3>
+
+<table>
+  <thead><tr><th>Feature</th><th>How to use it</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Search box</strong></td><td>Type any IP, hostname, MAC, or port number to filter instantly</td></tr>
+    <tr><td><strong>Threat filter buttons</strong></td><td>Click HIGH / MEDIUM / LOW to show only devices at that risk level</td></tr>
+    <tr><td><strong>Column sorting</strong></td><td>Click any column header to sort; click again to reverse</td></tr>
+    <tr><td><strong>Port badges</strong></td><td>Known ports (SSH, HTTP, DNS…) appear in blue with their service name</td></tr>
+    <tr><td><strong>+N more</strong></td><td>Click to expand a device's full port list</td></tr>
+    <tr><td><strong>Export CSV button</strong></td><td>Downloads the current filtered view as a spreadsheet</td></tr>
+    <tr><td><strong>Dark / Light toggle</strong></td><td>Button in the top-right corner</td></tr>
+    <tr><td><strong>Auto-refresh ring</strong></td><td>The spinning ring completes one full turn every 30 s refresh cycle</td></tr>
+  </tbody>
+</table>
+
+<div class="phase-summary">
+  <h4>Phase 9 Complete — You now have:</h4>
+  <ul>
+    <li>Web dashboard running as a permanent systemd service (<code>netwatchm-web</code>)</li>
+    <li>Dashboard survives reboots and restarts automatically on crash</li>
+    <li>Always accessible at <code>http://localhost:8765/report.html</code></li>
+    <li>Search, filter, sort, and export devices from the browser</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 10 — SYSTEM SERVICE
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="10">
+  <div class="phase-label">Phase 10</div>
+  <h2>Running as a Background Service</h2>
+  <p>Let systemd manage NetWatchM so it starts automatically and restarts on crashes.</p>
+</div>
+
+<h3>What systemd Does for You</h3>
+
+<p>The installer already created the systemd service. systemd gives you:</p>
+<ul class="checklist">
+  <li>NetWatchM starts automatically when your computer boots</li>
+  <li>If NetWatchM crashes, systemd restarts it automatically</li>
+  <li>All log output is captured and searchable with <code>journalctl</code></li>
+  <li>You can start, stop, restart, or check status with simple commands</li>
+</ul>
+
+<h3>Service Management Commands</h3>
+
+<table>
+  <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>sudo systemctl start netwatchm</code></td><td>Start the service right now</td></tr>
+    <tr><td><code>sudo systemctl stop netwatchm</code></td><td>Stop the service</td></tr>
+    <tr><td><code>sudo systemctl restart netwatchm</code></td><td>Stop then start (use after config changes)</td></tr>
+    <tr><td><code>sudo systemctl enable netwatchm</code></td><td>Start automatically on every boot</td></tr>
+    <tr><td><code>sudo systemctl disable netwatchm</code></td><td>Stop starting on boot</td></tr>
+    <tr><td><code>systemctl status netwatchm</code></td><td>Is it running? When did it start?</td></tr>
+    <tr><td><code>journalctl -u netwatchm -f</code></td><td>Follow live log output</td></tr>
+    <tr><td><code>journalctl -u netwatchm -n 50</code></td><td>Show last 50 log lines</td></tr>
+    <tr><td><code>journalctl -u netwatchm --since "1 hour ago"</code></td><td>Show logs from the last hour</td></tr>
+  </tbody>
+</table>
+
+<h3>Applying Configuration Changes</h3>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Edit the config file</div>
+<pre><code>sudo nano /etc/netwatchm/netwatchm.yaml</code></pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Save and restart the service</div>
+<pre><code>sudo systemctl restart netwatchm</code></pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Verify it started successfully</div>
+<pre><code>systemctl status netwatchm</code></pre>
+      <p>You should see <code>Active: active (running)</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 10 Complete — You can now:</h4>
+  <ul>
+    <li>Start, stop, and restart NetWatchM as a service</li>
+    <li>View live and historical logs with journalctl</li>
+    <li>Apply config changes correctly</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 11 — INVENTORY QUERIES
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="11">
+  <div class="phase-label">Phase 11</div>
+  <h2>Querying the Device Inventory</h2>
+  <p>Use the CLI to search, sort, and export device data without opening a browser.</p>
+</div>
+
+<p>NetWatchM has an <code>inventory</code> subcommand that reads the saved
+<code>inventory.json</code> and displays it in the terminal. This works even when the service
+is running — it reads the file directly.</p>
+
+<h3>Basic Usage</h3>
+
+<pre><code><span class="cmd-comment"># Show all devices in a Rich table</span>
+uv run netwatchm inventory
+
+<span class="cmd-comment"># Filter by IP or hostname substring</span>
+uv run netwatchm inventory --filter 192.168
+
+<span class="cmd-comment"># Show only devices with "google" in their hostname</span>
+uv run netwatchm inventory --filter google
+
+<span class="cmd-comment"># Sort by threat level (highest first)</span>
+uv run netwatchm inventory --sort-by threat
+
+<span class="cmd-comment"># Sort by total bytes (biggest traffic first)</span>
+uv run netwatchm inventory --sort-by bytes
+
+<span class="cmd-comment"># Sort by when each device was last seen</span>
+uv run netwatchm inventory --sort-by last_seen</code></pre>
+
+<h3>Exporting to CSV</h3>
+
+<pre><code><span class="cmd-comment"># Export to a specific file</span>
+uv run netwatchm inventory --export /tmp/my-network.csv
+
+<span class="cmd-comment"># Export to the terminal (pipe to other tools)</span>
+uv run netwatchm inventory --export -
+
+<span class="cmd-comment"># Filter then export (only HIGH threat devices)</span>
+uv run netwatchm inventory --filter HIGH --export high-threat.csv</code></pre>
+
+<h3>Inspecting the Raw JSON</h3>
+
+<pre><code><span class="cmd-comment"># Pretty-print the entire inventory.json</span>
+cat /var/lib/netwatchm/inventory.json | python3 -m json.tool
+
+<span class="cmd-comment"># Count how many devices are tracked</span>
+python3 -c "import json; d=json.load(open('/var/lib/netwatchm/inventory.json')); print(len(d), 'devices')"</code></pre>
+
+<div class="phase-summary">
+  <h4>Phase 11 Complete — You can now:</h4>
+  <ul>
+    <li>Query the device inventory from the terminal</li>
+    <li>Filter and sort devices by any field</li>
+    <li>Export inventory data to CSV for use in spreadsheets</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 12 — EMAIL ALERTS
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="12">
+  <div class="phase-label">Phase 12</div>
+  <h2>Setting Up Email Alerts</h2>
+  <p>Get notified by email when a HIGH or CRITICAL threat is detected.</p>
+</div>
+
+<div class="callout danger">
+  <div class="callout-icon">🔒</div>
+  <div class="callout-body">
+    <div class="callout-title">Never put your password in the YAML file</div>
+    <p>The config file is readable by anyone who can read <code>/etc/netwatchm/</code>.
+    Always use the environment variable method described below.</p>
+  </div>
+</div>
+
+<h3>Step 1 — Create a Gmail App Password</h3>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Enable 2-Step Verification on your Google account</div>
+      <p>Go to <strong>myaccount.google.com → Security → 2-Step Verification</strong>
+      and turn it on. App Passwords only work when 2FA is enabled.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Generate an App Password</div>
+      <p>Go to <strong>myaccount.google.com → Security → App passwords</strong>.
+      Choose <em>Mail</em> and <em>Other device</em>. Give it the name "NetWatchM".
+      Google will show you a 16-character password like <code>abcd efgh ijkl mnop</code>.</p>
+      <p><strong>Copy it now</strong> — Google only shows it once.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Step 2 — Save the App Password Securely</h3>
+
+<pre><code><span class="cmd-comment"># Save the password to the secure env file</span>
+echo "NETWATCHM_EMAIL_PASSWORD=abcdefghijklmnop" | sudo tee /etc/netwatchm/env
+
+<span class="cmd-comment"># Lock it down so only root can read it</span>
+sudo chmod 600 /etc/netwatchm/env</code></pre>
+
+<h3>Step 3 — Enable Email in the Config</h3>
+
+<p>Edit <span class="path">/etc/netwatchm/netwatchm.yaml</span> and change the email section:</p>
+
+<pre><code>email:
+    enabled: true                      <span class="cmd-comment"># was false — change to true</span>
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    username: yourname@gmail.com       <span class="cmd-comment"># your Gmail address</span>
+    password: ""                       <span class="cmd-comment"># leave empty — use env var</span>
+    recipient: yourname@gmail.com      <span class="cmd-comment"># where to send alerts</span>
+    min_level: HIGH
+    cooldown_seconds: 300</code></pre>
+
+<h3>Step 4 — Restart and Test</h3>
+
+<pre><code>sudo systemctl restart netwatchm
+journalctl -u netwatchm -f | grep -i email</code></pre>
+
+<p>When the next HIGH alert fires, you will receive an email within seconds.</p>
+
+<div class="phase-summary">
+  <h4>Phase 12 Complete — You now have:</h4>
+  <ul>
+    <li>A Gmail App Password created and stored securely</li>
+    <li>Email alerts enabled for HIGH and CRITICAL threats</li>
+    <li>A 5-minute cooldown so your inbox isn't flooded</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 13 — TESTING
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="13">
+  <div class="phase-label">Phase 13</div>
+  <h2>Running the Tests</h2>
+  <p>Verify that every part of NetWatchM is working correctly.</p>
+</div>
+
+<p>NetWatchM has <strong>57 automated tests</strong> that check every detector, the config
+loader, the inventory system, and all alert handlers. Running them confirms your
+installation is correct.</p>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Go to the project folder</div>
+<pre><code>cd /home/$USER/ai-projects/netwatchm</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Run all 57 tests</div>
+<pre><code>uv run pytest tests/ -v</code></pre>
+      <p>The <code>-v</code> flag makes pytest print each test name so you can see exactly
+      what is being checked.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">What success looks like</div>
+<pre><code><span class="cmd-output">tests/test_port_scan.py::test_port_scan_fires PASSED
+tests/test_port_scan.py::test_port_scan_deduplicates PASSED
+tests/test_brute_force.py::test_brute_force_fires PASSED
+...
+57 passed in 1.23s</span></code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Run a single test file</div>
+<pre><code><span class="cmd-comment"># Only test the port scan detector</span>
+uv run pytest tests/test_port_scan.py -v
+
+<span class="cmd-comment"># Only test the inventory store</span>
+uv run pytest tests/test_inventory_store.py -v</code></pre>
+    </div>
+  </div>
+
+</div>
+
+<h3>What Each Test File Covers</h3>
+
+<table>
+  <thead><tr><th>Test File</th><th>What It Tests</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_models.py</code></td><td>Packet, Alert, DeviceRecord data structures</td></tr>
+    <tr><td><code>test_config.py</code></td><td>YAML loading, default values, env var password</td></tr>
+    <tr><td><code>test_port_scan.py</code></td><td>Port scan fires correctly and deduplicates</td></tr>
+    <tr><td><code>test_brute_force.py</code></td><td>Brute force fires on the right ports</td></tr>
+    <tr><td><code>test_exfiltration.py</code></td><td>Exfiltration fires at the byte threshold</td></tr>
+    <tr><td><code>test_new_ip.py</code></td><td>New IP respects baseline period</td></tr>
+    <tr><td><code>test_scorer.py</code></td><td>Threat scorer aggregates and expires alerts</td></tr>
+    <tr><td><code>test_inventory_store.py</code></td><td>Device store updates, persists, and loads</td></tr>
+    <tr><td><code>test_exporter.py</code></td><td>CSV export produces correct output</td></tr>
+    <tr><td><code>test_capture.py</code></td><td>JSON packet parsing edge cases</td></tr>
+    <tr><td><code>test_alerts.py</code></td><td>All four alert handlers behave correctly</td></tr>
+  </tbody>
+</table>
+
+<div class="phase-summary">
+  <h4>Phase 13 Complete — You can now:</h4>
+  <ul>
+    <li>Run all 57 tests in one command</li>
+    <li>Identify which component a failing test covers</li>
+    <li>Run individual test files for focused debugging</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 14 — TROUBLESHOOTING
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="14">
+  <div class="phase-label">Phase 14</div>
+  <h2>Troubleshooting Common Problems</h2>
+  <p>Step-by-step fixes for the most common issues.</p>
+</div>
+
+<h3>Problem 1 — "uv: command not found"</h3>
+
+<p><strong>Cause:</strong> uv is installed but not on your PATH.</p>
+<p><strong>Fix:</strong></p>
+<pre><code>export PATH="$HOME/.local/bin:$PATH"
+
+<span class="cmd-comment"># Make it permanent:</span>
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc</code></pre>
+
+<hr>
+
+<h3>Problem 2 — "tshark: command not found"</h3>
+
+<p><strong>Cause:</strong> tshark is not installed.</p>
+<p><strong>Fix:</strong></p>
+<pre><code>sudo apt update && sudo apt install tshark</code></pre>
+
+<hr>
+
+<h3>Problem 3 — "Permission denied" on network interface</h3>
+
+<p><strong>Cause:</strong> tshark needs root access to capture packets.</p>
+<p><strong>Fix — Option A (easiest): always run with sudo</strong></p>
+<pre><code>sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml</code></pre>
+<p><strong>Fix — Option B: give tshark the capability so no sudo is needed</strong></p>
+<pre><code>sudo setcap cap_net_raw,cap_net_admin+eip $(which tshark)
+sudo setcap cap_net_raw,cap_net_admin+eip $(which dumpcap)</code></pre>
+
+<hr>
+
+<h3>Problem 4 — Service shows "failed" or "inactive"</h3>
+
+<p><strong>Cause:</strong> A config error or missing file.</p>
+<p><strong>Fix:</strong></p>
+<pre><code><span class="cmd-comment"># See exactly what went wrong</span>
+journalctl -u netwatchm -n 30
+
+<span class="cmd-comment"># Check the config file for YAML syntax errors</span>
+python3 -c "import yaml; yaml.safe_load(open('/etc/netwatchm/netwatchm.yaml'))"
+
+<span class="cmd-comment"># If the config is fine, try restarting</span>
+sudo systemctl restart netwatchm</code></pre>
+
+<hr>
+
+<h3>Problem 5 — Browser shows "Could not load inventory.json"</h3>
+
+<p><strong>Cause:</strong> The <code>netwatchm-web</code> service stopped (terminal closed, crash, or not yet installed).</p>
+<p><strong>Fix — check and restart the service:</strong></p>
+<pre><code>systemctl status netwatchm-web
+
+<span class="cmd-comment"># If stopped, start it:</span>
+sudo systemctl start netwatchm-web
+
+<span class="cmd-comment"># If not installed yet, install it first:</span>
+sudo cp /home/$USER/ai-projects/netwatchm/netwatchm-web.service \
+        /etc/systemd/system/netwatchm-web.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now netwatchm-web</code></pre>
+
+<hr>
+
+<h3>Problem 6 — No packets are being captured</h3>
+
+<p><strong>Cause:</strong> Wrong interface name in config.</p>
+<p><strong>Fix:</strong></p>
+<pre><code><span class="cmd-comment"># Find your interface name</span>
+ip addr
+
+<span class="cmd-comment"># Test that tshark can see traffic on it</span>
+sudo tshark -i enp6s0 -c 5
+
+<span class="cmd-comment"># Update the config</span>
+sudo nano /etc/netwatchm/netwatchm.yaml
+<span class="cmd-comment"># Change: interface: auto  →  interface: enp6s0</span>
+
+<span class="cmd-comment"># Restart</span>
+sudo systemctl restart netwatchm</code></pre>
+
+<hr>
+
+<h3>Problem 7 — Too many false alerts</h3>
+
+<p><strong>Cause:</strong> Detection thresholds are too sensitive for your network.</p>
+<p><strong>Fix:</strong> Raise the thresholds in the config file:</p>
+<pre><code>thresholds:
+  port_scan:
+    ports_per_window: 30    <span class="cmd-comment"># was 15 — doubled to reduce false positives</span>
+    window_seconds: 10
+  brute_force:
+    attempts_per_window: 20 <span class="cmd-comment"># was 10</span>
+    window_seconds: 30</code></pre>
+
+<hr>
+
+<h3>Problem 8 — Sound alert not playing</h3>
+
+<p><strong>Cause:</strong> No audio device available (common on servers or VMs).</p>
+<p><strong>Test:</strong></p>
+<pre><code>python3 -c "import pygame; pygame.mixer.init(); print('Audio OK')"</code></pre>
+<p>If this fails, disable the sound alert in config:</p>
+<pre><code>sound:
+    enabled: false</code></pre>
+
+<hr>
+
+<h3>Problem 9 — Email alerts not sending</h3>
+
+<p><strong>Check each item in order:</strong></p>
+<pre><code><span class="cmd-comment"># 1. Is the env var set?</span>
+sudo cat /etc/netwatchm/env
+
+<span class="cmd-comment"># 2. Is email enabled in config?</span>
+grep "enabled" /etc/netwatchm/netwatchm.yaml
+
+<span class="cmd-comment"># 3. Check logs for email errors</span>
+journalctl -u netwatchm | grep -i "email\|smtp\|mail"
+
+<span class="cmd-comment"># 4. Test SMTP connection manually</span>
+python3 -c "
+import smtplib
+s = smtplib.SMTP('smtp.gmail.com', 587)
+s.starttls()
+print('SMTP connection: OK')
+s.quit()
+"</code></pre>
+
+<div class="phase-summary">
+  <h4>Phase 14 Complete — You can now:</h4>
+  <ul>
+    <li>Diagnose and fix the 9 most common NetWatchM problems</li>
+    <li>Read logs to understand what went wrong</li>
+    <li>Tune thresholds to reduce false positives</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 15 — LOG MANAGEMENT & DISK PROTECTION
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="15">
+  <div class="phase-label">Phase 15</div>
+  <h2>Log Management &amp; Disk Protection</h2>
+  <p>Prevent NetWatchM's logs from saturating your disk — and understand what limits are already in place.</p>
+</div>
+
+<h3>The Three Log Sources</h3>
+
+<p>NetWatchM produces output in three places. Each one has a different risk level and a
+different protection mechanism:</p>
+
+<table>
+  <thead><tr><th>Log Source</th><th>Location</th><th>Default Cap</th><th>Risk</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Alert log file</strong></td>
+      <td><span class="path">/var/log/netwatchm/netwatchm.log</span></td>
+      <td>10 MB × 6 files = <span class="hl-green">60 MB max</span></td>
+      <td>Low — already capped in code</td>
+    </tr>
+    <tr>
+      <td><strong>systemd journal</strong></td>
+      <td><code>journalctl -u netwatchm</code></td>
+      <td><span class="hl-red">No limit by default</span></td>
+      <td>High — can grow to 10% of your disk</td>
+    </tr>
+    <tr>
+      <td><strong>Inventory database</strong></td>
+      <td><span class="path">/var/lib/netwatchm/inventory.json</span></td>
+      <td>Bounded by unique device count</td>
+      <td>Low — small on most networks</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout danger">
+  <div class="callout-icon">🚨</div>
+  <div class="callout-body">
+    <div class="callout-title">The systemd journal has no limit by default</div>
+    <p>Without configuration, systemd will let the journal grow to 10% of your filesystem
+    or 4 GB — whichever is smaller. During a sustained attack (thousands of alerts per
+    second) the journal can fill your disk in hours. The fix below caps it hard.</p>
+  </div>
+</div>
+
+<h3>Layer 1 — Alert Log File (Already Protected)</h3>
+
+<p>The code in <code>alerts/logfile.py</code> uses Python's built-in
+<code>RotatingFileHandler</code>. It automatically:</p>
+<ul class="checklist">
+  <li>Rotates the log when it reaches <strong>10 MB</strong></li>
+  <li>Keeps a maximum of <strong>5 backup files</strong> (<code>netwatchm.log.1</code> … <code>netwatchm.log.5</code>)</li>
+  <li>Hard maximum on disk: <strong>60 MB</strong> regardless of how many alerts fire</li>
+</ul>
+
+<p>You can tune both numbers in <span class="path">/etc/netwatchm/netwatchm.yaml</span>:</p>
+<pre><code>alerts:
+  log:
+    enabled: true
+    path: /var/log/netwatchm/netwatchm.log
+    max_bytes: 10485760    <span class="cmd-comment"># 10 MB per file — raise to 20971520 for 20 MB</span>
+    backup_count: 5        <span class="cmd-comment"># files to keep — raise to 10 for more history</span></code></pre>
+
+<h3>Layer 2 — Cap the systemd Journal (Action Required)</h3>
+
+<p>The journal captures everything NetWatchM prints to stderr — including all Python
+log output. Capping it requires a one-time configuration change.</p>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Create the journald drop-in directory</div>
+<pre><code>sudo mkdir -p /etc/systemd/journald.conf.d</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Install the limits config</div>
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/netwatchm-journald.conf \
+        /etc/systemd/journald.conf.d/netwatchm.conf</code></pre>
+      <p>This file sets the following limits:</p>
+      <table>
+        <thead><tr><th>Setting</th><th>Value</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>SystemMaxUse</code></td><td><strong>200 MB</strong></td><td>Hard cap on total journal disk usage</td></tr>
+          <tr><td><code>SystemMaxFileSize</code></td><td><strong>50 MB</strong></td><td>Each journal file rotates at 50 MB</td></tr>
+          <tr><td><code>SystemKeepFree</code></td><td><strong>500 MB</strong></td><td>Always keeps 500 MB free — journal backs off before filling disk</td></tr>
+          <tr><td><code>MaxRetentionSec</code></td><td><strong>30 days</strong></td><td>Auto-deletes entries older than 30 days</td></tr>
+          <tr><td><code>RateLimitBurst</code></td><td><strong>500 / 10 s</strong></td><td>Drops log messages if a service floods more than 500 per 10 s</td></tr>
+          <tr><td><code>Compress</code></td><td><strong>yes</strong></td><td>Compresses journal files on disk (typically 3–5× reduction)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Apply the new limits</div>
+<pre><code>sudo systemctl restart systemd-journald</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Vacuum the journal right now</div>
+      <p>The new limits apply going forward, but old entries already on disk are not
+      removed automatically until the next rotation. Force a cleanup immediately:</p>
+<pre><code><span class="cmd-comment"># Remove entries until journal is under 200 MB</span>
+sudo journalctl --vacuum-size=200M
+
+<span class="cmd-comment"># Remove entries older than 30 days</span>
+sudo journalctl --vacuum-time=30d
+
+<span class="cmd-comment"># Verify new disk usage</span>
+journalctl --disk-usage</code></pre>
+    </div>
+  </div>
+
+</div>
+
+<h3>Layer 3 — logrotate Safety Net</h3>
+
+<p>As a belt-and-suspenders backup (in case the Python handler ever fails to rotate),
+install a <code>logrotate</code> config for the alert log:</p>
+
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/netwatchm-logrotate \
+        /etc/logrotate.d/netwatchm</code></pre>
+
+<p>This runs daily and keeps 7 compressed backups. The <code>postrotate</code> hook sends a
+<code>HUP</code> signal to the service so it reopens the log file cleanly after rotation.</p>
+
+<p>Test that logrotate accepts the config without errors:</p>
+<pre><code>sudo logrotate --debug /etc/logrotate.d/netwatchm</code></pre>
+
+<h3>Checking Disk Usage at Any Time</h3>
+
+<pre><code><span class="cmd-comment"># Alert log files</span>
+ls -lh /var/log/netwatchm/
+
+<span class="cmd-comment"># Inventory database</span>
+ls -lh /var/lib/netwatchm/inventory.json
+
+<span class="cmd-comment"># systemd journal for NetWatchM</span>
+journalctl -u netwatchm --disk-usage
+
+<span class="cmd-comment"># Total journal usage across all services</span>
+journalctl --disk-usage</code></pre>
+
+<h3>What Happens During a Heavy Attack</h3>
+
+<p>Without limits, a sustained port scan generating 1 000 alerts/second would produce:</p>
+
+<table>
+  <thead><tr><th>Duration</th><th>Alerts</th><th>Unprotected journal size</th><th>With limits</th></tr></thead>
+  <tbody>
+    <tr><td>1 minute</td><td>60 000</td><td>~60 MB</td><td>Rate-limited — capped at 500/10 s</td></tr>
+    <tr><td>1 hour</td><td>3 600 000</td><td>~3.6 GB 🚨</td><td>Still ≤ 200 MB ✅</td></tr>
+    <tr><td>1 day</td><td>86 400 000</td><td>Disk full 🚨</td><td>Still ≤ 200 MB ✅</td></tr>
+  </tbody>
+</table>
+
+<div class="callout tip">
+  <div class="callout-icon">💡</div>
+  <div class="callout-body">
+    <div class="callout-title">Rate limiting does not drop real alerts</div>
+    <p>The journal rate limit only affects the <em>log text</em> sent to journald. The alert
+    handlers (log file, sound, email) run independently — they are never rate-limited
+    by journald. A HIGH alert will still trigger the beep and email even if journald
+    is dropping its own copy of the message.</p>
+  </div>
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 15 Complete — You now have:</h4>
+  <ul>
+    <li>Alert log file capped at 60 MB with automatic rotation (built-in)</li>
+    <li>systemd journal capped at 200 MB with 30-day retention</li>
+    <li>Rate limiting preventing log flooding during attacks</li>
+    <li>logrotate as a daily safety net for the alert log</li>
+    <li>Commands to check and vacuum disk usage at any time</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 16 — SERVICE-DOWN EMAIL ALERTS
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="16">
+  <div class="phase-label">Phase 16</div>
+  <h2>Service-Down Email Alerts</h2>
+  <p>Get an email the moment <code>netwatchm</code> or <code>netwatchm-web</code> stops — with an explanation of why.</p>
+</div>
+
+<p>NetWatchM can send you an email whenever one of its services goes down unexpectedly.
+The email includes the failure reason, the last 25 log lines, and exact restart instructions.</p>
+
+<h3>How It Works</h3>
+
+<p>systemd has a built-in hook called <code>OnFailure=</code>. When a service exits with an
+error, systemd automatically starts the unit named in that directive. NetWatchM uses this
+to trigger a small Python script that composes and sends an alert email.</p>
+
+<div class="arch-box">
+netwatchm.service  (crashes or hits start limit)
+        │
+        │  OnFailure=netwatchm-notify@%n.service
+        ▼
+<span class="arch-blue">netwatchm-notify@netwatchm.service</span>  (oneshot — runs once)
+        │
+        │  ExecStart=/usr/local/bin/netwatchm-notify netwatchm
+        ▼
+<span class="arch-green">notify-down.py</span>
+  1. reads /etc/netwatchm/env      → Gmail password
+  2. reads /etc/netwatchm/netwatchm.yaml → SMTP settings, recipient
+  3. runs:  journalctl -u netwatchm -n25  → last log lines
+  4. runs:  systemctl show netwatchm      → exit code + result
+  5. maps exit code → human reason
+  6. sends email via Gmail SMTP
+        │
+        ▼
+<span class="arch-yellow">📧  Your inbox — within seconds of the failure</span>
+</div>
+
+<h3>What the Email Contains</h3>
+
+<table>
+  <thead><tr><th>Field</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Subject</strong></td><td><code>[NetWatchM] ⚠ Service DOWN: netwatchm on ai-rnd-01</code></td></tr>
+    <tr><td><strong>Service</strong></td><td>Which service failed (<code>netwatchm</code> or <code>netwatchm-web</code>)</td></tr>
+    <tr><td><strong>Host</strong></td><td>The machine hostname</td></tr>
+    <tr><td><strong>Time</strong></td><td>Exact timestamp of the failure</td></tr>
+    <tr><td><strong>Result</strong></td><td>systemd result code: <code>exit-code</code>, <code>signal</code>, <code>start-limit-hit</code>, etc.</td></tr>
+    <tr><td><strong>Exit code</strong></td><td>The process exit code (e.g. <code>1</code>, <code>137</code>, <code>143</code>)</td></tr>
+    <tr><td><strong>Why this is happening</strong></td><td>Plain-English explanation mapped from the result and exit code</td></tr>
+    <tr><td><strong>Last 25 log lines</strong></td><td>The actual journal output showing the error or traceback</td></tr>
+    <tr><td><strong>How to recover</strong></td><td>Exact commands to check logs and restart</td></tr>
+  </tbody>
+</table>
+
+<h3>Failure Reason Reference</h3>
+
+<table>
+  <thead><tr><th>systemd Result</th><th>Exit Code</th><th>Plain-English Reason</th></tr></thead>
+  <tbody>
+    <tr><td><code>exit-code</code></td><td>1</td><td>Unhandled Python exception — check the log traceback</td></tr>
+    <tr><td><code>exit-code</code></td><td>2</td><td>Configuration error — check <code>netwatchm.yaml</code> for syntax issues</td></tr>
+    <tr><td><code>exit-code</code></td><td>127</td><td>Executable not found — uv or .venv path is broken</td></tr>
+    <tr><td><code>signal</code></td><td>137</td><td>Force-killed (SIGKILL) — OOM killer or <code>systemctl kill</code></td></tr>
+    <tr><td><code>signal</code></td><td>143</td><td>Graceful shutdown (SIGTERM) — <code>systemctl stop</code> or reboot</td></tr>
+    <tr><td><code>start-limit-hit</code></td><td>—</td><td>Crashed and restarted too many times — systemd stopped retrying</td></tr>
+    <tr><td><code>watchdog</code></td><td>—</td><td>Process frozen or stuck in an infinite loop</td></tr>
+    <tr><td><code>oom-kill</code></td><td>—</td><td>System ran out of RAM — consider adding swap</td></tr>
+  </tbody>
+</table>
+
+<h3>First-Time Setup</h3>
+
+<div class="callout info">
+  <div class="callout-icon">ℹ</div>
+  <div class="callout-body">
+    <div class="callout-title">Prerequisite: email alerts must already be configured</div>
+    <p>The notification script uses the same Gmail App Password and SMTP settings from
+    Phase 12. Complete Phase 12 before following the steps below.</p>
+  </div>
+</div>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Install the notification script</div>
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/scripts/notify-down.py \
+        /usr/local/bin/netwatchm-notify
+sudo chmod +x /usr/local/bin/netwatchm-notify</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Install the systemd template unit</div>
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/netwatchm-notify@.service \
+        /etc/systemd/system/netwatchm-notify@.service
+sudo systemctl daemon-reload</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Re-install the monitor service to add the OnFailure hook</div>
+<pre><code>cd /home/$USER/ai-projects/netwatchm
+sudo env NETWATCHM_EMAIL_PASSWORD="$(sudo grep NETWATCHM_EMAIL_PASSWORD /etc/netwatchm/env | cut -d= -f2)" \
+    .venv/bin/netwatchm --config /etc/netwatchm/netwatchm.yaml --install-service</code></pre>
+      <p>This rewrites <code>/etc/systemd/system/netwatchm.service</code> with the
+      <code>OnFailure=netwatchm-notify@%n.service</code> line now included.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Update the web dashboard service</div>
+<pre><code>sudo cp /home/$USER/ai-projects/netwatchm/netwatchm-web.service \
+        /etc/systemd/system/netwatchm-web.service
+sudo systemctl daemon-reload
+sudo systemctl restart netwatchm-web</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Test the alert works</div>
+<pre><code><span class="cmd-comment"># Run the script manually against a real service name</span>
+sudo /usr/local/bin/netwatchm-notify netwatchm</code></pre>
+      <p>Check your inbox — you should receive a test email within a few seconds.
+      The email will show the current service state (which is <em>running</em>, not
+      crashed, since this is just a manual test).</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="callout tip">
+  <div class="callout-icon">💡</div>
+  <div class="callout-body">
+    <div class="callout-title">The installer handles all of this automatically</div>
+    <p>If you run <code>sudo bash install.sh</code> on a fresh machine, step 10 of the
+    installer copies the script, installs the template service, and registers
+    <code>OnFailure=</code> in both service units automatically. No manual steps needed.</p>
+  </div>
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 16 Complete — You now have:</h4>
+  <ul>
+    <li>Email alert fired automatically when <code>netwatchm</code> stops</li>
+    <li>Email alert fired automatically when <code>netwatchm-web</code> stops</li>
+    <li>Plain-English failure reason mapped from exit code and systemd result</li>
+    <li>Last 25 log lines included so you can diagnose without logging in</li>
+    <li>Exact restart commands included in every alert email</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PHASE 17 — POWERSHELL LOG WATCHER
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="17">
+  <div class="phase-label">Phase 17</div>
+  <h2>PowerShell Log Watcher</h2>
+  <p>A read-only PowerShell function that streams journalctl output and raises a
+  high-severity console alert the instant the word <code>HIGH</code> appears.</p>
+</div>
+
+<h3>Design Constraints</h3>
+
+<p>This watcher was built under a strict secure-coding rule:</p>
+
+<table>
+  <thead><tr><th>Rule</th><th>How it is enforced</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Non-destructive</strong></td><td>No <code>systemctl</code>, <code>kill</code>, <code>rm</code>, or file writes inside the function</td></tr>
+    <tr><td><strong>Read-only</strong></td><td><code>journalctl --follow</code> only reads the kernel ring buffer. No <code>--rotate</code>, <code>--vacuum</code>, or <code>--flush</code> flags are used</td></tr>
+    <tr><td><strong>No system commands</strong></td><td>Only <code>journalctl</code> (log reader) is invoked. No bash, sudo, or state-altering calls</td></tr>
+    <tr><td><strong>Alert only</strong></td><td>Output goes to <code>Write-Host</code> (console) or a pipeable <code>PSCustomObject</code> — the caller decides what to do with it</td></tr>
+    <tr><td><strong>Case-sensitive match</strong></td><td><code>[regex]::IsMatch($line, '\bHIGH\b')</code> — only exact uppercase <code>HIGH</code> triggers an alert</td></tr>
+  </tbody>
+</table>
+
+<h3>How It Works</h3>
+
+<div class="arch-box">
+journalctl -u netwatchm --follow --no-pager --output short-iso
+        │  (read-only stdout stream — one line per log entry)
+        │
+        ▼
+<span class="arch-blue">ForEach-Object { $line = $_ }</span>
+        │
+        ├── [regex]::IsMatch($line, '\bHIGH\b') ?
+        │         │
+        │         ├── NO  → continue silently
+        │         │
+        │         └── YES →
+        │               <span class="arch-yellow">Write-Host  coloured alert box (console only)</span>
+        │               <span class="arch-green">PSCustomObject { Timestamp, Severity, Unit, LogLine }</span>
+        │                    │
+        │                    └── emitted to success stream if -EmitObjects is set
+        │                        caller pipes to CSV, email, etc.
+        ▼
+<span class="arch-pink">Ctrl+C  →  clean exit, no cleanup needed</span>
+</div>
+
+<h3>The Function</h3>
+
+<pre><code>function Watch-NetWatchMLogs {
+    &lt;#
+    .SYNOPSIS
+        Watches journalctl output and raises a HIGH-severity alert
+        when the exact uppercase keyword "HIGH" appears in a log line.
+
+    .PARAMETER Unit
+        The systemd unit to follow. Defaults to 'netwatchm'.
+
+    .PARAMETER EmitObjects
+        When set, each HIGH alert is also emitted as a PSCustomObject
+        on the success stream so callers can pipe it further.
+    #&gt;
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string] $Unit = 'netwatchm',
+
+        [Parameter()]
+        [switch] $EmitObjects
+    )
+
+    <span class="cmd-comment"># Validate journalctl is available (read-only check)</span>
+    if (-not (Get-Command journalctl -ErrorAction SilentlyContinue)) {
+        Write-Error "journalctl not found. Requires a systemd-based Linux host."
+        return
+    }
+
+    <span class="cmd-comment"># Read-only journalctl arguments — no state-altering flags</span>
+    [string[]] $jArgs = @(
+        '--unit',   $Unit,
+        '--follow',
+        '--no-pager',
+        '--output', 'short-iso'
+    )
+
+    Write-Host "Watching journalctl -u $Unit  (Ctrl+C to stop)" -ForegroundColor Cyan
+
+    try {
+        &amp; journalctl @jArgs | ForEach-Object {
+            [string] $line = $_
+
+            <span class="cmd-comment"># Case-sensitive exact-word match for uppercase "HIGH"</span>
+            if ([regex]::IsMatch($line, '\bHIGH\b')) {
+
+                [datetime] $detected  = [datetime]::Now
+                [string]   $timestamp = $detected.ToString('yyyy-MM-dd HH:mm:ss')
+
+                <span class="cmd-comment"># Console alert — non-destructive output only</span>
+                Write-Host ""
+                Write-Host "╔══════════════════════════════════════════════════╗" `
+                    -ForegroundColor Red
+                Write-Host "║  ⚠  HIGH-SEVERITY ALERT DETECTED                ║" `
+                    -ForegroundColor Red
+                Write-Host "╠══════════════════════════════════════════════════╣" `
+                    -ForegroundColor Red
+                Write-Host "║  Time   : $timestamp"  -ForegroundColor Yellow
+                Write-Host "║  Unit   : $Unit"       -ForegroundColor Yellow
+                Write-Host "║  Source : journalctl (read-only stream)" `
+                    -ForegroundColor Yellow
+                Write-Host "╠══════════════════════════════════════════════════╣" `
+                    -ForegroundColor Red
+                Write-Host "║  Log line:"            -ForegroundColor White
+                Write-Host "║  $line"               -ForegroundColor White
+                Write-Host "╚══════════════════════════════════════════════════╝" `
+                    -ForegroundColor Red
+                Write-Host ""
+
+                <span class="cmd-comment"># Structured object to success stream (pipeable)</span>
+                if ($EmitObjects) {
+                    [PSCustomObject] @{
+                        Timestamp = $detected
+                        Severity  = 'HIGH'
+                        Unit      = $Unit
+                        LogLine   = $line
+                    }
+                }
+            }
+        }
+    }
+    catch [System.OperationCanceledException] {
+        Write-Host "`nWatch stopped by user." -ForegroundColor DarkGray
+    }
+    catch {
+        Write-Error "Stream error: $_"
+    }
+}</code></pre>
+
+<h3>Saving the Function</h3>
+
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Install PowerShell Core on Linux</div>
+<pre><code><span class="cmd-comment"># Ubuntu / Debian</span>
+sudo apt install -y powershell
+
+<span class="cmd-comment"># Verify</span>
+pwsh --version</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Save the function to your PowerShell profile</div>
+<pre><code><span class="cmd-comment"># Open (or create) your PowerShell profile</span>
+pwsh -Command "New-Item -Force $PROFILE | Out-Null; code $PROFILE"
+
+<span class="cmd-comment"># Or save to a standalone script file</span>
+cp /home/$USER/ai-projects/netwatchm/scripts/Watch-NetWatchMLogs.ps1 ~/</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Load and run</div>
+<pre><code>pwsh
+
+<span class="cmd-comment"># Dot-source to load the function into the session</span>
+. ~/Watch-NetWatchMLogs.ps1
+
+<span class="cmd-comment"># Basic usage — alerts print to console</span>
+Watch-NetWatchMLogs
+
+<span class="cmd-comment"># Specify a different unit</span>
+Watch-NetWatchMLogs -Unit netwatchm-web
+
+<span class="cmd-comment"># Emit structured objects and save to CSV</span>
+Watch-NetWatchMLogs -EmitObjects |
+    Export-Csv ~/high-alerts.csv -Append -NoTypeInformation</code></pre>
+    </div>
+  </div>
+
+</div>
+
+<h3>Usage Examples</h3>
+
+<table>
+  <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>Watch-NetWatchMLogs</code></td>
+      <td>Watch <code>netwatchm</code>, print coloured alert box on HIGH</td>
+    </tr>
+    <tr>
+      <td><code>Watch-NetWatchMLogs -Unit netwatchm-web</code></td>
+      <td>Watch the web dashboard service instead</td>
+    </tr>
+    <tr>
+      <td><code>Watch-NetWatchMLogs -EmitObjects</code></td>
+      <td>Emit <code>PSCustomObject</code> per alert (pipeable)</td>
+    </tr>
+    <tr>
+      <td><code>... | Export-Csv alerts.csv -Append</code></td>
+      <td>Save all HIGH alerts to a CSV log</td>
+    </tr>
+    <tr>
+      <td><code>... | ConvertTo-Json | Out-File alerts.jsonl -Append</code></td>
+      <td>Save as JSON Lines for log ingestion tools</td>
+    </tr>
+    <tr>
+      <td><code>Ctrl+C</code></td>
+      <td>Stop the watcher cleanly</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout tip">
+  <div class="callout-icon">💡</div>
+  <div class="callout-body">
+    <div class="callout-title">What a HIGH alert looks like in the console</div>
+    <p>When <code>HIGH</code> is detected in a log line, the console prints:</p>
+    <pre style="background:#1e293b;color:#e2e8f0;padding:12px;border-radius:8px;font-size:8.5pt;">╔══════════════════════════════════════════════════╗
+║  ⚠  HIGH-SEVERITY ALERT DETECTED                ║
+╠══════════════════════════════════════════════════╣
+║  Time   : 2026-02-21 19:45:03
+║  Unit   : netwatchm
+║  Source : journalctl (read-only stream)
+╠══════════════════════════════════════════════════╣
+║  Log line:
+║  2026-02-21T19:45:03 ai-rnd-01 netwatchm: HIGH PORT_SCAN ...
+╚══════════════════════════════════════════════════╝</pre>
+  </div>
+</div>
+
+<div class="phase-summary">
+  <h4>Phase 17 Complete — You now have:</h4>
+  <ul>
+    <li>A read-only, non-destructive PowerShell watcher for NetWatchM logs</li>
+    <li>Instant coloured console alert when <code>HIGH</code> appears in a log line</li>
+    <li>Case-sensitive exact-word match — no false positives from "higher" or "highlight"</li>
+    <li>Pipeable <code>PSCustomObject</code> output for CSV, JSON, or email forwarding</li>
+    <li>Clean Ctrl+C exit with no system state changes</li>
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     APPENDIX — GLOSSARY & QUICK REFERENCE
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="phase-header" data-num="A">
+  <div class="phase-label">Appendix</div>
+  <h2>Glossary &amp; Quick Reference</h2>
+  <p>Key terms and the commands you will use most often.</p>
+</div>
+
+<h3>Glossary</h3>
+
+<table>
+  <thead><tr><th>Term</th><th>Plain-English Definition</th></tr></thead>
+  <tbody>
+    <tr><td><strong>asyncio</strong></td><td>Python's way of doing many things at once without using multiple threads. NetWatchM uses it so packet capture, detection, alerting, and the UI all run simultaneously.</td></tr>
+    <tr><td><strong>tshark</strong></td><td>The command-line version of Wireshark. It reads raw network packets and outputs them as JSON lines that NetWatchM parses.</td></tr>
+    <tr><td><strong>NIC</strong></td><td>Network Interface Card — the hardware (physical or virtual) that connects your computer to a network. Examples: <code>enp6s0</code>, <code>eth0</code>, <code>wlan0</code>.</td></tr>
+    <tr><td><strong>promiscuous mode</strong></td><td>A mode where the NIC captures ALL packets on the network segment, not just packets addressed to your machine. Required for network monitoring.</td></tr>
+    <tr><td><strong>port</strong></td><td>A numbered "door" on a computer that a specific service listens on. Port 22 = SSH, port 80 = HTTP, port 443 = HTTPS.</td></tr>
+    <tr><td><strong>port scan</strong></td><td>Rapidly trying to connect to many ports to see which ones are open. A common first step before an attack.</td></tr>
+    <tr><td><strong>brute force</strong></td><td>Trying thousands of passwords automatically until one works.</td></tr>
+    <tr><td><strong>exfiltration</strong></td><td>Sneaking data out of a network — uploading stolen files, screenshots, or credentials to an attacker's server.</td></tr>
+    <tr><td><strong>sliding window</strong></td><td>A time-based counter that tracks events within the last N seconds. Old events "slide out" and are forgotten. NetWatchM's detectors use this to count ports or bytes in a time window.</td></tr>
+    <tr><td><strong>ThreatLevel</strong></td><td>LOW → MEDIUM → HIGH → CRITICAL. Each detector assigns a level; the ThreatScorer shows the highest active one.</td></tr>
+    <tr><td><strong>inventory.json</strong></td><td>The on-disk database of every device NetWatchM has seen, updated every 60 seconds.</td></tr>
+    <tr><td><strong>systemd</strong></td><td>Linux's service manager. It starts NetWatchM on boot, restarts it if it crashes, and collects its logs.</td></tr>
+    <tr><td><strong>uv</strong></td><td>A fast Python package manager from Astral. Replaces pip + venv. NetWatchM uses it to install dependencies and run the app.</td></tr>
+    <tr><td><strong>App Password</strong></td><td>A special 16-character password generated by Google that lets third-party apps send email via Gmail without using your real password.</td></tr>
+    <tr><td><strong>Rich</strong></td><td>A Python library that creates colourful tables and live dashboards in the terminal.</td></tr>
+    <tr><td><strong>NDJSON</strong></td><td>Newline-Delimited JSON — one complete JSON object per line. tshark outputs packets in this format with <code>-T ek</code>.</td></tr>
+  </tbody>
+</table>
+
+<h3>Quick Reference — Most Used Commands</h3>
+
+<pre><code><span class="cmd-comment">── SERVICE MANAGEMENT ─────────────────────────────────────────────</span>
+sudo systemctl start netwatchm         <span class="cmd-comment"># start the service</span>
+sudo systemctl stop netwatchm          <span class="cmd-comment"># stop the service</span>
+sudo systemctl restart netwatchm       <span class="cmd-comment"># restart (after config changes)</span>
+systemctl status netwatchm             <span class="cmd-comment"># is it running?</span>
+journalctl -u netwatchm -f             <span class="cmd-comment"># follow live logs</span>
+
+<span class="cmd-comment">── RUN INTERACTIVELY ──────────────────────────────────────────────</span>
+sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml
+sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml --no-ui
+
+<span class="cmd-comment">── DEVICE INVENTORY ───────────────────────────────────────────────</span>
+uv run netwatchm inventory
+uv run netwatchm inventory --filter 192.168
+uv run netwatchm inventory --sort-by threat
+uv run netwatchm inventory --export /tmp/devices.csv
+
+<span class="cmd-comment">── WEB DASHBOARD (netwatchm-web service) ──────────────────────────</span>
+<span class="cmd-comment"># First-time install</span>
+sudo cp report.html /var/lib/netwatchm/
+sudo cp netwatchm-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now netwatchm-web
+<span class="cmd-comment"># Open: http://localhost:8765/report.html</span>
+
+<span class="cmd-comment"># Service management</span>
+systemctl status netwatchm-web
+sudo systemctl restart netwatchm-web
+journalctl -u netwatchm-web -f
+
+<span class="cmd-comment">── TESTS ──────────────────────────────────────────────────────────</span>
+uv run pytest tests/ -v                <span class="cmd-comment"># run all 57 tests</span>
+uv run pytest tests/test_port_scan.py  <span class="cmd-comment"># run one file</span>
+
+<span class="cmd-comment">── LOGS ───────────────────────────────────────────────────────────</span>
+tail -f /var/log/netwatchm/netwatchm.log
+cat /var/lib/netwatchm/inventory.json | python3 -m json.tool
+
+<span class="cmd-comment">── POWERSHELL LOG WATCHER (Phase 17) ──────────────────────────────</span>
+<span class="cmd-comment"># Start PowerShell Core</span>
+pwsh
+
+<span class="cmd-comment"># Load the function and run</span>
+. ~/Watch-NetWatchMLogs.ps1
+Watch-NetWatchMLogs                          <span class="cmd-comment"># console alerts</span>
+Watch-NetWatchMLogs -Unit netwatchm-web      <span class="cmd-comment"># watch web service</span>
+Watch-NetWatchMLogs -EmitObjects | Export-Csv ~/alerts.csv -Append
+
+<span class="cmd-comment">── SERVICE-DOWN ALERTS (Phase 16) ─────────────────────────────────</span>
+<span class="cmd-comment"># Install</span>
+sudo cp scripts/notify-down.py /usr/local/bin/netwatchm-notify
+sudo chmod +x /usr/local/bin/netwatchm-notify
+sudo cp netwatchm-notify@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+<span class="cmd-comment"># Test manually</span>
+sudo /usr/local/bin/netwatchm-notify netwatchm
+
+<span class="cmd-comment">── LOG MANAGEMENT (Phase 15) ──────────────────────────────────────</span>
+<span class="cmd-comment"># Check disk usage</span>
+ls -lh /var/log/netwatchm/
+journalctl -u netwatchm --disk-usage
+journalctl --disk-usage
+
+<span class="cmd-comment"># Apply journal limits (one-time setup)</span>
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo cp netwatchm-journald.conf /etc/systemd/journald.conf.d/netwatchm.conf
+sudo systemctl restart systemd-journald
+
+<span class="cmd-comment"># Vacuum journal immediately</span>
+sudo journalctl --vacuum-size=200M
+sudo journalctl --vacuum-time=30d
+
+<span class="cmd-comment"># Install logrotate safety net</span>
+sudo cp netwatchm-logrotate /etc/logrotate.d/netwatchm
+sudo logrotate --debug /etc/logrotate.d/netwatchm</code></pre>
+
+<hr>
+<p style="text-align:center; color:#9ca3af; font-size:9pt; margin-top:40px;">
+  NetWatchM v0.1.0 &nbsp;·&nbsp; Beginner Build Guide &nbsp;·&nbsp; February 2026
+</p>
+
+</div><!-- /content -->
+</body>
+</html>

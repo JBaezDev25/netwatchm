@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# uv
+.python-version
+
+# Secrets — never commit
+/etc/netwatchm/env
+*.env
+.env
+
+# Logs & data (runtime, not source)
+*.log
+/var/log/
+/var/lib/
+
+# OS
+.DS_Store
+Thumbs.db

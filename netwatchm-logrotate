@@ -1,0 +1,20 @@
+# /etc/logrotate.d/netwatchm
+# Belt-and-suspenders logrotate for /var/log/netwatchm/
+# (RotatingFileHandler already caps at 60 MB; this is a daily safety net)
+#
+# Install: sudo cp this file /etc/logrotate.d/netwatchm
+
+/var/log/netwatchm/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root root
+    sharedscripts
+    postrotate
+        # Tell the service to reopen its log file after rotation
+        systemctl kill -s HUP netwatchm 2>/dev/null || true
+    endscript
+}
