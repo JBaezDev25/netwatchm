@@ -10,7 +10,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=/var/lib/netwatchm
-ExecStart=/usr/bin/python3 -m http.server 8765
+Environment=NETWATCHM_CMD=/home/jbaez120/.local/bin/netwatchm
+ExecStart=/usr/local/bin/netwatchm-server
 Restart=always
 RestartSec=5
 User=root

@@ -42,6 +42,12 @@ inventory:
   dns_timeout: 2          # seconds before giving up on reverse DNS lookup
   dns_cache_ttl: 300      # seconds to cache failed lookups
   export_dir: .           # default directory for CSV exports (. = cwd)
+  local_networks:         # only track IPs in these ranges; empty = track all
+    - 192.168.1.0/24
+  arp_scan:
+    enabled: true
+    interval: 300         # seconds between active scans
+    network: auto         # "auto" = --localnet, or explicit CIDR e.g. 192.168.1.0/24
 
 whitelist:
   enabled: true

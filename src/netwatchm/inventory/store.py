@@ -6,13 +6,14 @@ import json
 import logging
 import sys
 from datetime import datetime
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..models import DeviceRecord, Packet, ThreatLevel
 
 if TYPE_CHECKING:
-    pass
+    from ..whitelist import WhitelistChecker
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,25 @@ class DeviceStore:
     Thread-safe for asyncio via asyncio.Lock.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, local_networks: list[str] | None = None) -> None:
         self._records: dict[str, DeviceRecord] = {}
         self._lock = asyncio.Lock()
+        self._local_nets = []
+        for cidr in (local_networks or []):
+            try:
+                self._local_nets.append(ip_network(cidr, strict=False))
+            except ValueError:
+                logger.warning("Invalid local_networks entry: %s", cidr)
+
+    def _is_local(self, ip: str) -> bool:
+        """Return True if ip is within configured local_networks (or no filter set)."""
+        if not self._local_nets:
+            return True
+        try:
+            addr = ip_address(ip)
+            return any(addr in net for net in self._local_nets)
+        except ValueError:
+            return False
 
     async def update(self, packet: Packet) -> None:
         """Upsert device records for src and dst IPs in packet."""
@@ -41,6 +58,8 @@ class DeviceStore:
         async with self._lock:
             for ip, is_src in ((packet.src_ip, True), (packet.dst_ip, False)):
                 if not ip:
+                    continue
+                if not self._is_local(ip):
                     continue
                 if ip not in self._records:
                     self._records[ip] = DeviceRecord(
@@ -58,6 +77,13 @@ class DeviceStore:
                     rec.bytes_received += packet.length
                     if packet.src_port is not None:
                         rec.ports_observed.add(packet.src_port)
+
+    async def reset_whitelisted_threats(self, checker: "WhitelistChecker") -> None:
+        """Set threat level to LOW for any whitelisted IPs in the inventory."""
+        async with self._lock:
+            for ip, rec in self._records.items():
+                if checker.is_ip_whitelisted(ip):
+                    rec.threat_level = ThreatLevel.LOW
 
     async def update_threat(self, ip: str, level: ThreatLevel) -> None:
         """Update the threat level for an IP if the new level is higher."""
@@ -126,6 +152,19 @@ class DeviceStore:
             logger.info("Loaded %d inventory records from %s", len(self._records), path)
         except (OSError, json.JSONDecodeError, KeyError) as exc:
             logger.warning("Failed to load inventory: %s", exc)
+
+    async def update_arp(self, ip: str, mac: str, vendor: str | None) -> None:
+        """Upsert a device record from arp-scan results (MAC + vendor)."""
+        now = datetime.now()
+        async with self._lock:
+            if ip not in self._records:
+                self._records[ip] = DeviceRecord(ip=ip, first_seen=now, last_seen=now)
+            rec = self._records[ip]
+            rec.last_seen = now
+            if mac:
+                rec.mac = mac
+            if vendor:
+                rec.vendor = vendor
 
     async def run_persist_loop(
         self,

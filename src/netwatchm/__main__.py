@@ -269,6 +269,19 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
                 name="persist",
             )
         )
+        if config.inventory.arp_scan.enabled:
+            from .inventory.arp_scanner import run_arp_scan_loop
+            tasks.append(
+                asyncio.create_task(
+                    run_arp_scan_loop(
+                        store,
+                        config.inventory.arp_scan.interval,
+                        config.inventory.arp_scan.network,
+                        stop_event,
+                    ),
+                    name="arp_scanner",
+                )
+            )
 
     try:
         await asyncio.gather(*tasks)

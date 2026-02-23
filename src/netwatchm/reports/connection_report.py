@@ -529,8 +529,13 @@ def render_html(
   <div class="stat"><div class="stat-label">Packets</div><div class="stat-value">{total_packets:,}</div></div>
   <div class="stat"><div class="stat-label">Total Data</div><div class="stat-value">{_esc(_fmt_bytes(total_bytes))}</div></div>
 </div>
-<div class="search-bar">
-  <input type="text" id="search" placeholder="Filter rows..." oninput="filterTable()" />
+<div class="toolbar" style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+  <input type="text" id="search" placeholder="Filter rows..." oninput="filterTable()"
+    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:4px;width:260px;font-family:monospace;" />
+  <button onclick="exportCSV()"
+    style="background:var(--accent);color:#fff;border:none;padding:7px 16px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;">
+    ⬇ Download CSV
+  </button>
 </div>
 <table id="flows-table">
 <thead>
@@ -590,6 +595,26 @@ function filterTable() {{
   for (let row of rows) {{
     row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
   }}
+}}
+
+function exportCSV() {{
+  const table = document.getElementById('flows-table');
+  const headers = Array.from(table.tHead.rows[0].cells).map(th => th.textContent.trim());
+  const rows = [headers.join(',')];
+  for (const row of table.tBodies[0].rows) {{
+    if (row.style.display === 'none') continue;
+    const cells = Array.from(row.cells).map(td => {{
+      const v = td.textContent.trim();
+      return (v.includes(',') || v.includes('"') || v.includes('\\n'))
+        ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }});
+    rows.push(cells.join(','));
+  }}
+  const blob = new Blob([rows.join('\\n')], {{type: 'text/csv'}});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'connection-report.csv';
+  a.click();
 }}
 </script>
 </body>

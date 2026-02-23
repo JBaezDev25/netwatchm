@@ -263,6 +263,54 @@
   }
   .no-data .icon { font-size: 40px; margin-bottom: 12px; }
 
+  /* ── Connection Report Panel ── */
+  .report-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: var(--card-shadow);
+    margin-top: 28px;
+  }
+  .report-panel h2 {
+    font-size: 15px; font-weight: 700; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .report-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .dur-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-muted); padding: 6px 14px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; transition: all 0.15s;
+  }
+  .dur-btn.active, .dur-btn:hover {
+    border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,0.08);
+  }
+  .gen-btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 7px 18px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: opacity 0.2s;
+  }
+  .gen-btn:hover { opacity: 0.85; }
+  .gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .report-status {
+    font-size: 13px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 8px; margin-top: 12px; min-height: 28px;
+  }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+  .report-links { display: flex; gap: 10px; margin-top: 12px; }
+  .report-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    text-decoration: none; transition: opacity 0.2s;
+  }
+  .report-link.html { background: var(--accent); color: #fff; }
+  .report-link.csv  { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .report-link:hover { opacity: 0.82; }
+
   /* ── Footer ── */
   footer {
     text-align: center;
@@ -362,6 +410,22 @@
         <tr><td colspan="7" class="no-data"><div class="icon">⏳</div>Loading data…</td></tr>
       </tbody>
     </table>
+  </div>
+  <!-- Connection Report Panel -->
+  <div class="report-panel">
+    <h2>&#x1F50D; Connection Report</h2>
+    <div class="report-controls">
+      <span style="font-size:13px;color:var(--text-muted);">Duration:</span>
+      <button class="dur-btn" onclick="setDur(15,this)">15s</button>
+      <button class="dur-btn active" onclick="setDur(30,this)">30s</button>
+      <button class="dur-btn" onclick="setDur(60,this)">60s</button>
+      <button class="gen-btn" id="genBtn" onclick="generateReport()">&#9654; Generate</button>
+    </div>
+    <div class="report-status" id="reportStatus"></div>
+    <div class="report-links" id="reportLinks" style="display:none">
+      <a class="report-link html" href="connection-report.html" target="_blank">&#x1F4C4; Open HTML Report</a>
+      <a class="report-link csv" href="#" onclick="downloadReportCSV(event)">&#x2B07; Download CSV</a>
+    </div>
   </div>
 </main>
 
@@ -622,6 +686,104 @@ loadData = async function() {
 refresh();
 setInterval(refresh, REFRESH_MS);
 setInterval(updateCountdown, 1000);
+
+// ── Connection Report ─────────────────────────────────────────────────────────
+let _reportDur = 30;
+let _pollTimer = null;
+
+function setDur(n, btn) {
+  _reportDur = n;
+  document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function setReportStatus(html) {
+  document.getElementById('reportStatus').innerHTML = html;
+}
+
+function generateReport() {
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  document.getElementById('reportLinks').style.display = 'none';
+  setReportStatus(`<div class="spinner"></div> Capturing ${_reportDur}s of traffic…`);
+
+  fetch(`/api/report?duration=${_reportDur}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) {
+        setReportStatus(`⚠ ${d.error}`);
+        btn.disabled = false;
+      } else {
+        _pollTimer = setInterval(pollStatus, 2000);
+      }
+    })
+    .catch(e => {
+      setReportStatus(`⚠ Could not reach server: ${e.message}`);
+      btn.disabled = false;
+    });
+}
+
+function pollStatus() {
+  fetch('/api/report/status')
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'ready') {
+        clearInterval(_pollTimer);
+        const at = d.generated_at ? new Date(d.generated_at).toLocaleTimeString() : '';
+        setReportStatus(`✓ Report ready${at ? ' · generated at ' + at : ''}`);
+        document.getElementById('reportLinks').style.display = 'flex';
+        document.getElementById('genBtn').disabled = false;
+      } else if (d.status === 'error') {
+        clearInterval(_pollTimer);
+        setReportStatus(`⚠ Error: ${d.error}`);
+        document.getElementById('genBtn').disabled = false;
+      } else {
+        setReportStatus(`<div class="spinner"></div> Capturing traffic… (${d.duration}s)`);
+      }
+    })
+    .catch(() => {});
+}
+
+function downloadReportCSV(e) {
+  e.preventDefault();
+  // Fetch the HTML report and extract table data as CSV
+  fetch('connection-report.html?_=' + Date.now())
+    .then(r => r.text())
+    .then(html => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const table = doc.getElementById('flows-table');
+      if (!table) { alert('Report table not found'); return; }
+      const headers = Array.from(table.tHead.rows[0].cells).map(th => th.textContent.trim());
+      const rows = [headers.join(',')];
+      for (const row of table.tBodies[0].rows) {
+        const cells = Array.from(row.cells).map(td => {
+          const v = td.textContent.trim();
+          return (v.includes(',') || v.includes('"') || v.includes('\n'))
+            ? '"' + v.replace(/"/g, '""') + '"' : v;
+        });
+        rows.push(cells.join(','));
+      }
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'connection-report.csv';
+      a.click();
+    })
+    .catch(e => alert('Could not fetch report: ' + e.message));
+}
+
+// Restore status on page load if a report already exists
+fetch('/api/report/status')
+  .then(r => r.json())
+  .then(d => {
+    if (d.status === 'ready' && d.generated_at) {
+      const at = new Date(d.generated_at).toLocaleTimeString();
+      setReportStatus(`✓ Last report generated at ${at}`);
+      document.getElementById('reportLinks').style.display = 'flex';
+    }
+  })
+  .catch(() => {});
 </script>
 </body>
 </html>

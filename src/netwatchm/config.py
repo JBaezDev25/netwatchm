@@ -77,12 +77,21 @@ class AlertsConfig:
 
 
 @dataclass
+class ArpScanConfig:
+    enabled: bool = True
+    interval: int = 300       # seconds between scans
+    network: str = "auto"     # "auto" = --localnet, or explicit CIDR
+
+
+@dataclass
 class InventoryConfig:
     enabled: bool = True
     persist_interval: int = 60
     dns_timeout: int = 2
     dns_cache_ttl: int = 300
     export_dir: str = "."
+    local_networks: list[str] = field(default_factory=list)
+    arp_scan: ArpScanConfig = field(default_factory=ArpScanConfig)
 
 
 @dataclass
@@ -197,6 +206,12 @@ def load_config(path: str | Path | None = None) -> Config:
             dns_timeout=inv_raw.get("dns_timeout", 2),
             dns_cache_ttl=inv_raw.get("dns_cache_ttl", 300),
             export_dir=inv_raw.get("export_dir", "."),
+            local_networks=inv_raw.get("local_networks", []),
+            arp_scan=ArpScanConfig(
+                enabled=inv_raw.get("arp_scan", {}).get("enabled", True),
+                interval=inv_raw.get("arp_scan", {}).get("interval", 300),
+                network=inv_raw.get("arp_scan", {}).get("network", "auto"),
+            ),
         ),
     )
 
