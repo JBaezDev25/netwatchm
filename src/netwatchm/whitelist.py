@@ -20,16 +20,20 @@ class WhitelistChecker:
             except ValueError:
                 pass
 
+    def is_ip_whitelisted(self, ip: str) -> bool:
+        """Return True if a plain IP string is whitelisted."""
+        if ip in self._ips:
+            return True
+        try:
+            addr = ip_address(ip)
+            return any(addr in net for net in self._networks)
+        except ValueError:
+            return False
+
     def is_whitelisted(self, alert: Alert) -> bool:
         for ip in (alert.src_ip, alert.dst_ip):
             if ip is None:
                 continue
-            if ip in self._ips:
+            if self.is_ip_whitelisted(ip):
                 return True
-            try:
-                addr = ip_address(ip)
-                if any(addr in net for net in self._networks):
-                    return True
-            except ValueError:
-                pass
         return False

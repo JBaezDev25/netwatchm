@@ -381,6 +381,21 @@ def _fmt_bytes(n: int) -> str:
     return f"{n:.0f} TB"
 
 
+def _investigate_subcommand(args: argparse.Namespace, _config: Config) -> None:
+    """Handle `netwatchm investigate` subcommand."""
+    from .reports.investigate_report import render_investigation_html, run_msf_scan
+
+    target = args.target
+    output = args.output or f"/tmp/netwatchm-investigate-{target}.html"
+    print(f"Investigating {target}…", flush=True)
+    results = run_msf_scan(target, ports=args.ports)
+    render_investigation_html(results, output=output)
+    tool = results.get("tool_used", "unknown")
+    ports_found = results.get("open_ports", [])
+    print(f"Scan complete ({tool}): {len(ports_found)} open port(s) found.")
+    print(f"Report saved: {output}")
+
+
 def _report_subcommand(args: argparse.Namespace, config: Config) -> None:
     """Handle `netwatchm report` subcommand."""
     from .reports.connection_report import capture_flows, render_csv, render_html, render_table
@@ -495,6 +510,28 @@ def main() -> None:
         help="output format (overrides auto-detection from --output extension)",
     )
 
+    msf_parser = subparsers.add_parser(
+        "investigate",
+        help="run Metasploit (or nmap) scan on a target IP and generate HTML report",
+    )
+    msf_parser.add_argument(
+        "--target",
+        required=True,
+        metavar="IP",
+        help="IP address to investigate",
+    )
+    msf_parser.add_argument(
+        "--ports",
+        default=None,
+        help="comma-separated ports to scan (default: common ports)",
+    )
+    msf_parser.add_argument(
+        "--output",
+        default=None,
+        metavar="FILE",
+        help="output HTML path (default: /tmp/netwatchm-investigate-<ip>.html)",
+    )
+
     args = parser.parse_args()
     _setup_logging(args.log_level)
 
@@ -516,6 +553,10 @@ def main() -> None:
 
     if args.subcommand == "report":
         _report_subcommand(args, config)
+        return
+
+    if args.subcommand == "investigate":
+        _investigate_subcommand(args, config)
         return
 
     try:

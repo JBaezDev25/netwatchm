@@ -14,6 +14,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import IO
 
 logger = logging.getLogger(__name__)
@@ -23,49 +24,41 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SERVICE_MAP: dict[int, str] = {
-    20: "FTP-data",
-    21: "FTP",
-    22: "SSH",
-    23: "Telnet",
-    25: "SMTP",
-    53: "DNS",
-    67: "DHCP",
-    68: "DHCP",
-    69: "TFTP",
-    80: "HTTP",
-    110: "POP3",
-    119: "NNTP",
-    123: "NTP",
-    143: "IMAP",
-    161: "SNMP",
-    162: "SNMP-trap",
-    179: "BGP",
-    194: "IRC",
-    389: "LDAP",
-    443: "HTTPS",
-    445: "SMB",
-    465: "SMTPS",
-    514: "Syslog",
-    515: "LPD",
-    587: "SMTP-submission",
-    636: "LDAPS",
-    993: "IMAPS",
-    995: "POP3S",
-    1080: "SOCKS",
-    1194: "OpenVPN",
-    1433: "MSSQL",
-    1723: "PPTP",
-    3306: "MySQL",
-    3389: "RDP",
-    4443: "HTTPS-alt",
-    5432: "PostgreSQL",
-    5900: "VNC",
-    6379: "Redis",
-    6881: "BitTorrent",
-    8080: "HTTP-proxy",
-    8443: "HTTPS-alt",
-    9200: "Elasticsearch",
-    27017: "MongoDB",
+    20: "FTP-data",   21: "FTP",        22: "SSH",         23: "Telnet",
+    25: "SMTP",       53: "DNS",        67: "DHCP",        68: "DHCP",
+    69: "TFTP",       80: "HTTP",       110: "POP3",       119: "NNTP",
+    123: "NTP",       143: "IMAP",      161: "SNMP",       162: "SNMP-trap",
+    179: "BGP",       194: "IRC",       389: "LDAP",       443: "HTTPS",
+    445: "SMB",       465: "SMTPS",     514: "Syslog",     515: "LPD",
+    587: "SMTP",      636: "LDAPS",     993: "IMAPS",      995: "POP3S",
+    1080: "SOCKS",    1194: "OpenVPN",  1433: "MSSQL",     1723: "PPTP",
+    3306: "MySQL",    3389: "RDP",      4443: "HTTPS-alt", 5222: "XMPP",
+    5353: "mDNS",     5432: "PostgreSQL", 5900: "VNC",     6379: "Redis",
+    6881: "BitTorrent", 8080: "HTTP-proxy", 8443: "HTTPS-alt",
+    9200: "Elasticsearch", 27017: "MongoDB",
+}
+
+# Descriptive application names by port (shown when no process info available)
+_APP_MAP: dict[int, str] = {
+    20: "FTP Data Transfer",      21: "FTP Client",
+    22: "SSH / SFTP",             23: "Telnet Client",
+    25: "Mail (SMTP)",            53: "DNS Query",
+    67: "DHCP Client",            68: "DHCP Client",
+    80: "Web Browser (HTTP)",     110: "Mail Client (POP3)",
+    123: "Time Sync (NTP)",       143: "Mail Client (IMAP)",
+    161: "Network Mgmt (SNMP)",   389: "Directory (LDAP)",
+    443: "Web Browser (HTTPS)",   445: "File Share (SMB)",
+    465: "Secure Mail (SMTPS)",   587: "Mail Submission",
+    636: "Secure Directory",      993: "Secure Mail (IMAP)",
+    995: "Secure Mail (POP3)",    1080: "SOCKS Proxy",
+    1194: "VPN (OpenVPN)",        1433: "Database (MSSQL)",
+    3306: "Database (MySQL)",     3389: "Remote Desktop (RDP)",
+    4443: "Web Browser (HTTPS)",  5222: "Chat (XMPP)",
+    5353: "Local Discovery",      5432: "Database (PostgreSQL)",
+    5900: "Remote Desktop (VNC)", 6379: "Cache (Redis)",
+    6881: "P2P (BitTorrent)",     8080: "Web Browser (HTTP)",
+    8443: "Web Browser (HTTPS)",  9200: "Search (Elasticsearch)",
+    27017: "Database (MongoDB)",
 }
 
 
@@ -78,6 +71,48 @@ def _service_name(port: int | None) -> str:
         return socket.getservbyport(port)
     except OSError:
         return str(port)
+
+
+def _app_from_port(port: int | None) -> str:
+    """Descriptive application name derived from port number."""
+    if port is None:
+        return "—"
+    return _APP_MAP.get(port, f"Port {port} App")
+
+
+def _resolve_protocol(tshark_proto: str | None, port: int | None) -> str:
+    """Return a meaningful protocol name.
+
+    Prefers tshark's dissected name (DNS, TLS, QUIC, HTTP, NTP …).
+    Falls back to service/port lookup when tshark only says TCP or UDP.
+    """
+    if tshark_proto and tshark_proto not in ("TCP", "UDP", "Unknown", ""):
+        return tshark_proto
+    svc = _SERVICE_MAP.get(port) if port else None
+    if svc:
+        transport = tshark_proto if tshark_proto in ("TCP", "UDP") else "TCP"
+        return f"{svc}/{transport}"
+    return tshark_proto or "Unknown"
+
+
+# ---------------------------------------------------------------------------
+# Hostname lookup from inventory
+# ---------------------------------------------------------------------------
+
+_INVENTORY_PATH = Path("/var/lib/netwatchm/inventory.json")
+
+
+def _load_hostnames(path: Path = _INVENTORY_PATH) -> dict[str, str]:
+    """Return {ip: hostname} from the persisted inventory JSON."""
+    try:
+        data = json.loads(path.read_text())
+        return {
+            item["ip"]: item["hostname"]
+            for item in data
+            if item.get("hostname")
+        }
+    except (OSError, json.JSONDecodeError, KeyError):
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -112,12 +147,10 @@ def _snapshot_connections() -> dict[tuple[str, int], _ProcInfo]:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return mapping
 
-    # Example ss line:
-    # tcp  ESTAB 0 0 192.168.1.5:52134 8.8.8.8:443 users:(("chrome",pid=1234,fd=12))
     pid_re = re.compile(r'pid=(\d+)')
     addr_re = re.compile(r'(\S+):(\d+)\s+(\S+):(\d+)')
 
-    for line in result.stdout.splitlines()[1:]:  # skip header
+    for line in result.stdout.splitlines()[1:]:
         addr_match = addr_re.search(line)
         if not addr_match:
             continue
@@ -132,20 +165,25 @@ def _snapshot_connections() -> dict[tuple[str, int], _ProcInfo]:
             continue
         pid = int(pid_match.group(1))
 
-        # Get process name and uid from /proc
+        # Prefer full cmdline argv[0] over comm (truncated at 15 chars)
+        app_name = "?"
         try:
-            with open(f"/proc/{pid}/comm") as f:
-                app_name = f.read().strip()
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\x00")
+            if cmdline:
+                argv0 = cmdline[0].decode(errors="replace")
+                app_name = Path(argv0).name or argv0  # basename only
         except OSError:
-            app_name = "?"
+            try:
+                app_name = Path(f"/proc/{pid}/comm").read_text().strip()
+            except OSError:
+                pass
 
         uid = None
         try:
-            with open(f"/proc/{pid}/status") as f:
-                for status_line in f:
-                    if status_line.startswith("Uid:"):
-                        uid = int(status_line.split()[1])
-                        break
+            for status_line in Path(f"/proc/{pid}/status").read_text().splitlines():
+                if status_line.startswith("Uid:"):
+                    uid = int(status_line.split()[1])
+                    break
         except OSError:
             pass
 
@@ -162,13 +200,14 @@ def _snapshot_connections() -> dict[tuple[str, int], _ProcInfo]:
 @dataclass
 class FlowRecord:
     src_ip: str
+    src_hostname: str       # from inventory; "—" if not resolved
     dst_ip: str
     dst_port: int | None
-    protocol: str
-    service: str
-    domain: str        # SNI / HTTP host / DNS name; "—" if unknown
-    app_name: str      # "—" for remote devices
-    username: str      # "—" for remote devices
+    protocol: str           # dissected protocol name (DNS, TLS, QUIC, HTTP …)
+    service: str            # port-based service name
+    domain: str             # SNI / HTTP host / DNS name; "—" if unknown
+    app_name: str           # process name (local) or port-based name (remote)
+    username: str           # logged-in user (local machine only; "—" = remote)
     packet_count: int = 0
     bytes_total: int = 0
     first_seen: float = 0.0
@@ -201,7 +240,6 @@ def _first(val: list | str | None) -> str | None:
 
 
 def _parse_report_line(line: str) -> dict | None:
-    """Parse a single tshark ek JSON line into a flat dict of fields."""
     line = line.strip()
     if not line:
         return None
@@ -222,14 +260,14 @@ def capture_flows(
 ) -> list[FlowRecord]:
     """Run tshark for `duration` seconds, return aggregated FlowRecords sorted by bytes desc."""
 
-    # Validate network
     try:
         net = ipaddress.ip_network(network, strict=False)
     except ValueError:
         logger.error("Invalid network CIDR: %s", network)
         net = ipaddress.ip_network("192.168.1.0/24")
 
-    # Snapshot process/user info before capture
+    # Load hostname map and process snapshot before capture
+    hostnames = _load_hostnames()
     proc_map = _snapshot_connections()
 
     cmd = [
@@ -261,9 +299,7 @@ def capture_flows(
         logger.error("Failed to run tshark: %s", exc)
         return []
 
-    # Aggregate into flows: key = (src_ip, dst_ip, dst_port, protocol)
     flows: dict[tuple, FlowRecord] = {}
-    # Track SNI/domain hints per (src_ip, dst_ip, dst_port)
     domain_hints: dict[tuple, str] = {}
 
     for line in output.splitlines():
@@ -298,7 +334,6 @@ def capture_flows(
         if src_ip is None or dst_ip is None:
             continue
 
-        # Verify src is in target network
         try:
             if ipaddress.ip_address(src_ip) not in net:
                 continue
@@ -306,14 +341,14 @@ def capture_flows(
             continue
 
         dst_port = _int("tcp_dstport") or _int("udp_dstport")
-        proto = _str("_ws_col_Protocol") or "Unknown"
+        tshark_proto = _str("_ws_col_Protocol")
+        proto = _resolve_protocol(tshark_proto, dst_port)
         length = _int("frame_len") or 0
         ts = _float("frame_time_epoch") or 0.0
 
         flow_key = (src_ip, dst_ip, dst_port, proto)
         hint_key = (src_ip, dst_ip, dst_port)
 
-        # Collect domain hints
         sni = _str("tls_handshake_extensions_server_name")
         http_host = _str("http_host")
         dns_name = _str("dns_qry_name")
@@ -322,17 +357,21 @@ def capture_flows(
             domain_hints[hint_key] = domain
 
         if flow_key not in flows:
-            # Look up process info (only works for local machine's own sockets)
             proc = proc_map.get((dst_ip, dst_port)) if dst_port else None
+            src_hostname = hostnames.get(src_ip, "—")
+            # App name: process name (local) → port-based description (remote)
+            app_name = proc.app_name if proc else _app_from_port(dst_port)
+            username = proc.username if proc else "— (remote)"
             flows[flow_key] = FlowRecord(
                 src_ip=src_ip,
+                src_hostname=src_hostname,
                 dst_ip=dst_ip,
                 dst_port=dst_port,
                 protocol=proto,
                 service=_service_name(dst_port),
                 domain="—",
-                app_name=proc.app_name if proc else "—",
-                username=proc.username if proc else "—",
+                app_name=app_name,
+                username=username,
                 first_seen=ts,
                 last_seen=ts,
             )
@@ -345,7 +384,6 @@ def capture_flows(
         if ts > rec.last_seen:
             rec.last_seen = ts
 
-    # Apply domain hints
     for flow_key, rec in flows.items():
         hint_key = (flow_key[0], flow_key[1], flow_key[2])
         if hint_key in domain_hints:
@@ -373,19 +411,15 @@ def _fmt_ts(ts: float) -> str:
 
 
 def render_table(flows: list[FlowRecord]) -> None:
-    """Print a Rich table of flows to the console."""
     from rich.console import Console
     from rich.table import Table
 
     console = Console()
-    table = Table(
-        title=f"Connection Report — {len(flows)} flows",
-        show_lines=False,
-    )
+    table = Table(title=f"Connection Report — {len(flows)} flows", show_lines=False)
     table.add_column("Src IP", style="cyan")
+    table.add_column("Hostname")
     table.add_column("Dst IP", style="yellow")
     table.add_column("Port", justify="right")
-    table.add_column("Service")
     table.add_column("Protocol")
     table.add_column("Domain / SNI")
     table.add_column("Application")
@@ -398,9 +432,9 @@ def render_table(flows: list[FlowRecord]) -> None:
     for rec in flows:
         table.add_row(
             rec.src_ip,
+            rec.src_hostname,
             rec.dst_ip,
             str(rec.dst_port) if rec.dst_port is not None else "—",
-            rec.service,
             rec.protocol,
             rec.domain,
             rec.app_name,
@@ -415,9 +449,8 @@ def render_table(flows: list[FlowRecord]) -> None:
 
 
 def render_csv(flows: list[FlowRecord], output: str | None) -> None:
-    """Write CSV to file path, stdout ('-'), or stdout if output is None."""
     fieldnames = [
-        "src_ip", "dst_ip", "dst_port", "protocol", "service",
+        "src_ip", "src_hostname", "dst_ip", "dst_port", "protocol", "service",
         "domain", "app_name", "username", "packet_count", "bytes_total",
         "first_seen", "last_seen",
     ]
@@ -428,6 +461,7 @@ def render_csv(flows: list[FlowRecord], output: str | None) -> None:
         for rec in flows:
             writer.writerow({
                 "src_ip": rec.src_ip,
+                "src_hostname": rec.src_hostname,
                 "dst_ip": rec.dst_ip,
                 "dst_port": rec.dst_port if rec.dst_port is not None else "",
                 "protocol": rec.protocol,
@@ -455,7 +489,6 @@ def render_html(
     network: str = "192.168.1.0/24",
     duration: int = 30,
 ) -> None:
-    """Write a self-contained dark-themed HTML report."""
     total_packets = sum(r.packet_count for r in flows)
     total_bytes = sum(r.bytes_total for r in flows)
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -467,18 +500,26 @@ def render_html(
     for rec in flows:
         rows_html.write(
             f"<tr>"
-            f"<td>{_esc(rec.src_ip)}</td>"
+            f"<td><div>{_esc(rec.src_ip)}</div>"
+            f"<div style='color:var(--muted);font-size:11px'>{_esc(rec.src_hostname)}</div></td>"
             f"<td>{_esc(rec.dst_ip)}</td>"
-            f"<td>{_esc(str(rec.dst_port) if rec.dst_port is not None else '—')}</td>"
-            f"<td>{_esc(rec.service)}</td>"
-            f"<td>{_esc(rec.protocol)}</td>"
+            f"<td class='num'>{_esc(str(rec.dst_port) if rec.dst_port is not None else '—')}</td>"
+            f"<td><span class='proto-badge'>{_esc(rec.protocol)}</span></td>"
             f"<td>{_esc(rec.domain)}</td>"
             f"<td>{_esc(rec.app_name)}</td>"
             f"<td>{_esc(rec.username)}</td>"
-            f"<td>{rec.packet_count}</td>"
-            f"<td data-bytes='{rec.bytes_total}'>{_esc(_fmt_bytes(rec.bytes_total))}</td>"
+            f"<td class='num'>{rec.packet_count}</td>"
+            f"<td class='num' data-bytes='{rec.bytes_total}'>{_esc(_fmt_bytes(rec.bytes_total))}</td>"
             f"<td>{_esc(_fmt_ts(rec.first_seen))}</td>"
             f"<td>{_esc(_fmt_ts(rec.last_seen))}</td>"
+            f"<td><button class=\"inv-btn\""
+            f" data-src=\"{_esc(rec.src_ip)}\""
+            f" data-srch=\"{_esc(rec.src_hostname)}\""
+            f" data-dst=\"{_esc(rec.dst_ip)}\""
+            f" data-port=\"{rec.dst_port if rec.dst_port is not None else ''}\""
+            f" data-svc=\"{_esc(rec.service)}\""
+            f" data-proto=\"{_esc(rec.protocol)}\""
+            f" onclick=\"openInvestigate(this)\">&#x1F50D; Investigate</button></td>"
             f"</tr>\n"
         )
 
@@ -492,20 +533,23 @@ def render_html(
   :root {{
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
     --text: #c9d1d9; --accent: #58a6ff; --muted: #8b949e;
-    --green: #3fb950; --yellow: #d29922; --red: #f85149;
   }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ background: var(--bg); color: var(--text); font-family: monospace; font-size: 13px; padding: 24px; }}
   h1 {{ color: var(--accent); font-size: 20px; margin-bottom: 8px; }}
   .meta {{ color: var(--muted); margin-bottom: 20px; }}
-  .stats {{ display: flex; gap: 32px; margin-bottom: 24px; }}
+  .stats {{ display: flex; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }}
   .stat {{ background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 20px; }}
   .stat-label {{ color: var(--muted); font-size: 11px; text-transform: uppercase; }}
   .stat-value {{ color: var(--accent); font-size: 22px; font-weight: bold; margin-top: 4px; }}
-  .search-bar {{ margin-bottom: 12px; }}
-  .search-bar input {{
+  .toolbar {{ display:flex; gap:10px; align-items:center; margin-bottom:12px; }}
+  .toolbar input {{
     background: var(--surface); border: 1px solid var(--border); color: var(--text);
-    padding: 6px 12px; border-radius: 4px; width: 300px; font-family: monospace;
+    padding: 6px 12px; border-radius: 4px; width: 280px; font-family: monospace;
+  }}
+  .toolbar button {{
+    background: var(--accent); color: #fff; border: none; padding: 7px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;
   }}
   table {{ width: 100%; border-collapse: collapse; }}
   th {{
@@ -519,6 +563,65 @@ def render_html(
   td {{ padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }}
   tr:hover td {{ background: var(--surface); }}
   .num {{ text-align: right; }}
+  .proto-badge {{
+    background: rgba(88,166,255,0.12); color: var(--accent);
+    border: 1px solid rgba(88,166,255,0.3); border-radius: 4px;
+    padding: 1px 7px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  }}
+  .inv-btn {{
+    background: rgba(88,166,255,0.08); color: var(--accent);
+    border: 1px solid rgba(88,166,255,0.25); border-radius: 4px;
+    padding: 2px 8px; font-size: 11px; cursor: pointer; font-family: monospace;
+  }}
+  .inv-btn:hover {{ background: rgba(88,166,255,0.2); }}
+  .inv-overlay {{
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 1000;
+    align-items: center; justify-content: center;
+  }}
+  .inv-overlay.active {{ display: flex; }}
+  .inv-modal {{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 24px; max-width: 620px; width: 90%;
+    position: relative;
+  }}
+  .inv-modal h3 {{ color: var(--accent); margin-bottom: 16px; font-size: 16px; }}
+  .inv-modal h4 {{ color: var(--muted); font-size: 11px; text-transform: uppercase; margin: 14px 0 8px; }}
+  .inv-close {{
+    position: absolute; top: 12px; right: 14px;
+    background: none; border: none; color: var(--muted);
+    font-size: 20px; cursor: pointer; line-height: 1;
+  }}
+  .inv-close:hover {{ color: var(--text); }}
+  .inv-detail-table {{ width: 100%; border-collapse: collapse; margin-bottom: 4px; }}
+  .inv-detail-table th {{
+    color: var(--muted); font-size: 11px; text-align: left;
+    padding: 4px 8px 4px 0; width: 160px; font-weight: normal;
+  }}
+  .inv-detail-table td {{ color: var(--text); font-size: 13px; padding: 4px 0; }}
+  .inv-targets {{ display: flex; gap: 10px; margin-bottom: 12px; }}
+  .inv-targets button {{
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 12px; border-radius: 4px;
+    cursor: pointer; font-family: monospace; font-size: 12px;
+  }}
+  .inv-targets button.active {{
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(88,166,255,0.1);
+  }}
+  .inv-cmd-box {{
+    background: #0d1117; border: 1px solid var(--border); border-radius: 4px;
+    padding: 10px 12px; display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+  }}
+  .inv-cmd-box code {{ flex: 1; color: #7ee787; font-size: 12px; word-break: break-all; }}
+  .inv-cmd-box button {{
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted); padding: 4px 10px; border-radius: 4px;
+    cursor: pointer; font-size: 11px; white-space: nowrap;
+  }}
+  .inv-cmd-box button:hover {{ color: var(--accent); }}
+  .inv-note {{ color: var(--muted); font-size: 11px; }}
 </style>
 </head>
 <body>
@@ -529,40 +632,36 @@ def render_html(
   <div class="stat"><div class="stat-label">Packets</div><div class="stat-value">{total_packets:,}</div></div>
   <div class="stat"><div class="stat-label">Total Data</div><div class="stat-value">{_esc(_fmt_bytes(total_bytes))}</div></div>
 </div>
-<div class="toolbar" style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
-  <input type="text" id="search" placeholder="Filter rows..." oninput="filterTable()"
-    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:4px;width:260px;font-family:monospace;" />
-  <button onclick="exportCSV()"
-    style="background:var(--accent);color:#fff;border:none;padding:7px 16px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;">
-    ⬇ Download CSV
-  </button>
+<div class="toolbar">
+  <input type="text" id="search" placeholder="Filter rows…" oninput="filterTable()" />
+  <button onclick="exportCSV()">⬇ Download CSV</button>
 </div>
 <table id="flows-table">
 <thead>
 <tr>
-  <th onclick="sortTable(0)">Src IP</th>
+  <th onclick="sortTable(0)">Src IP / Hostname</th>
   <th onclick="sortTable(1)">Dst IP</th>
   <th onclick="sortTable(2)" class="num">Port</th>
-  <th onclick="sortTable(3)">Service</th>
-  <th onclick="sortTable(4)">Protocol</th>
-  <th onclick="sortTable(5)">Domain / SNI</th>
-  <th onclick="sortTable(6)">Application</th>
-  <th onclick="sortTable(7)">User</th>
-  <th onclick="sortTable(8)" class="num">Pkts</th>
-  <th onclick="sortTable(9)" class="num">Bytes</th>
-  <th onclick="sortTable(10)">First</th>
-  <th onclick="sortTable(11)">Last</th>
+  <th onclick="sortTable(3)">Protocol</th>
+  <th onclick="sortTable(4)">Domain / SNI</th>
+  <th onclick="sortTable(5)">Application</th>
+  <th onclick="sortTable(6)">User</th>
+  <th onclick="sortTable(7)" class="num">Pkts</th>
+  <th onclick="sortTable(8)" class="num">Bytes</th>
+  <th onclick="sortTable(9)">First</th>
+  <th onclick="sortTable(10)">Last</th>
+  <th>Actions</th>
 </tr>
 </thead>
 <tbody>
 {rows_html.getvalue()}</tbody>
 </table>
 <script>
-let sortCol = 9, sortAsc = false;
+let sortCol = 8, sortAsc = false;
 
 function cellVal(row, col) {{
   const td = row.cells[col];
-  if (col === 9) return parseInt(td.dataset.bytes || '0', 10);
+  if (col === 8) return parseInt(td.dataset.bytes || '0', 10);
   const n = parseFloat(td.textContent);
   return isNaN(n) ? td.textContent.trim().toLowerCase() : n;
 }}
@@ -572,14 +671,11 @@ function sortTable(col) {{
   const tbody = table.tBodies[0];
   const rows = Array.from(tbody.rows);
   const ths = table.tHead.rows[0].cells;
-
   if (sortCol === col) {{ sortAsc = !sortAsc; }}
   else {{ sortCol = col; sortAsc = true; }}
-
-  for (let th of ths) th.className = '';
-  ths[col].className = sortAsc ? 'sort-asc' : 'sort-desc';
-  if ([2,8,9].includes(col)) ths[col].className += ' num';
-
+  for (let th of ths) th.className = th.className.replace(/sort-\\w+/g, '').trim();
+  ths[col].className += (sortAsc ? ' sort-asc' : ' sort-desc');
+  if ([2,7,8].includes(col)) ths[col].className += ' num';
   rows.sort((a, b) => {{
     const av = cellVal(a, col), bv = cellVal(b, col);
     if (av < bv) return sortAsc ? -1 : 1;
@@ -599,12 +695,13 @@ function filterTable() {{
 
 function exportCSV() {{
   const table = document.getElementById('flows-table');
-  const headers = Array.from(table.tHead.rows[0].cells).map(th => th.textContent.trim());
+  const colCount = table.tHead.rows[0].cells.length - 1; // exclude Actions column
+  const headers = Array.from(table.tHead.rows[0].cells).slice(0, colCount).map(th => th.textContent.trim());
   const rows = [headers.join(',')];
   for (const row of table.tBodies[0].rows) {{
     if (row.style.display === 'none') continue;
-    const cells = Array.from(row.cells).map(td => {{
-      const v = td.textContent.trim();
+    const cells = Array.from(row.cells).slice(0, colCount).map(td => {{
+      const v = td.textContent.trim().replace(/\\s+/g, ' ');
       return (v.includes(',') || v.includes('"') || v.includes('\\n'))
         ? '"' + v.replace(/"/g, '""') + '"' : v;
     }});
@@ -616,7 +713,67 @@ function exportCSV() {{
   a.download = 'connection-report.csv';
   a.click();
 }}
+
+let _invSrcIp = '', _invDstIp = '', _invPort = '';
+
+function openInvestigate(btn) {{
+  _invSrcIp = btn.dataset.src;
+  _invDstIp = btn.dataset.dst;
+  _invPort  = btn.dataset.port;
+  const srcLabel = btn.dataset.src + (btn.dataset.srch && btn.dataset.srch !== '\u2014' ? ' (' + btn.dataset.srch + ')' : '');
+  document.getElementById('inv-src').textContent   = srcLabel;
+  document.getElementById('inv-dst').textContent   = btn.dataset.dst;
+  document.getElementById('inv-port').textContent  = btn.dataset.port || '\u2014';
+  document.getElementById('inv-proto').textContent = btn.dataset.proto + ' / ' + btn.dataset.svc;
+  document.getElementById('inv-src-btn').classList.remove('active');
+  document.getElementById('inv-dst-btn').classList.remove('active');
+  document.getElementById('inv-cmd').textContent  = '';
+  document.getElementById('inv-note').textContent = '';
+  document.getElementById('inv-overlay').classList.add('active');
+}}
+
+function closeInvestigate() {{
+  document.getElementById('inv-overlay').classList.remove('active');
+}}
+
+function setInvTarget(which) {{
+  const ip  = which === 'src' ? _invSrcIp : _invDstIp;
+  const cmd = 'sudo netwatchm investigate --target ' + ip +
+              (_invPort ? ' --ports ' + _invPort : '');
+  document.getElementById('inv-cmd').textContent  = cmd;
+  document.getElementById('inv-note').textContent = 'Output: /tmp/netwatchm-investigate-' + ip + '.html';
+  document.getElementById('inv-src-btn').classList.toggle('active', which === 'src');
+  document.getElementById('inv-dst-btn').classList.toggle('active', which === 'dst');
+}}
+
+function copyInvCmd() {{
+  const cmd = document.getElementById('inv-cmd').textContent;
+  if (cmd) navigator.clipboard.writeText(cmd).catch(() => {{}});
+}}
 </script>
+
+<div id="inv-overlay" class="inv-overlay" onclick="closeInvestigate()">
+  <div class="inv-modal" onclick="event.stopPropagation()">
+    <button class="inv-close" onclick="closeInvestigate()">&#x2715;</button>
+    <h3>Investigate Connection</h3>
+    <table class="inv-detail-table">
+      <tr><th>Source (local)</th><td id="inv-src"></td></tr>
+      <tr><th>Destination (remote)</th><td id="inv-dst"></td></tr>
+      <tr><th>Observed Port</th><td id="inv-port"></td></tr>
+      <tr><th>Protocol / Service</th><td id="inv-proto"></td></tr>
+    </table>
+    <h4>Select target to investigate:</h4>
+    <div class="inv-targets">
+      <button id="inv-src-btn" onclick="setInvTarget('src')">Investigate Source</button>
+      <button id="inv-dst-btn" onclick="setInvTarget('dst')">Investigate Destination</button>
+    </div>
+    <div class="inv-cmd-box">
+      <code id="inv-cmd"></code>
+      <button onclick="copyInvCmd()">Copy</button>
+    </div>
+    <div class="inv-note" id="inv-note"></div>
+  </div>
+</div>
 </body>
 </html>"""
 
