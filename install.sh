@@ -26,7 +26,20 @@ if [[ "$PY_MAJOR" -lt 3 ]] || { [[ "$PY_MAJOR" -eq 3 ]] && [[ "$PY_MINOR" -lt 12
 fi
 info "Python $PY_VER OK"
 
-# 2. Check tshark
+# 2. Check arp-scan
+info "Checking arp-scan..."
+if ! command -v arp-scan &>/dev/null; then
+    warning "arp-scan not found. Attempting install..."
+    if command -v apt-get &>/dev/null; then
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y arp-scan
+    fi
+fi
+if command -v arp-scan &>/dev/null; then
+    sudo setcap cap_net_raw+ep "$(command -v arp-scan)" 2>/dev/null || true
+    info "arp-scan ready: $(command -v arp-scan)"
+fi
+
+# 3. Check tshark
 info "Checking tshark..."
 if ! command -v tshark &>/dev/null; then
     warning "tshark not found. Attempting install..."
@@ -52,10 +65,12 @@ fi
 UV_BIN="$(command -v uv)"
 info "uv found: $UV_BIN"
 
-# 4. Sync dependencies
+# 4. Sync dependencies and install CLI tool
 info "Installing Python dependencies..."
 cd "$SCRIPT_DIR"
 "$UV_BIN" sync
+info "Installing netwatchm CLI tool..."
+"$UV_BIN" tool install --no-cache . --force
 
 # 5. Copy example config
 CONFIG_DIR="/etc/netwatchm"
@@ -94,9 +109,11 @@ fi
 sudo env NETWATCHM_EMAIL_PASSWORD="${NETWATCHM_EMAIL_PASSWORD:-}" \
     "$UV_BIN" run netwatchm --config "$CONFIG_FILE" --install-service || true
 
-# 9. Install web dashboard service
-info "Installing web dashboard service..."
+# 9. Install web dashboard service and server script
+info "Installing web dashboard..."
 sudo cp "$SCRIPT_DIR/report.html" /var/lib/netwatchm/report.html
+sudo cp "$SCRIPT_DIR/netwatchm_server.py" /usr/local/bin/netwatchm-server
+sudo chmod +x /usr/local/bin/netwatchm-server
 sudo cp "$SCRIPT_DIR/netwatchm-web.service" /etc/systemd/system/netwatchm-web.service
 
 # 10. Install down-alert notification script and service template

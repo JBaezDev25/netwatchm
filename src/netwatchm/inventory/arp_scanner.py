@@ -23,6 +23,8 @@ _LINE_RE = re.compile(
 
 def _run_arp_scan(network: str) -> list[tuple[str, str, str | None]]:
     """Run arp-scan and return list of (ip, mac, vendor). Blocking."""
+    # No sudo needed — cap_net_raw+ep set on the binary via:
+    #   sudo setcap cap_net_raw+ep /usr/sbin/arp-scan
     cmd = ["arp-scan", "--quiet"]
     if network == "auto":
         cmd.append("--localnet")
