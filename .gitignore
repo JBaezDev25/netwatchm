@@ -23,3 +23,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local test config and generated reports
+netwatchm-test.yaml
+reports/
