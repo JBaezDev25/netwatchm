@@ -116,6 +116,26 @@ sudo cp "$SCRIPT_DIR/netwatchm_server.py" /usr/local/bin/netwatchm-server
 sudo chmod +x /usr/local/bin/netwatchm-server
 sudo cp "$SCRIPT_DIR/netwatchm-web.service" /etc/systemd/system/netwatchm-web.service
 
+# 9a. Generate TLS certificate for HTTPS using mkcert (if available) or openssl fallback
+info "Setting up HTTPS certificate..."
+if command -v mkcert &>/dev/null; then
+    mkcert -install 2>/dev/null || true
+    mkcert -key-file /tmp/nwm-server.key -cert-file /tmp/nwm-server.crt localhost 127.0.0.1
+    sudo mv /tmp/nwm-server.key /var/lib/netwatchm/server.key
+    sudo mv /tmp/nwm-server.crt /var/lib/netwatchm/server.crt
+    sudo chmod 600 /var/lib/netwatchm/server.key
+    info "  TLS: mkcert certificate installed (browser-trusted)"
+else
+    sudo openssl req -x509 -newkey rsa:2048 \
+        -keyout /var/lib/netwatchm/server.key \
+        -out /var/lib/netwatchm/server.crt \
+        -days 3650 -nodes \
+        -subj "/CN=localhost/O=NetWatchM" \
+        -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
+    sudo chmod 600 /var/lib/netwatchm/server.key
+    info "  TLS: self-signed certificate installed (browser will warn — install mkcert for trusted HTTPS)"
+fi
+
 # 10. Install down-alert notification script and service template
 info "Installing service-down email alert..."
 sudo cp "$SCRIPT_DIR/scripts/notify-down.py" /usr/local/bin/netwatchm-notify
@@ -128,7 +148,7 @@ sudo systemctl enable --now netwatchm-web
 info ""
 info "NetWatchM installed successfully!"
 info "  Monitor status:   systemctl status netwatchm"
-info "  Web dashboard:    http://localhost:8765/report.html"
+info "  Web dashboard:    https://localhost:8765/report.html"
 info "  Web status:       systemctl status netwatchm-web"
 info "  Logs:             journalctl -u netwatchm -f"
 info "  Config:           $CONFIG_FILE"
