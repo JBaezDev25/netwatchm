@@ -311,6 +311,24 @@
   .report-link.csv  { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
   .report-link:hover { opacity: 0.82; }
 
+  /* ── Device section collapse ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 15px; font-weight: 700; color: var(--text);
+  }
+  .collapse-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-muted); padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-size: 12px; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .collapse-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .collapsible { transition: opacity 0.2s; }
+  .collapsible.hidden { display: none; }
+
   /* ── Footer ── */
   footer {
     text-align: center;
@@ -377,40 +395,6 @@
     </div>
   </div>
 
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <div class="search-wrap">
-      <span class="search-icon">⌕</span>
-      <input id="searchBox" type="text" placeholder="Search IP, hostname, port…" oninput="applyFilters()">
-    </div>
-    <div class="filter-btns">
-      <button class="filter-btn all active" onclick="setThreatFilter('ALL', this)">All</button>
-      <button class="filter-btn HIGH"   onclick="setThreatFilter('HIGH', this)">HIGH</button>
-      <button class="filter-btn MEDIUM" onclick="setThreatFilter('MEDIUM', this)">MEDIUM</button>
-      <button class="filter-btn LOW"    onclick="setThreatFilter('LOW', this)">LOW</button>
-    </div>
-    <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
-  </div>
-
-  <!-- Table -->
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th onclick="sortBy('ip')"           class="sorted" data-col="ip">          IP / Hostname     <span class="sort-arrow">▲</span></th>
-          <th onclick="sortBy('threat_level')" data-col="threat_level">               Threat            <span class="sort-arrow">▼</span></th>
-          <th onclick="sortBy('ports')"        data-col="ports">                       Ports Observed    <span class="sort-arrow">▼</span></th>
-          <th onclick="sortBy('bytes_sent')"   data-col="bytes_sent">                 Sent ↑            <span class="sort-arrow">▼</span></th>
-          <th onclick="sortBy('bytes_received')" data-col="bytes_received">           Received ↓        <span class="sort-arrow">▼</span></th>
-          <th onclick="sortBy('first_seen')"   data-col="first_seen">                 First Seen        <span class="sort-arrow">▼</span></th>
-          <th onclick="sortBy('last_seen')"    data-col="last_seen">                  Last Seen         <span class="sort-arrow">▼</span></th>
-        </tr>
-      </thead>
-      <tbody id="tableBody">
-        <tr><td colspan="7" class="no-data"><div class="icon">⏳</div>Loading data…</td></tr>
-      </tbody>
-    </table>
-  </div>
   <!-- Connection Report Panel -->
   <div class="report-panel">
     <h2>&#x1F50D; Connection Report</h2>
@@ -425,6 +409,51 @@
     <div class="report-links" id="reportLinks" style="display:none">
       <a class="report-link html" href="connection-report.html" target="_blank">&#x1F4C4; Open HTML Report</a>
       <a class="report-link csv" href="#" onclick="downloadReportCSV(event)">&#x2B07; Download CSV</a>
+    </div>
+  </div>
+
+  <!-- Device Inventory (collapsible) -->
+  <div style="margin-top:28px;">
+    <div class="section-header">
+      <span class="section-title">Device Inventory</span>
+      <button class="collapse-btn" onclick="toggleDevices(this)">
+        <span id="collapseArrow">▲</span> Hide
+      </button>
+    </div>
+    <div id="deviceSection" class="collapsible">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="searchBox" type="text" placeholder="Search IP, hostname, port…" oninput="applyFilters()">
+        </div>
+        <div class="filter-btns">
+          <button class="filter-btn all active" onclick="setThreatFilter('ALL', this)">All</button>
+          <button class="filter-btn HIGH"   onclick="setThreatFilter('HIGH', this)">HIGH</button>
+          <button class="filter-btn MEDIUM" onclick="setThreatFilter('MEDIUM', this)">MEDIUM</button>
+          <button class="filter-btn LOW"    onclick="setThreatFilter('LOW', this)">LOW</button>
+        </div>
+        <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+      </div>
+      <!-- Table -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="sortBy('ip')"           class="sorted" data-col="ip">          IP / Hostname     <span class="sort-arrow">▲</span></th>
+              <th onclick="sortBy('threat_level')" data-col="threat_level">               Threat            <span class="sort-arrow">▼</span></th>
+              <th onclick="sortBy('ports')"        data-col="ports">                       Ports Observed    <span class="sort-arrow">▼</span></th>
+              <th onclick="sortBy('bytes_sent')"   data-col="bytes_sent">                 Sent ↑            <span class="sort-arrow">▼</span></th>
+              <th onclick="sortBy('bytes_received')" data-col="bytes_received">           Received ↓        <span class="sort-arrow">▼</span></th>
+              <th onclick="sortBy('first_seen')"   data-col="first_seen">                 First Seen        <span class="sort-arrow">▼</span></th>
+              <th onclick="sortBy('last_seen')"    data-col="last_seen">                  Last Seen         <span class="sort-arrow">▼</span></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="7" class="no-data"><div class="icon">⏳</div>Loading data…</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </main>
@@ -771,6 +800,15 @@ function downloadReportCSV(e) {
       a.click();
     })
     .catch(e => alert('Could not fetch report: ' + e.message));
+}
+
+// ── Device list collapse ──────────────────────────────────────────────────────
+function toggleDevices(btn) {
+  const section = document.getElementById('deviceSection');
+  const arrow   = document.getElementById('collapseArrow');
+  const hidden  = section.classList.toggle('hidden');
+  arrow.textContent = hidden ? '▼' : '▲';
+  btn.childNodes[1].textContent = hidden ? ' Show' : ' Hide';
 }
 
 // Restore status on page load if a report already exists
