@@ -26,4 +26,7 @@ Thumbs.db
 
 # Local test config and generated reports
 netwatchm-test.yaml
-reports/
+/reports/
+
+# Local checklist (not part of source)
+CHECKLIST.md

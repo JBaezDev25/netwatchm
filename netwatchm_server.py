@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import ssl
 import subprocess
 import threading
 from datetime import datetime, timezone
@@ -144,10 +145,45 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+CERT_DIR = Path(os.environ.get("NETWATCHM_CERT_DIR", "/var/lib/netwatchm"))
+CERT_FILE = CERT_DIR / "server.crt"
+KEY_FILE  = CERT_DIR / "server.key"
+
+
+def _ensure_cert() -> None:
+    """Generate a self-signed TLS certificate if one doesn't already exist."""
+    if CERT_FILE.exists() and KEY_FILE.exists():
+        return
+    print("Generating self-signed TLS certificate…", flush=True)
+    subprocess.run(
+        [
+            "openssl", "req", "-x509",
+            "-newkey", "rsa:2048",
+            "-keyout", str(KEY_FILE),
+            "-out", str(CERT_FILE),
+            "-days", "3650",
+            "-nodes",
+            "-subj", "/CN=localhost/O=NetWatchM",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    os.chmod(KEY_FILE, 0o600)
+    print(f"Certificate written to {CERT_FILE}", flush=True)
+
+
 if __name__ == "__main__":
     SERVE_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_cert()
+
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(certfile=str(CERT_FILE), keyfile=str(KEY_FILE))
+
     server = HTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"NetWatchM web server listening on http://0.0.0.0:{PORT}", flush=True)
+    server.socket = ctx.wrap_socket(server.socket, server_side=True)
+
+    print(f"NetWatchM web server listening on https://0.0.0.0:{PORT}", flush=True)
+    print("Note: browser will show a self-signed cert warning — click 'Advanced > Proceed'.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -519,6 +519,8 @@ def render_html(
             f" data-port=\"{rec.dst_port if rec.dst_port is not None else ''}\""
             f" data-svc=\"{_esc(rec.service)}\""
             f" data-proto=\"{_esc(rec.protocol)}\""
+            f" data-domain=\"{_esc(rec.domain)}\""
+            f" data-app=\"{_esc(rec.app_name)}\""
             f" onclick=\"openInvestigate(this)\">&#x1F50D; Investigate</button></td>"
             f"</tr>\n"
         )
@@ -622,6 +624,20 @@ def render_html(
   }}
   .inv-cmd-box button:hover {{ color: var(--accent); }}
   .inv-note {{ color: var(--muted); font-size: 11px; }}
+  .inv-context {{
+    background: rgba(88,166,255,0.05); border: 1px solid var(--border);
+    border-radius: 4px; padding: 10px 12px; margin: 12px 0; font-size: 12px; line-height: 1.6;
+  }}
+  .ctx-traffic {{ color: var(--muted); margin-bottom: 4px; }}
+  .ctx-what {{ color: var(--text); margin-bottom: 8px; }}
+  .ctx-risk {{
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 3px; margin-bottom: 6px; text-transform: uppercase;
+  }}
+  .ctx-risk.low {{ background: rgba(46,160,67,0.2); color: #3fb950; }}
+  .ctx-risk.medium {{ background: rgba(210,153,34,0.2); color: #d29922; }}
+  .ctx-risk.high {{ background: rgba(248,81,73,0.2); color: #f85149; }}
+  .ctx-action {{ color: var(--muted); font-style: italic; margin-top: 4px; font-size: 11px; }}
 </style>
 </head>
 <body>
@@ -716,6 +732,82 @@ function exportCSV() {{
 
 let _invSrcIp = '', _invDstIp = '', _invPort = '';
 
+const PORT_INFO = {{
+  1900:  {{ what: 'SSDP (UPnP device discovery). Devices broadcast this to find services like printers, media servers, and smart home hubs on the local network.', risk: 'low', action: 'Normal for smart devices. Investigate if sent to an external IP or from an unexpected host.' }},
+  5353:  {{ what: 'mDNS (Multicast DNS). Used for zero-config name resolution — Apple Bonjour, Avahi, Chromecast, printers.', risk: 'low', action: 'Normal LAN traffic. External mDNS leakage indicates a firewall misconfiguration.' }},
+  443:   {{ what: 'HTTPS — TLS-encrypted web and API traffic. Extremely common for browsers, background services, and apps.', risk: 'low', action: 'Check the Domain / SNI column to confirm the destination hostname is expected.' }},
+  80:    {{ what: 'HTTP — unencrypted web traffic. Less common today since most services enforce HTTPS.', risk: 'medium', riskReason: 'Credentials and data travel in plaintext', action: 'Verify the app should not be using HTTPS instead.' }},
+  53:    {{ what: 'DNS — resolves domain names to IP addresses. Nearly all internet traffic starts here.', risk: 'low', action: 'Flag if the destination is not your router or ISP DNS. Could indicate DNS tunneling or a rogue resolver.' }},
+  22:    {{ what: 'SSH — encrypted remote shell and file transfer (SFTP/SCP). Outbound SSH is normal for developers and sysadmins.', risk: 'medium', riskReason: 'Remote shell access — confirm user and destination are authorized', action: 'Confirm the source host and user are expected to have SSH access to this destination.' }},
+  3389:  {{ what: 'RDP (Remote Desktop Protocol) — GUI remote access to Windows machines.', risk: 'high', riskReason: 'Remote desktop to external IP — high-value attack vector', action: 'Verify this is an authorized session. External RDP is a top ransomware entry point.' }},
+  445:   {{ what: 'SMB — Windows file sharing. Used for mapped drives and printer sharing.', risk: 'high', riskReason: 'SMB to external IP — common vector for lateral movement and data exfiltration', action: 'SMB should never leave your LAN. Investigate immediately if destination is external.' }},
+  23:    {{ what: 'Telnet — unencrypted remote shell. Obsolete and insecure; fully replaced by SSH.', risk: 'high', riskReason: 'Credentials and session data sent in plaintext', action: 'Telnet should not exist on modern networks. Identify the device and replace with SSH.' }},
+  21:    {{ what: 'FTP — unencrypted file transfer. Legacy protocol; credentials sent in cleartext.', risk: 'high', riskReason: 'Credentials and data sent in plaintext', action: 'Replace with SFTP (port 22) or FTPS. Investigate any external FTP connections.' }},
+  25:    {{ what: 'SMTP — email delivery between mail servers. Outbound port 25 from a workstation is unusual.', risk: 'medium', riskReason: 'Direct SMTP from an endpoint — may indicate spam or malware', action: 'Only mail servers should originate port 25 traffic. Investigate if the source is a workstation.' }},
+  1194:  {{ what: 'OpenVPN — encrypted VPN tunnel. The source device is connected to a VPN service.', risk: 'low', action: 'Verify this is an authorized VPN from a known user and device.' }},
+  4443:  {{ what: 'HTTPS alternate port. Used by VPN services, corporate proxies, and admin panels to avoid standard port filtering.', risk: 'medium', riskReason: 'Non-standard HTTPS port — may bypass firewall rules', action: 'Identify the application and confirm it is an expected service.' }},
+  8080:  {{ what: 'HTTP proxy or alternate web port. Used by web proxies, development servers, and some management interfaces.', risk: 'medium', riskReason: 'Unencrypted or proxy traffic on non-standard port', action: 'Confirm this is a known proxy or dev service, not an unauthorized tunnel.' }},
+  8443:  {{ what: 'HTTPS alternate port. Common for admin panels, VPN portals, and development servers.', risk: 'low', action: 'Verify the domain matches an expected service.' }},
+  1433:  {{ what: 'Microsoft SQL Server — database access port.', risk: 'high', riskReason: 'Database port reachable from network', action: 'Database connections should be local or VPN-only. External access is critical risk.' }},
+  3306:  {{ what: 'MySQL — database access port.', risk: 'high', riskReason: 'Database port reachable from network', action: 'Database connections should be local or VPN-only. External access is critical risk.' }},
+  5432:  {{ what: 'PostgreSQL — database access port.', risk: 'high', riskReason: 'Database port reachable from network', action: 'Database connections should be local or VPN-only. External access is critical risk.' }},
+  6379:  {{ what: 'Redis — in-memory data store. Frequently deployed without authentication.', risk: 'high', riskReason: 'Redis is often unauthenticated and exposes all stored data', action: 'Redis must never be internet-facing. Investigate immediately.' }},
+  27017: {{ what: 'MongoDB — NoSQL database port.', risk: 'high', riskReason: 'Database port on network — misconfigured MongoDB has caused major breaches', action: 'Verify this is not publicly accessible. Restrict to localhost or VPN.' }},
+  5900:  {{ what: 'VNC — graphical remote desktop. Older protocol, often unencrypted or weakly secured.', risk: 'high', riskReason: 'Remote desktop access, often without strong encryption', action: 'Tunnel VNC over SSH or VPN. Direct exposure is a serious risk.' }},
+}};
+
+function getConnectionContext(dstIp, port, domain, app) {{
+  const portNum = parseInt(port) || 0;
+  const isMulticast = /^2(2[4-9]|3\d)\./.test(dstIp);
+  const isBroadcast = dstIp === '255.255.255.255' || dstIp.endsWith('.255');
+  const isPrivate   = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(dstIp);
+  const isLoopback  = dstIp.startsWith('127.');
+  const isExternal  = !isMulticast && !isBroadcast && !isPrivate && !isLoopback;
+
+  let traffic = '';
+  if (isMulticast)     traffic = 'Local multicast — stays within your LAN, never routed to the internet.';
+  else if (isBroadcast) traffic = 'Broadcast — delivered to all devices on the local subnet.';
+  else if (isLoopback)  traffic = 'Loopback — local machine communication only.';
+  else if (isPrivate)   traffic = 'Internal LAN — destination is another device on your local network.';
+  else                  traffic = 'External internet — traffic is leaving your network to a public IP address.';
+
+  const info = PORT_INFO[portNum];
+  let what = '', risk = 'low', riskReason = '', action = '';
+
+  if (info) {{
+    what       = info.what;
+    risk       = info.risk || 'low';
+    riskReason = info.riskReason || '';
+    action     = info.action || '';
+  }} else if (portNum >= 30000) {{
+    what   = 'High/dynamic port — likely an ephemeral or application-specific port chosen at runtime.';
+    risk   = isExternal ? 'medium' : 'low';
+    riskReason = isExternal ? 'High port to external IP — verify intended' : '';
+    action = 'Check the Application column to identify which process opened this connection.';
+  }} else if (portNum > 1024) {{
+    what   = 'Registered application port (1025–29999).';
+    risk   = isExternal ? 'medium' : 'low';
+    riskReason = isExternal ? 'Uncommon port to external IP — verify intended' : '';
+    action = 'Confirm this port is expected behavior for the listed application.';
+  }} else {{
+    what   = 'System/well-known port not in common database.';
+    risk   = 'medium';
+    action = 'Look up port ' + portNum + ' to understand the expected service.';
+  }}
+
+  // Elevate risk: standard-looking ports going external when they shouldn't
+  if (isExternal && [445, 1433, 3306, 5432, 6379, 27017, 5900, 23, 21].includes(portNum)) risk = 'high';
+
+  const domainLine = (domain && domain !== '\u2014') ? '<div class="ctx-traffic">Observed domain/SNI: <strong>' + domain + '</strong></div>' : '';
+  const appLine    = (app && app !== '\u2014' && app !== '? ') ? '<div class="ctx-traffic">Application: <strong>' + app + '</strong></div>' : '';
+
+  return '<div class="ctx-traffic">' + traffic + '</div>'
+       + '<div class="ctx-what">' + what + '</div>'
+       + domainLine + appLine
+       + '<span class="ctx-risk ' + risk + '">' + risk + ' risk' + (riskReason ? ': ' + riskReason : '') + '</span>'
+       + (action ? '<div class="ctx-action">&#9656; ' + action + '</div>' : '');
+}}
+
 function openInvestigate(btn) {{
   _invSrcIp = btn.dataset.src;
   _invDstIp = btn.dataset.dst;
@@ -725,6 +817,7 @@ function openInvestigate(btn) {{
   document.getElementById('inv-dst').textContent   = btn.dataset.dst;
   document.getElementById('inv-port').textContent  = btn.dataset.port || '\u2014';
   document.getElementById('inv-proto').textContent = btn.dataset.proto + ' / ' + btn.dataset.svc;
+  document.getElementById('inv-context').innerHTML = getConnectionContext(btn.dataset.dst, btn.dataset.port, btn.dataset.domain, btn.dataset.app);
   document.getElementById('inv-src-btn').classList.remove('active');
   document.getElementById('inv-dst-btn').classList.remove('active');
   document.getElementById('inv-cmd').textContent  = '';
@@ -762,6 +855,7 @@ function copyInvCmd() {{
       <tr><th>Observed Port</th><td id="inv-port"></td></tr>
       <tr><th>Protocol / Service</th><td id="inv-proto"></td></tr>
     </table>
+    <div id="inv-context" class="inv-context"></div>
     <h4>Select target to investigate:</h4>
     <div class="inv-targets">
       <button id="inv-src-btn" onclick="setInvTarget('src')">Investigate Source</button>
