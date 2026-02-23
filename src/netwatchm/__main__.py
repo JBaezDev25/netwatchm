@@ -62,7 +62,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
     alert_queue: asyncio.Queue[Alert] = asyncio.Queue(maxsize=1_000)
 
     # --- Inventory ---
-    store = DeviceStore()
+    store = DeviceStore(local_networks=config.inventory.local_networks)
     inventory_path = None  # use default platform path
     await store.load(inventory_path)
 
@@ -79,6 +79,10 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
 
     # --- Whitelist ---
     _whitelist = WhitelistChecker(config.whitelist.ips) if config.whitelist.enabled else None
+
+    # Reset persisted HIGH threats for now-whitelisted IPs
+    if _whitelist:
+        await store.reset_whitelisted_threats(_whitelist)
 
     # --- Alert handlers ---
     handlers = []
@@ -364,6 +368,46 @@ def _fmt_bytes(n: int) -> str:
     return f"{n:.0f} TB"
 
 
+def _report_subcommand(args: argparse.Namespace, config: Config) -> None:
+    """Handle `netwatchm report` subcommand."""
+    from .reports.connection_report import capture_flows, render_csv, render_html, render_table
+
+    interface = detect_interface(config.interface)
+    network = args.network
+    duration = args.duration
+    output = args.output
+    fmt = args.format
+
+    # Auto-detect format from output extension
+    if fmt is None and output:
+        if output.endswith(".html") or output.endswith(".htm"):
+            fmt = "html"
+        elif output.endswith(".csv"):
+            fmt = "csv"
+
+    if fmt is None:
+        fmt = "table"
+
+    print(
+        f"Capturing {network} traffic on {interface} for {duration}s "
+        f"(format: {fmt})…",
+        flush=True,
+    )
+
+    flows = capture_flows(interface=interface, duration=duration, network=network)
+
+    if not flows:
+        print("No flows captured. (Try running with sudo for full packet access.)")
+        return
+
+    if fmt == "html":
+        render_html(flows, output=output, network=network, duration=duration)
+    elif fmt == "csv":
+        render_csv(flows, output=output)
+    else:
+        render_table(flows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="netwatchm",
@@ -411,6 +455,33 @@ def main() -> None:
         choices=["TABLE", "CSV"],
     )
 
+    rep_parser = subparsers.add_parser("report", help="capture outgoing connections and generate report")
+    rep_parser.add_argument(
+        "--duration",
+        type=int,
+        default=30,
+        metavar="SECONDS",
+        help="capture duration in seconds (default: 30)",
+    )
+    rep_parser.add_argument(
+        "--network",
+        default="192.168.1.0/24",
+        metavar="CIDR",
+        help="source network filter (default: 192.168.1.0/24)",
+    )
+    rep_parser.add_argument(
+        "--output",
+        default=None,
+        metavar="FILE",
+        help="output file path; format auto-detected from .html/.csv extension",
+    )
+    rep_parser.add_argument(
+        "--format",
+        default=None,
+        choices=["table", "csv", "html"],
+        help="output format (overrides auto-detection from --output extension)",
+    )
+
     args = parser.parse_args()
     _setup_logging(args.log_level)
 
@@ -428,6 +499,10 @@ def main() -> None:
 
     if args.subcommand == "inventory":
         _inventory_subcommand(args, config)
+        return
+
+    if args.subcommand == "report":
+        _report_subcommand(args, config)
         return
 
     try:
