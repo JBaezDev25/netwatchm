@@ -675,10 +675,10 @@
       "targets": [
         {
           "refId": "A",
-          "type": "uql",
+          "type": "json",
           "source": "url",
           "url": "http://127.0.0.1:8766/inventory.json",
-          "parser": "jsonata",
+          "parser": "backend",
           "root_selector": "",
           "columns": [
             {
@@ -1692,5 +1692,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 4
+  "version": 5
 }
