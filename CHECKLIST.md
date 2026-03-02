@@ -1,6 +1,6 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-02 (end of session)
+Last updated: 2026-03-02 (session 2)
 
 ## Completed
 - [x] Core capture engine (tshark + async)
@@ -81,48 +81,38 @@ sudo systemctl daemon-reload && sudo systemctl restart netwatchm-web
 - Grafana 12.4.0 + Infinity v3.7.2 installed and running
 - NetWatchM HTTP server on port 8766 (Grafana-only, no TLS)
 - Infinity datasource "NetWatchM" configured — allowed hosts: `http://127.0.0.1:8766` AND `http://localhost:8766`
-- All API endpoints confirmed working via curl:
-  - `http://127.0.0.1:8766/api/inventory/total`    → `[{"time": <epoch_ms>, "value": 452}]`
-  - `http://127.0.0.1:8766/api/inventory/high`     → `[{"time": <epoch_ms>, "value": N}]`
-  - `http://127.0.0.1:8766/api/inventory/medium`   → `[{"time": <epoch_ms>, "value": N}]`
-  - `http://127.0.0.1:8766/api/inventory/low`      → `[{"time": <epoch_ms>, "value": N}]`
-  - `http://127.0.0.1:8766/api/flows/stats`        — total flows/bytes/packets
-  - `http://127.0.0.1:8766/api/flows/devices`      — top devices by bytes
-  - `http://127.0.0.1:8766/api/flows/destinations` — top destinations
-  - `http://127.0.0.1:8766/api/flows/protocols`    — protocol breakdown
-  - `http://127.0.0.1:8766/api/flows/hourly`       — hourly activity
+- All API endpoints confirmed working:
+  - `/api/inventory/{total|high|medium|low|stats}` — device counts
+  - `/api/flows/{stats|devices|destinations|protocols|hourly}` — flow data
+  - `/api/flows/browsing` — local device → site activity
+  - `/api/events/adult-domains` — ADULT_DOMAIN events grouped by src_ip + domain
 - Dashboard imported via `scripts/import-dashboard.sh`
 - Grafana credentials: `admin` / `BioIluvleeloo@5858`
-- JSONata parser works in **Explore** (browser-side) — shows data correctly
+- `scripts/seed-events.sh` — seed live events.db with 6 synthetic test alerts
 
-### Root causes found and fixed:
-- [x] `proxy_type: "url"` in datasource config was routing through nonexistent proxy → removed
-- [x] Allowed hosts had `localhost:8766` but panels used `127.0.0.1:8766` → fixed (both added)
-- [x] Dashboard import was not resolving `${DS_NETWATCHM}` template → fixed (using `/api/dashboards/import` with `inputs`)
-- [x] `/api/inventory/stats` returning all 452 raw device records instead of counts → fixed with dedicated `/api/inventory/{metric}` endpoints
-- [x] Added `"time": int(time.time() * 1000)` to inventory metric responses (for Grafana time-range filter)
+### Dashboard panels (v5):
+- Stat panels: Total Devices, HIGH/MEDIUM/LOW Threat counts
+- Threat Distribution donut: HIGH/MEDIUM/LOW device counts (from `/api/inventory/stats`)
+- Device Inventory table: IP, Hostname, MAC, Vendor, Threat (colour-coded), Sent, Received, Last Seen
+- Flow stats: Total Flows, Total Data, Active Devices (72h)
+- Top Devices table: IP + host + bytes, clickable IP links → events portal + deep inspect
+- Top Destinations table: IP + domain + port + bytes, clickable IP links
+- Protocol Doughnut + Hourly Activity bar
+- **Intelligence row:**
+  - Trigger Sites: ADULT_DOMAIN events (src_ip, domain, count, last_seen)
+  - Browsing Activity: local device → website (src_ip, device, site, port, bytes)
 
-### Current blocker — stat panels still show "No data":
-- `backend` parser: returns data confirmed via `/api/ds/query` (`fields: ['value'], values: [[452]]`) but stat panels show "No data"
-- `jsonata` parser: works in Explore (browser executes it) but routes through backend API in dashboard panels → returns empty
-- `uql` parser: tried, returned empty
-- Adding explicit `timestamp_epoch_ms` + `number` column definitions → panels now show **warning triangle** (error) instead of silent "No data"
-- The warning triangle error message was NOT captured before end of session
+### Key lessons (jsonata vs backend parser):
+- `jsonata` parser ignores column definitions — dumps all JSON fields; causes byte fields to inflate pie/bar charts
+- `backend` parser respects explicit column list — use this for all panels
+- All Infinity targets require `url_options: {"method": "GET", "data": ""}` or JS crashes silently
+- Stat panels need `timestamp_epoch_ms` column + `filterFieldsByName` transformation to hide time field
+- Specific routes (`/api/flows/browsing`) must be checked BEFORE generic `startswith` routes
 
-### What fixed it (root cause summary):
-1. `url_options: {"method": "GET", "data": ""}` was missing from all Infinity query targets → caused JS error "cannot read properties of undefined (reading 'method')" → panels showed warning triangle + no data
-2. Adding `"time": int(time.time() * 1000)` to API responses + `timestamp_epoch_ms` column definition → created proper time-series frames that pass Grafana 12 Scenes time-range filtering
-3. `filterFieldsByName` transformation with `include.names: ["Value"]` → hides the raw timestamp from stat panel display, shows only the count
-
-### Final working config for stat panels:
-- `parser: "backend"`, explicit columns: `[{timestamp_epoch_ms: "Time"}, {number: "Value"}]`
-- `url_options: {"method": "GET", "data": ""}`
-- `filterFieldsByName` transformation: include only "Value"
-- `reduceOptions.calcs: ["lastNotNull"]`, `fields: ""`
-
-### Deploy command:
+### Deploy commands:
 ```bash
-bash scripts/import-dashboard.sh
+bash scripts/deploy-server.sh     # copy server + restart service
+bash scripts/import-dashboard.sh  # re-import dashboard after JSON changes
 ```
 
 ---
@@ -134,7 +124,7 @@ bash scripts/import-dashboard.sh
 - Report served at https://localhost:8765/connection-report.html from /var/lib/netwatchm/
 - TLS cert generated via mkcert at /var/lib/netwatchm/server.crt (browser-trusted)
 - Web server service: netwatchm-web (not netwatchm-server)
-- Deploy server changes: `sudo cp netwatchm_server.py /usr/local/bin/netwatchm-server && sudo systemctl restart netwatchm-web`
+- Deploy server changes: `bash scripts/deploy-server.sh`
 - Live config: /etc/netwatchm/netwatchm.yaml — restart service after edits
 - Email password: never in YAML, use NETWATCHM_EMAIL_PASSWORD env var
 - GeoLite2-City DB: `geolite2-city-gzip/GeoLite2-City.mmdb` (local) / `/var/lib/netwatchm/GeoLite2-City.mmdb` (production)
