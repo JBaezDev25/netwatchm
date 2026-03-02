@@ -21,6 +21,7 @@ from .detector import (
     ExfiltrationDetector,
     NewIPDetector,
     PortScanDetector,
+    TorExitDetector,
 )
 from .interface import detect_interface
 from .inventory.exporter import export_inventory
@@ -72,6 +73,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
         BruteForceDetector(config.thresholds.brute_force),
         ExfiltrationDetector(config.thresholds.exfiltration),
         NewIPDetector(config.thresholds.new_ip, config.baseline_period),
+        TorExitDetector(config.thresholds.tor_exit),
     ]
 
     # --- Scorer ---
@@ -278,6 +280,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
                         config.inventory.arp_scan.interval,
                         config.inventory.arp_scan.network,
                         stop_event,
+                        alert_queue,
                     ),
                     name="arp_scanner",
                 )
@@ -381,6 +384,15 @@ def _fmt_bytes(n: int) -> str:
     return f"{n:.0f} TB"
 
 
+def _deep_inspect_subcommand(args: argparse.Namespace, _config: Config) -> None:
+    """Handle `netwatchm deep-inspect` subcommand."""
+    from .reports.deep_inspect import render_deep_inspect_html, run_deep_inspect
+
+    result = run_deep_inspect(args.target, args.ports, db_path=args.db_path or "")
+    render_deep_inspect_html(result, args.output)
+    print(f"Deep inspect report written to {args.output}")
+
+
 def _investigate_subcommand(args: argparse.Namespace, _config: Config) -> None:
     """Handle `netwatchm investigate` subcommand."""
     from .reports.investigate_report import render_investigation_html, run_msf_scan
@@ -394,6 +406,19 @@ def _investigate_subcommand(args: argparse.Namespace, _config: Config) -> None:
     ports_found = results.get("open_ports", [])
     print(f"Scan complete ({tool}): {len(ports_found)} open port(s) found.")
     print(f"Report saved: {output}")
+
+
+def _analytics_subcommand(args: argparse.Namespace, _config: Config) -> None:
+    """Handle `netwatchm analytics` subcommand."""
+    import os
+    from .reports.analytics_report import render_analytics_html
+    from .reports.flow_store import DEFAULT_DB, FlowStore
+
+    db_path = args.db_path or os.environ.get("NETWATCHM_FLOW_DB", DEFAULT_DB)
+    with FlowStore(db_path) as store:
+        data = store.query_analytics()
+    render_analytics_html(data, args.output)
+    print(f"Analytics report written to {args.output}")
 
 
 def _report_subcommand(args: argparse.Namespace, config: Config) -> None:
@@ -427,6 +452,16 @@ def _report_subcommand(args: argparse.Namespace, config: Config) -> None:
     if not flows:
         print("No flows captured. (Try running with sudo for full packet access.)")
         return
+
+    # Persist to flow store (best-effort — never blocks rendering)
+    import os
+    from .reports.flow_store import DEFAULT_DB, FlowStore
+    db_path = os.environ.get("NETWATCHM_FLOW_DB", DEFAULT_DB)
+    try:
+        with FlowStore(db_path) as store:
+            store.insert_flows(flows)
+    except Exception as exc:
+        logger.warning("Could not persist flows to store: %s", exc)
 
     if fmt == "html":
         render_html(flows, output=output, network=network, duration=duration)
@@ -532,6 +567,16 @@ def main() -> None:
         help="output HTML path (default: /tmp/netwatchm-investigate-<ip>.html)",
     )
 
+    deep_p = subparsers.add_parser("deep-inspect", help="Deep security inspection of a target IP")
+    deep_p.add_argument("--target", required=True, metavar="IP", help="IP address to inspect")
+    deep_p.add_argument("--ports", default="", help="comma-separated ports to scan (default: common ports)")
+    deep_p.add_argument("--output", default="deep-inspect.html", metavar="FILE", help="output HTML path")
+    deep_p.add_argument("--db-path", default="", metavar="PATH", help="path to GeoLite2-City.mmdb (overrides default)")
+
+    anal_p = subparsers.add_parser("analytics", help="Render analytics portal from flow store")
+    anal_p.add_argument("--output", default="analytics.html", metavar="FILE", help="output HTML path")
+    anal_p.add_argument("--db-path", default="", metavar="PATH", help="path to flows.db (overrides default)")
+
     args = parser.parse_args()
     _setup_logging(args.log_level)
 
@@ -557,6 +602,14 @@ def main() -> None:
 
     if args.subcommand == "investigate":
         _investigate_subcommand(args, config)
+        return
+
+    if args.subcommand == "deep-inspect":
+        _deep_inspect_subcommand(args, config)
+        return
+
+    if args.subcommand == "analytics":
+        _analytics_subcommand(args, config)
         return
 
     try:

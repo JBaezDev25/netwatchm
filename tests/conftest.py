@@ -14,6 +14,7 @@ from netwatchm.config import (
     NewIPThreshold,
     PortScanThreshold,
     Thresholds,
+    TorExitConfig,
 )
 from netwatchm.models import Packet, ThreatLevel
 
@@ -62,3 +63,8 @@ def exfiltration_threshold() -> ExfiltrationThreshold:
 @pytest.fixture
 def new_ip_threshold() -> NewIPThreshold:
     return NewIPThreshold(enabled=True)
+
+
+@pytest.fixture
+def tor_exit_config() -> TorExitConfig:
+    return TorExitConfig(alert_window_seconds=10)

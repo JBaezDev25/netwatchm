@@ -11,11 +11,13 @@ from netwatchm.config import (
     ExfiltrationThreshold,
     NewIPThreshold,
     PortScanThreshold,
+    TorExitConfig,
 )
 from netwatchm.detector.brute_force import BruteForceDetector
 from netwatchm.detector.exfiltration import ExfiltrationDetector
 from netwatchm.detector.new_ip import NewIPDetector
 from netwatchm.detector.port_scan import PortScanDetector
+from netwatchm.detector.tor_exit import TorExitDetector
 from netwatchm.models import Packet, ThreatLevel
 from .conftest import make_packet
 
@@ -189,3 +191,73 @@ class TestNewIPDetector:
         det.add_known_ip("10.0.0.1")  # default dst_ip in make_packet
         result = det.process(make_packet(src_ip="9.9.9.9"))
         assert result is None
+
+
+# ──────────────── Tor Exit ────────────────
+
+class TestTorExitDetector:
+    TOR_IP = "198.51.100.1"  # fake Tor exit IP for testing
+
+    def _detector(self, **kwargs) -> TorExitDetector:
+        cfg = TorExitConfig(**{"alert_window_seconds": 10, **kwargs})
+        return TorExitDetector(cfg, exit_ips={self.TOR_IP})
+
+    def test_no_alert_normal_traffic(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(src_ip="192.168.1.1", dst_ip="8.8.8.8"))
+        assert result is None
+
+    def test_alert_inbound_tor_src(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        assert result is not None
+        assert result.alert_type == "TOR_EXIT"
+        assert result.level == ThreatLevel.HIGH
+        assert "inbound from Tor" in result.description
+        assert self.TOR_IP in result.description
+
+    def test_alert_outbound_tor_dst(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(src_ip="192.168.1.1", dst_ip=self.TOR_IP))
+        assert result is not None
+        assert result.alert_type == "TOR_EXIT"
+        assert result.level == ThreatLevel.HIGH
+        assert "outbound to Tor" in result.description
+        assert self.TOR_IP in result.description
+
+    def test_dedup_suppresses_second_alert(self) -> None:
+        det = self._detector()
+        first = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        second = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        assert first is not None
+        assert second is None
+
+    def test_dedup_expires_and_re_alerts(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        first = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        assert first is not None
+        # Manually backdate the recorded alert time to simulate window expiry
+        det._alerted[self.TOR_IP] = time.time() - 2
+        second = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        assert second is not None
+
+    def test_disabled_no_alert(self) -> None:
+        det = self._detector(enabled=False)
+        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        assert result is None
+
+    def test_flush_expired_clears_alerted(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        assert self.TOR_IP in det._alerted
+        # Backdate to make entry expired
+        det._alerted[self.TOR_IP] = time.time() - 2
+        det.flush_expired()
+        assert self.TOR_IP not in det._alerted
+
+    def test_alert_type_and_level(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
+        assert result is not None
+        assert result.alert_type == "TOR_EXIT"
+        assert result.level == ThreatLevel.HIGH

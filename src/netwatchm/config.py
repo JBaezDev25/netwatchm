@@ -34,11 +34,20 @@ class NewIPThreshold:
 
 
 @dataclass
+class TorExitConfig:
+    enabled: bool = True
+    list_url: str = "https://check.torproject.org/torbulkexitlist"
+    refresh_hours: int = 24
+    alert_window_seconds: int = 300  # re-alert same IP after 5 min
+
+
+@dataclass
 class Thresholds:
     port_scan: PortScanThreshold = field(default_factory=PortScanThreshold)
     brute_force: BruteForceThreshold = field(default_factory=BruteForceThreshold)
     exfiltration: ExfiltrationThreshold = field(default_factory=ExfiltrationThreshold)
     new_ip: NewIPThreshold = field(default_factory=NewIPThreshold)
+    tor_exit: TorExitConfig = field(default_factory=TorExitConfig)
 
 
 @dataclass
