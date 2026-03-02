@@ -114,17 +114,34 @@
           "url": "http://127.0.0.1:8766/api/inventory/total",
           "parser": "backend",
           "columns": [
-            {"selector": "time", "text": "Time", "type": "timestamp_epoch_ms"},
-            {"selector": "value", "text": "Value", "type": "number"}
+            {
+              "selector": "time",
+              "text": "Time",
+              "type": "timestamp_epoch_ms"
+            },
+            {
+              "selector": "value",
+              "text": "Value",
+              "type": "number"
+            }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ],
       "transformations": [
         {
           "id": "filterFieldsByName",
-          "options": {"include": {"names": ["Value"]}}
+          "options": {
+            "include": {
+              "names": [
+                "Value"
+              ]
+            }
+          }
         }
       ]
     },
@@ -184,17 +201,34 @@
           "url": "http://127.0.0.1:8766/api/inventory/high",
           "parser": "backend",
           "columns": [
-            {"selector": "time", "text": "Time", "type": "timestamp_epoch_ms"},
-            {"selector": "value", "text": "Value", "type": "number"}
+            {
+              "selector": "time",
+              "text": "Time",
+              "type": "timestamp_epoch_ms"
+            },
+            {
+              "selector": "value",
+              "text": "Value",
+              "type": "number"
+            }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ],
       "transformations": [
         {
           "id": "filterFieldsByName",
-          "options": {"include": {"names": ["Value"]}}
+          "options": {
+            "include": {
+              "names": [
+                "Value"
+              ]
+            }
+          }
         }
       ]
     },
@@ -254,17 +288,34 @@
           "url": "http://127.0.0.1:8766/api/inventory/medium",
           "parser": "backend",
           "columns": [
-            {"selector": "time", "text": "Time", "type": "timestamp_epoch_ms"},
-            {"selector": "value", "text": "Value", "type": "number"}
+            {
+              "selector": "time",
+              "text": "Time",
+              "type": "timestamp_epoch_ms"
+            },
+            {
+              "selector": "value",
+              "text": "Value",
+              "type": "number"
+            }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ],
       "transformations": [
         {
           "id": "filterFieldsByName",
-          "options": {"include": {"names": ["Value"]}}
+          "options": {
+            "include": {
+              "names": [
+                "Value"
+              ]
+            }
+          }
         }
       ]
     },
@@ -324,17 +375,34 @@
           "url": "http://127.0.0.1:8766/api/inventory/low",
           "parser": "backend",
           "columns": [
-            {"selector": "time", "text": "Time", "type": "timestamp_epoch_ms"},
-            {"selector": "value", "text": "Value", "type": "number"}
+            {
+              "selector": "time",
+              "text": "Time",
+              "type": "timestamp_epoch_ms"
+            },
+            {
+              "selector": "value",
+              "text": "Value",
+              "type": "number"
+            }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ],
       "transformations": [
         {
           "id": "filterFieldsByName",
-          "options": {"include": {"names": ["Value"]}}
+          "options": {
+            "include": {
+              "names": [
+                "Value"
+              ]
+            }
+          }
         }
       ]
     },
@@ -423,25 +491,33 @@
       "targets": [
         {
           "refId": "A",
-          "type": "uql",
+          "type": "json",
           "source": "url",
-          "url": "http://127.0.0.1:8766/inventory.json",
-          "parser": "jsonata",
+          "url": "http://127.0.0.1:8766/api/inventory/stats",
+          "parser": "backend",
           "root_selector": "",
           "columns": [
             {
-              "selector": "threat_level",
-              "text": "Threat",
-              "type": "string"
+              "selector": "high",
+              "text": "HIGH",
+              "type": "number"
+            },
+            {
+              "selector": "medium",
+              "text": "MEDIUM",
+              "type": "number"
+            },
+            {
+              "selector": "low",
+              "text": "LOW",
+              "type": "number"
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""},
-          "group_by": [
-            {
-              "column": "Threat"
-            }
-          ]
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -647,7 +723,10 @@
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -713,7 +792,10 @@
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -775,7 +857,10 @@
           "root_selector": "",
           "columns": [],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -825,7 +910,10 @@
           "root_selector": "",
           "columns": [],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -874,13 +962,16 @@
           "root_selector": "",
           "columns": [],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
     {
       "id": 12,
-      "type": "barchart",
+      "type": "table",
       "title": "Top Devices by Data Sent",
       "gridPos": {
         "h": 10,
@@ -889,28 +980,81 @@
         "y": 37
       },
       "options": {
-        "barRadius": 0.05,
-        "barWidth": 0.7,
-        "groupWidth": 0.7,
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "horizontal",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single"
-        }
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "bytes"
+          }
+        ]
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes",
-          "color": {
-            "mode": "palette-classic"
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "IP"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Events for this IP",
+                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                    "targetBlank": true
+                  },
+                  {
+                    "title": "Deep Inspect",
+                    "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hostname"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Bytes Sent"
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -919,31 +1063,38 @@
       "targets": [
         {
           "refId": "A",
-          "type": "uql",
+          "type": "json",
           "source": "url",
           "url": "http://127.0.0.1:8766/api/flows/devices",
-          "parser": "jsonata",
-          "root_selector": "",
+          "parser": "backend",
           "columns": [
             {
+              "selector": "ip",
+              "text": "ip",
+              "type": "string"
+            },
+            {
               "selector": "host",
-              "text": "Device",
+              "text": "host",
               "type": "string"
             },
             {
               "selector": "bytes",
-              "text": "Bytes",
+              "text": "bytes",
               "type": "number"
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
     {
       "id": 13,
-      "type": "barchart",
+      "type": "table",
       "title": "Top Destinations",
       "gridPos": {
         "h": 10,
@@ -952,28 +1103,93 @@
         "y": 37
       },
       "options": {
-        "barRadius": 0.05,
-        "barWidth": 0.7,
-        "groupWidth": 0.7,
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "horizontal",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single"
-        }
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "bytes"
+          }
+        ]
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes",
-          "color": {
-            "mode": "palette-classic"
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "IP"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Events for this IP",
+                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                    "targetBlank": true
+                  },
+                  {
+                    "title": "Deep Inspect",
+                    "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "domain"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Domain / Host"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "port"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Port"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Bytes"
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -982,25 +1198,37 @@
       "targets": [
         {
           "refId": "A",
-          "type": "uql",
+          "type": "json",
           "source": "url",
           "url": "http://127.0.0.1:8766/api/flows/destinations",
-          "parser": "jsonata",
-          "root_selector": "",
+          "parser": "backend",
           "columns": [
             {
-              "selector": "domain",
-              "text": "Destination",
+              "selector": "ip",
+              "text": "ip",
               "type": "string"
             },
             {
+              "selector": "domain",
+              "text": "domain",
+              "type": "string"
+            },
+            {
+              "selector": "port",
+              "text": "port",
+              "type": "number"
+            },
+            {
               "selector": "bytes",
-              "text": "Bytes",
+              "text": "bytes",
               "type": "number"
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -1063,7 +1291,317 @@
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Intelligence",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "table",
+      "title": "Trigger Sites",
+      "description": "Adult-content domains accessed by local devices (ADULT_DOMAIN alerts)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 58
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "last_seen"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "src_ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Source IP"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View Events",
+                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "domain"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Trigger Site"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "count"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hits"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "last_seen"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Last Seen"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsLocal"
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_NETWATCHM}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "url": "http://127.0.0.1:8766/api/events/adult-domains",
+          "parser": "backend",
+          "columns": [
+            {
+              "selector": "src_ip",
+              "text": "src_ip",
+              "type": "string"
+            },
+            {
+              "selector": "domain",
+              "text": "domain",
+              "type": "string"
+            },
+            {
+              "selector": "count",
+              "text": "count",
+              "type": "number"
+            },
+            {
+              "selector": "last_seen",
+              "text": "last_seen",
+              "type": "timestamp_epoch_ms"
+            }
+          ],
+          "filters": [],
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Browsing Activity",
+      "description": "Local devices and the sites they are visiting (top 200 by bytes)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 58
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "bytes"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "src_ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Source IP"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View Events",
+                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                    "targetBlank": true
+                  },
+                  {
+                    "title": "Deep Inspect",
+                    "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Device"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "site"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Site / Destination"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "port"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Port"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Bytes"
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_NETWATCHM}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "url": "http://127.0.0.1:8766/api/flows/browsing",
+          "parser": "backend",
+          "columns": [
+            {
+              "selector": "src_ip",
+              "text": "src_ip",
+              "type": "string"
+            },
+            {
+              "selector": "device",
+              "text": "device",
+              "type": "string"
+            },
+            {
+              "selector": "site",
+              "text": "site",
+              "type": "string"
+            },
+            {
+              "selector": "port",
+              "text": "port",
+              "type": "number"
+            },
+            {
+              "selector": "bytes",
+              "text": "bytes",
+              "type": "number"
+            }
+          ],
+          "filters": [],
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     },
@@ -1128,7 +1666,10 @@
             }
           ],
           "filters": [],
-          "url_options": {"method": "GET", "data": ""}
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
         }
       ]
     }
@@ -1151,5 +1692,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 2
+  "version": 4
 }

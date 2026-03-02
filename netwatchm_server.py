@@ -905,6 +905,80 @@ def _ensure_cert() -> None:
 HTTP_PORT = int(os.environ.get("NETWATCHM_HTTP_PORT", "8766"))
 
 
+def _query_adult_domains() -> list[dict]:
+    """Return ADULT_DOMAIN events grouped by src_ip + domain, newest first."""
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return []
+    con = sqlite3.connect(str(db))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.execute("""
+            SELECT src_ip,
+                   description,
+                   COUNT(*) AS count,
+                   MAX(timestamp) AS last_seen
+            FROM events
+            WHERE alert_type = 'ADULT_DOMAIN'
+            GROUP BY src_ip, description
+            ORDER BY last_seen DESC
+            LIMIT 200
+        """)
+        rows = []
+        for r in cur.fetchall():
+            desc = r["description"] or ""
+            # "Adult domain accessed (DNS): xvideos.com" → "xvideos.com"
+            domain = desc.split(": ", 1)[-1] if ": " in desc else desc
+            rows.append({
+                "src_ip": r["src_ip"] or "—",
+                "domain": domain,
+                "count": r["count"],
+                "last_seen": r["last_seen"],
+            })
+        return rows
+    finally:
+        con.close()
+
+
+def _query_browsing() -> list[dict]:
+    """Return local-device browsing activity: src → site, grouped by device + site."""
+    db = Path(FLOW_DB)
+    if not db.exists():
+        return []
+    con = sqlite3.connect(str(db))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.execute("""
+            SELECT src_ip,
+                   MAX(src_host) AS src_host,
+                   COALESCE(domain, dst_ip) AS site,
+                   dst_port,
+                   COALESCE(SUM(bytes), 0) AS bytes
+            FROM flows
+            WHERE src_ip LIKE '192.168.%'
+               OR src_ip LIKE '10.%'
+               OR src_ip LIKE '172.1_.%'
+               OR src_ip LIKE '172.2_.%'
+               OR src_ip LIKE '172.30.%'
+               OR src_ip LIKE '172.31.%'
+            GROUP BY src_ip, COALESCE(domain, dst_ip), dst_port
+            ORDER BY bytes DESC
+            LIMIT 200
+        """)
+        return [
+            {
+                "src_ip": r["src_ip"],
+                "device": r["src_host"] or r["src_ip"],
+                "site": r["site"] or "—",
+                "port": r["dst_port"],
+                "bytes": r["bytes"],
+            }
+            for r in cur.fetchall()
+        ]
+    finally:
+        con.close()
+
+
 class GrafanaHandler(BaseHTTPRequestHandler):
     """Minimal plain-HTTP handler for Grafana Infinity datasource (localhost only)."""
 
@@ -951,6 +1025,20 @@ class GrafanaHandler(BaseHTTPRequestHandler):
                 self._send_json([{"time": now_ms, "value": counts[metric]}])
             else:
                 self._send_json({"error": "unknown metric"}, 404)
+            return
+
+        if path == "/api/flows/browsing":
+            try:
+                self._send_json(_query_browsing())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/events/adult-domains":
+            try:
+                self._send_json(_query_adult_domains())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
             return
 
         if path.startswith("/api/flows/"):
