@@ -35,6 +35,8 @@ class Packet:
     length: int               # frame length in bytes
     protocol: str | None      # e.g. "TCP", "UDP", "DNS"
     ip_proto: int | None      # IP protocol number
+    dns_query: str | None = None   # from dns.qry.name
+    sni: str | None = None         # from tls.handshake.extensions_server_name
 
 
 @dataclass

@@ -7,6 +7,7 @@ from datetime import datetime
 import pytest
 
 from netwatchm.config import (
+    AdultDomainConfig,
     BruteForceThreshold,
     Config,
     ExfiltrationThreshold,
@@ -27,6 +28,8 @@ def make_packet(
     length: int = 100,
     protocol: str | None = "TCP",
     timestamp: float | None = None,
+    dns_query: str | None = None,
+    sni: str | None = None,
 ) -> Packet:
     return Packet(
         timestamp=timestamp or time.time(),
@@ -37,6 +40,8 @@ def make_packet(
         length=length,
         protocol=protocol,
         ip_proto=6,
+        dns_query=dns_query,
+        sni=sni,
     )
 
 
@@ -68,3 +73,8 @@ def new_ip_threshold() -> NewIPThreshold:
 @pytest.fixture
 def tor_exit_config() -> TorExitConfig:
     return TorExitConfig(alert_window_seconds=10)
+
+
+@pytest.fixture
+def adult_domain_config() -> AdultDomainConfig:
+    return AdultDomainConfig(alert_window_seconds=10)

@@ -7,12 +7,14 @@ from unittest.mock import patch
 import pytest
 
 from netwatchm.config import (
+    AdultDomainConfig,
     BruteForceThreshold,
     ExfiltrationThreshold,
     NewIPThreshold,
     PortScanThreshold,
     TorExitConfig,
 )
+from netwatchm.detector.adult_domain import AdultDomainDetector
 from netwatchm.detector.brute_force import BruteForceDetector
 from netwatchm.detector.exfiltration import ExfiltrationDetector
 from netwatchm.detector.new_ip import NewIPDetector
@@ -261,3 +263,99 @@ class TestTorExitDetector:
         assert result is not None
         assert result.alert_type == "TOR_EXIT"
         assert result.level == ThreatLevel.HIGH
+
+
+# ──────────────── Adult Domain ────────────────
+
+class TestAdultDomainDetector:
+    ADULT_DOMAIN = "xvideos.com"  # fake domain in test set
+
+    def _detector(self, **kwargs) -> AdultDomainDetector:
+        cfg = AdultDomainConfig(**{"alert_window_seconds": 10, **kwargs})
+        return AdultDomainDetector(cfg, domain_set={self.ADULT_DOMAIN})
+
+    def test_no_alert_normal_dns(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query="example.com"))
+        assert result is None
+
+    def test_alert_on_dns_query(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        assert result is not None
+        assert result.alert_type == "ADULT_DOMAIN"
+        assert result.level == ThreatLevel.MEDIUM
+        assert "DNS" in result.description
+        assert self.ADULT_DOMAIN in result.description
+
+    def test_alert_on_sni(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(sni=self.ADULT_DOMAIN))
+        assert result is not None
+        assert result.alert_type == "ADULT_DOMAIN"
+        assert "SNI" in result.description
+
+    def test_dns_takes_priority_over_sni(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=self.ADULT_DOMAIN, sni=self.ADULT_DOMAIN))
+        assert result is not None
+        assert "DNS" in result.description
+
+    def test_dedup_suppresses_second(self) -> None:
+        det = self._detector()
+        first = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        second = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        assert first is not None
+        assert second is None
+
+    def test_dedup_per_device(self) -> None:
+        det = self._detector()
+        r1 = det.process(make_packet(src_ip="192.168.1.1", dns_query=self.ADULT_DOMAIN))
+        r2 = det.process(make_packet(src_ip="192.168.1.2", dns_query=self.ADULT_DOMAIN))
+        assert r1 is not None
+        assert r2 is not None
+
+    def test_dedup_expires_re_alerts(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        first = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        assert first is not None
+        key = f"192.168.1.100:{self.ADULT_DOMAIN}"
+        det._alerted[key] = time.time() - 2
+        second = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        assert second is not None
+
+    def test_disabled_no_alert(self) -> None:
+        det = self._detector(enabled=False)
+        result = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        assert result is None
+
+    def test_flush_expired_clears_alerted(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        key = f"192.168.1.100:{self.ADULT_DOMAIN}"
+        assert key in det._alerted
+        det._alerted[key] = time.time() - 2
+        det.flush_expired()
+        assert key not in det._alerted
+
+    def test_alert_type_and_level(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
+        assert result is not None
+        assert result.alert_type == "ADULT_DOMAIN"
+        assert result.level == ThreatLevel.MEDIUM
+
+    def test_extra_domains_blocked(self) -> None:
+        det = AdultDomainDetector(
+            AdultDomainConfig(alert_window_seconds=10, extra_domains=["custom-adult.example"]),
+            domain_set=set(),
+        )
+        result = det.process(make_packet(dns_query="custom-adult.example"))
+        assert result is not None
+        assert result.alert_type == "ADULT_DOMAIN"
+
+    def test_fqdn_trailing_dot_stripped(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=f"{self.ADULT_DOMAIN}."))
+        assert result is not None
+        assert self.ADULT_DOMAIN in result.description

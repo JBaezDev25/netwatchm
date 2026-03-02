@@ -21,6 +21,8 @@ TSHARK_FIELDS = [
     "-e", "frame.len",
     "-e", "ip.proto",
     "-e", "_ws.col.Protocol",
+    "-e", "dns.qry.name",
+    "-e", "tls.handshake.extensions_server_name",
 ]
 
 
@@ -95,6 +97,8 @@ def _parse_line(line: str) -> Packet | None:
         length=_int("frame_len") or 0,
         protocol=_str("_ws_col_Protocol"),
         ip_proto=_int("ip_proto"),
+        dns_query=_str("dns_qry_name"),
+        sni=_str("tls_handshake_extensions_server_name"),
     )
 
 

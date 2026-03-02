@@ -42,12 +42,22 @@ class TorExitConfig:
 
 
 @dataclass
+class AdultDomainConfig:
+    enabled: bool = True
+    list_url: str = "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts"
+    refresh_hours: int = 24
+    alert_window_seconds: int = 3600  # re-alert same src_ip after 1 hour
+    extra_domains: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Thresholds:
     port_scan: PortScanThreshold = field(default_factory=PortScanThreshold)
     brute_force: BruteForceThreshold = field(default_factory=BruteForceThreshold)
     exfiltration: ExfiltrationThreshold = field(default_factory=ExfiltrationThreshold)
     new_ip: NewIPThreshold = field(default_factory=NewIPThreshold)
     tor_exit: TorExitConfig = field(default_factory=TorExitConfig)
+    adult_domain: AdultDomainConfig = field(default_factory=AdultDomainConfig)
 
 
 @dataclass
@@ -156,6 +166,7 @@ def load_config(path: str | Path | None = None) -> Config:
     bf = thresh_raw.get("brute_force", {})
     ex = thresh_raw.get("exfiltration", {})
     ni = thresh_raw.get("new_ip", {})
+    ad = thresh_raw.get("adult_domain", {})
 
     alerts_raw = raw.get("alerts", {})
     log_raw = alerts_raw.get("log", {})
@@ -183,6 +194,13 @@ def load_config(path: str | Path | None = None) -> Config:
             ),
             new_ip=NewIPThreshold(
                 enabled=ni.get("enabled", True),
+            ),
+            adult_domain=AdultDomainConfig(
+                enabled=ad.get("enabled", True),
+                list_url=ad.get("list_url", "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts"),
+                refresh_hours=ad.get("refresh_hours", 24),
+                alert_window_seconds=ad.get("alert_window_seconds", 3600),
+                extra_domains=ad.get("extra_domains", []),
             ),
         ),
         alerts=AlertsConfig(
