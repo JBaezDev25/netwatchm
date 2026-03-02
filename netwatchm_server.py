@@ -2,22 +2,42 @@
 """NetWatchM web server — serves dashboard and triggers connection reports via API."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 import os
+import shutil
+import sqlite3
 import ssl
 import subprocess
 import threading
+import time as _time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+
+def _classify_ip(ip_str: str) -> str:
+    """Return 'Local(IP)' for RFC-1918/loopback/multicast, 'External(IP)' otherwise."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
+            return "Local(IP)"
+        return "External(IP)"
+    except ValueError:
+        return "External(IP)"
 
 SERVE_DIR = Path(os.environ.get("NETWATCHM_SERVE_DIR", "/var/lib/netwatchm"))
 PORT = int(os.environ.get("NETWATCHM_PORT", "8765"))
 NETWATCHM_CMD = os.environ.get("NETWATCHM_CMD", "netwatchm")
 NETWATCHM_CONFIG = os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml")
 DEFAULT_NETWORK = os.environ.get("NETWATCHM_NETWORK", "192.168.1.0/24")
+GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB", "/var/lib/netwatchm/GeoLite2-City.mmdb")
+FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",  "/var/lib/netwatchm/flows.db")
+EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB", "/var/lib/netwatchm/events.db")
+REPORTS_DIR = SERVE_DIR / "reports"
+REPORTS_MAX = 50  # keep this many archived reports
 
 _lock = threading.Lock()
 _state: dict = {
@@ -27,6 +47,80 @@ _state: dict = {
     "network": None,
     "error": None,
 }
+
+# Investigation state keyed by target IP
+_inv_lock = threading.Lock()
+_inv_state: dict[str, dict] = {}   # {ip: {status, error}}
+
+# Deep inspect state keyed by target IP
+_deep_lock = threading.Lock()
+_deep_state: dict[str, dict] = {}  # {ip: {status, error}}
+
+# Analytics state
+_anal_lock = threading.Lock()
+_anal_state: dict = {"status": "idle", "error": None, "generated_at": None}
+
+
+def _run_deep_inspect(target_ip: str, ports: str) -> None:
+    """Run netwatchm deep-inspect in a background thread, write HTML to SERVE_DIR."""
+    with _deep_lock:
+        _deep_state[target_ip] = {"status": "running", "error": None}
+    try:
+        out_path = SERVE_DIR / f"deep-inspect-{target_ip}.html"
+        cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
+               "deep-inspect", "--target", target_ip, "--output", str(out_path),
+               "--db-path", GEOIP_DB]
+        if ports:
+            cmd += ["--ports", ports]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "deep-inspect failed")
+        with _deep_lock:
+            _deep_state[target_ip] = {"status": "ready", "error": None}
+    except Exception as exc:
+        with _deep_lock:
+            _deep_state[target_ip] = {"status": "error", "error": str(exc)}
+
+
+def _run_analytics() -> None:
+    """Regenerate analytics.html from the flow store in a background thread."""
+    from datetime import datetime, timezone
+    with _anal_lock:
+        _anal_state.update({"status": "running", "error": None})
+    try:
+        out_path = SERVE_DIR / "analytics.html"
+        cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
+               "analytics", "--output", str(out_path), "--db-path", FLOW_DB]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "analytics failed")
+        with _anal_lock:
+            _anal_state.update({
+                "status": "ready",
+                "error": None,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as exc:
+        with _anal_lock:
+            _anal_state.update({"status": "error", "error": str(exc)})
+
+
+def _run_investigate(target_ip: str, ports: str) -> None:
+    """Run netwatchm investigate in a background thread, write HTML to SERVE_DIR."""
+    out_path = SERVE_DIR / f"investigate-{target_ip}.html"
+    try:
+        cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
+               "investigate", "--target", target_ip, "--output", str(out_path)]
+        if ports:
+            cmd += ["--ports", ports]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "investigate failed")
+        with _inv_lock:
+            _inv_state[target_ip] = {"status": "ready", "error": None}
+    except Exception as exc:
+        with _inv_lock:
+            _inv_state[target_ip] = {"status": "error", "error": str(exc)}
 
 
 def _run_report(duration: int, network: str) -> None:
@@ -48,10 +142,12 @@ def _run_report(duration: int, network: str) -> None:
         )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "netwatchm report failed")
+        now = datetime.now(timezone.utc)
+        _archive_report(html_path, now)
         with _lock:
             _state.update({
                 "status": "ready",
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": now.isoformat(),
                 "error": None,
             })
     except Exception as exc:
@@ -61,6 +157,514 @@ def _run_report(duration: int, network: str) -> None:
                 "generated_at": None,
                 "error": str(exc),
             })
+
+
+def _archive_report(src: Path, ts: datetime) -> None:
+    """Copy src to REPORTS_DIR with a timestamp name; prune oldest if over REPORTS_MAX."""
+    try:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = ts.strftime("%Y-%m-%dT%H-%M-%SZ")
+        dest = REPORTS_DIR / f"connection-report-{stamp}.html"
+        shutil.copy2(src, dest)
+        # Prune oldest archives beyond REPORTS_MAX
+        archives = sorted(REPORTS_DIR.glob("connection-report-*.html"))
+        for old in archives[:-REPORTS_MAX]:
+            old.unlink(missing_ok=True)
+    except Exception:
+        pass  # archiving is best-effort
+
+
+def _render_reports_index() -> bytes:
+    """Return a dark-theme HTML index of all archived reports."""
+    archives = sorted(
+        REPORTS_DIR.glob("connection-report-*.html"),
+        reverse=True,
+    )
+    rows = []
+    for p in archives:
+        # Parse timestamp from filename: connection-report-2026-02-28T14-30-00Z.html
+        name = p.stem  # connection-report-2026-02-28T14-30-00Z
+        ts_part = name.removeprefix("connection-report-")
+        try:
+            dt = datetime.strptime(ts_part, "%Y-%m-%dT%H-%M-%SZ")
+            display = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        except ValueError:
+            display = ts_part
+        size_kb = round(p.stat().st_size / 1024)
+        rows.append(
+            f"<tr>"
+            f"<td><a href='/reports/{p.name}'>{display}</a></td>"
+            f"<td class='num'>{size_kb} KB</td>"
+            f"<td><a href='/reports/{p.name}' target='_blank'>Open</a>"
+            f" &nbsp; <a href='/reports/{p.name}' download>Download</a></td>"
+            f"</tr>"
+        )
+    rows_html = "\n".join(rows) if rows else "<tr><td colspan='3' style='color:var(--muted)'>No archived reports yet.</td></tr>"
+    page = f"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>NetWatchM — Report History</title>
+<style>
+  :root {{ --bg:#0d1117; --surface:#161b22; --border:#30363d; --text:#c9d1d9; --accent:#58a6ff; --muted:#8b949e; }}
+  * {{ box-sizing:border-box; margin:0; padding:0; }}
+  body {{ background:var(--bg); color:var(--text); font-family:monospace; font-size:13px; padding:24px; }}
+  h1 {{ color:var(--accent); font-size:20px; margin-bottom:8px; }}
+  .meta {{ color:var(--muted); margin-bottom:20px; }}
+  table {{ width:100%; border-collapse:collapse; }}
+  th {{ background:var(--surface); color:var(--muted); text-transform:uppercase; font-size:11px;
+        padding:8px 10px; text-align:left; border-bottom:2px solid var(--border); }}
+  td {{ padding:8px 10px; border-bottom:1px solid var(--border); }}
+  tr:hover td {{ background:var(--surface); }}
+  .num {{ text-align:right; }}
+  a {{ color:var(--accent); text-decoration:none; }}
+  a:hover {{ text-decoration:underline; }}
+  .back {{ display:inline-block; margin-bottom:16px; color:var(--muted); font-size:12px; }}
+</style>
+</head><body>
+<a class="back" href="/connection-report.html">← Back to Live Report</a>
+<h1>NetWatchM — Report History</h1>
+<div class="meta">{len(archives)} saved report(s) &nbsp;|&nbsp; Max {REPORTS_MAX} kept</div>
+<table>
+<thead><tr><th>Generated (UTC)</th><th class="num">Size</th><th>Actions</th></tr></thead>
+<tbody>{rows_html}</tbody>
+</table>
+</body></html>"""
+    return page.encode()
+
+
+def _query_flows_endpoint(sub: str) -> object:
+    """Query flows.db directly and return JSON-serialisable data for Grafana."""
+    db = Path(FLOW_DB)
+    if not db.exists():
+        return []
+    con = sqlite3.connect(str(db))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.cursor()
+        if sub == "stats":
+            cur.execute(
+                "SELECT COUNT(*) AS flows,"
+                " COALESCE(SUM(bytes),0) AS bytes,"
+                " COALESCE(SUM(packets),0) AS packets FROM flows"
+            )
+            r = cur.fetchone()
+            # Return as single-element list so Infinity backend parser works
+            return [{"flows": r["flows"], "bytes": r["bytes"], "packets": r["packets"]}]
+        if sub == "devices":
+            cur.execute("""
+                SELECT src_ip AS ip, MAX(src_host) AS host,
+                       COALESCE(SUM(bytes),0) AS bytes
+                FROM flows GROUP BY src_ip ORDER BY bytes DESC LIMIT 20
+            """)
+            return [{"ip": r["ip"], "host": r["host"] or r["ip"], "bytes": r["bytes"]}
+                    for r in cur.fetchall()]
+        if sub == "destinations":
+            cur.execute("""
+                SELECT dst_ip AS ip, MAX(domain) AS domain,
+                       dst_port AS port, COALESCE(SUM(bytes),0) AS bytes
+                FROM flows GROUP BY dst_ip ORDER BY bytes DESC LIMIT 10
+            """)
+            return [{"ip": r["ip"], "domain": r["domain"] or r["ip"],
+                     "port": r["port"], "bytes": r["bytes"]}
+                    for r in cur.fetchall()]
+        if sub == "protocols":
+            cur.execute("""
+                SELECT COALESCE(protocol,'Other') AS name,
+                       COALESCE(SUM(bytes),0) AS bytes
+                FROM flows GROUP BY name ORDER BY bytes DESC
+            """)
+            return [{"name": r["name"], "bytes": r["bytes"]} for r in cur.fetchall()]
+        if sub == "hourly":
+            cur.execute("""
+                SELECT strftime('%Y-%m-%dT%H:00', captured_at) AS hour,
+                       COALESCE(SUM(bytes),0) AS bytes
+                FROM flows GROUP BY hour ORDER BY hour
+            """)
+            return [{"hour": r["hour"], "bytes": r["bytes"]} for r in cur.fetchall()]
+        return {"error": "unknown endpoint"}
+    finally:
+        con.close()
+
+
+def _query_events(
+    limit: int = 200,
+    alert_type: str | None = None,
+    level: str | None = None,
+    ip: str | None = None,
+) -> list[dict]:
+    """Query events.db and return JSON-serialisable list, newest first."""
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return []
+    con = sqlite3.connect(str(db))
+    con.row_factory = sqlite3.Row
+    try:
+        clauses: list[str] = []
+        params: list = []
+        if alert_type:
+            clauses.append("alert_type = ?")
+            params.append(alert_type)
+        if level:
+            clauses.append("level = ?")
+            params.append(level.upper())
+        if ip:
+            clauses.append("(src_ip = ? OR dst_ip = ?)")
+            params.extend([ip, ip])
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
+        cur = con.execute(
+            f"SELECT id, timestamp, alert_type, level, src_ip, dst_ip, description "
+            f"FROM events {where} ORDER BY timestamp DESC LIMIT ?",
+            params,
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        con.close()
+
+
+def _query_event_types() -> list[str]:
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return []
+    con = sqlite3.connect(str(db))
+    try:
+        cur = con.execute("SELECT DISTINCT alert_type FROM events ORDER BY alert_type")
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        con.close()
+
+
+def _render_events_html() -> bytes:
+    """Return the self-contained events portal SPA."""
+    page = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatchM — Threat Events</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --surface2:#21262d; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --low:#3fb950; --medium:#d29922; --high:#f85149; --critical:#ff7b72;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:monospace; font-size:13px; }
+  /* ── Top bar ── */
+  .topbar {
+    display:flex; align-items:center; gap:12px; padding:12px 20px;
+    background:var(--surface); border-bottom:1px solid var(--border);
+    flex-wrap:wrap;
+  }
+  .topbar h1 { color:var(--accent); font-size:16px; white-space:nowrap; margin-right:8px; }
+  .topbar a { color:var(--muted); font-size:12px; text-decoration:none; }
+  .topbar a:hover { color:var(--accent); }
+  .spacer { flex:1; }
+  .refresh-btn {
+    background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .refresh-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .countdown { color:var(--muted); font-size:11px; white-space:nowrap; }
+  /* ── Filter bar ── */
+  .filterbar {
+    display:flex; align-items:center; gap:8px; padding:10px 20px;
+    background:var(--surface); border-bottom:1px solid var(--border); flex-wrap:wrap;
+  }
+  .filterbar input, .filterbar select {
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    padding:5px 10px; border-radius:4px; font-family:monospace; font-size:12px;
+  }
+  .filterbar input { width:220px; }
+  .filterbar input:focus, .filterbar select:focus {
+    outline:none; border-color:var(--accent);
+  }
+  .filterbar label { color:var(--muted); font-size:12px; }
+  .result-count { color:var(--muted); font-size:12px; margin-left:auto; }
+  /* ── Table ── */
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  thead th {
+    background:var(--surface); color:var(--muted); text-transform:uppercase;
+    font-size:11px; padding:8px 12px; text-align:left;
+    border-bottom:2px solid var(--border); white-space:nowrap; position:sticky; top:0;
+  }
+  tbody tr { border-bottom:1px solid var(--border); cursor:pointer; }
+  tbody tr:hover td { background:var(--surface2); }
+  tbody tr.expanded td { background:var(--surface2); }
+  td { padding:8px 12px; vertical-align:top; white-space:nowrap; max-width:280px; overflow:hidden; text-overflow:ellipsis; }
+  td.desc { white-space:normal; color:var(--muted); font-size:12px; }
+  /* ── Detail row ── */
+  .detail-row td {
+    background:var(--surface); border-bottom:2px solid var(--accent);
+    padding:14px 20px; cursor:default; white-space:normal;
+  }
+  .detail-grid { display:flex; gap:24px; flex-wrap:wrap; }
+  .detail-field { display:flex; flex-direction:column; gap:3px; }
+  .detail-label { color:var(--muted); font-size:11px; text-transform:uppercase; }
+  .detail-value { color:var(--text); font-size:13px; }
+  .detail-desc { margin-top:10px; color:var(--text); font-size:13px; line-height:1.5; word-break:break-word; }
+  .deep-btn {
+    display:inline-block; margin-top:10px; background:var(--accent); color:#0d1117;
+    padding:5px 14px; border-radius:4px; font-family:monospace; font-size:12px;
+    text-decoration:none; font-weight:bold;
+  }
+  .deep-btn:hover { opacity:0.85; }
+  /* ── Level badges ── */
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:3px;
+    font-size:11px; font-weight:bold; text-transform:uppercase;
+  }
+  .badge-LOW      { background:#1a3a22; color:var(--low); }
+  .badge-MEDIUM   { background:#3a2f0e; color:var(--medium); }
+  .badge-HIGH     { background:#3a1214; color:var(--high); }
+  .badge-CRITICAL { background:#3a0f0f; color:var(--critical); }
+  /* ── Empty state ── */
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty .big { font-size:32px; margin-bottom:12px; }
+  /* ── Export btn ── */
+  .export-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .export-btn:hover { color:var(--accent); border-color:var(--accent); }
+  /* ── Auto-refresh toggle ── */
+  .auto-toggle {
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    color:var(--muted); font-size:12px; user-select:none;
+  }
+  .auto-toggle input { accent-color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>&#9888; NetWatchM &mdash; Threat Events</h1>
+  <a href="/connection-report.html">&#8592; Report</a>
+  <a href="/analytics.html">Analytics</a>
+  <div class="spacer"></div>
+  <label class="auto-toggle">
+    <input type="checkbox" id="autoRefresh" checked> Auto-refresh
+  </label>
+  <span class="countdown" id="countdown"></span>
+  <button class="refresh-btn" onclick="loadEvents()">&#8635; Refresh</button>
+  <button class="export-btn" onclick="exportCSV()">&#11123; CSV</button>
+</div>
+
+<div class="filterbar">
+  <label>Search:</label>
+  <input type="text" id="search" placeholder="IP, type, description…" oninput="applyFilters()">
+  <label>Level:</label>
+  <select id="levelFilter" onchange="applyFilters()">
+    <option value="">All</option>
+    <option value="LOW">LOW</option>
+    <option value="MEDIUM">MEDIUM</option>
+    <option value="HIGH">HIGH</option>
+    <option value="CRITICAL">CRITICAL</option>
+  </select>
+  <label>Type:</label>
+  <select id="typeFilter" onchange="applyFilters()">
+    <option value="">All</option>
+  </select>
+  <span class="result-count" id="resultCount"></span>
+</div>
+
+<div class="table-wrap">
+<table id="eventsTable">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Type</th>
+      <th>Level</th>
+      <th>Source IP</th>
+      <th>Dest IP</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+</div>
+
+<script>
+let _allEvents = [];
+let _expandedId = null;
+let _autoTimer = null;
+let _countdown = 15;
+
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())
+    +' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+}
+
+function badge(level) {
+  return `<span class="badge badge-${level}">${level}</span>`;
+}
+
+function esc(s) {
+  if (!s) return '—';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadEvents() {
+  resetCountdown();
+  try {
+    const [evts, types] = await Promise.all([
+      fetch('/api/events?limit=500').then(r => r.json()),
+      fetch('/api/events/types').then(r => r.json()),
+    ]);
+    _allEvents = evts;
+    _expandedId = null;
+    populateTypeFilter(types);
+    applyFilters();
+  } catch(e) {
+    document.getElementById('tbody').innerHTML =
+      '<tr><td colspan="6" style="color:var(--high);padding:20px">Failed to load events: '+esc(String(e))+'</td></tr>';
+  }
+}
+
+function populateTypeFilter(types) {
+  const sel = document.getElementById('typeFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  types.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    if (t === cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function applyFilters() {
+  const search = document.getElementById('search').value.toLowerCase();
+  const level  = document.getElementById('levelFilter').value;
+  const type   = document.getElementById('typeFilter').value;
+
+  const filtered = _allEvents.filter(e => {
+    if (level && e.level !== level) return false;
+    if (type  && e.alert_type !== type) return false;
+    if (search) {
+      const hay = [e.alert_type, e.level, e.src_ip, e.dst_ip, e.description]
+                    .join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  document.getElementById('resultCount').textContent =
+    filtered.length + ' of ' + _allEvents.length + ' events';
+
+  renderTable(filtered);
+}
+
+function renderTable(events) {
+  const tbody = document.getElementById('tbody');
+  if (events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">'
+      + '<div class="big">&#128268;</div>No events match your filters.</div></td></tr>';
+    return;
+  }
+  const rows = [];
+  events.forEach(e => {
+    const expanded = e.id === _expandedId;
+    rows.push(
+      `<tr class="${expanded?'expanded':''}" onclick="toggleDetail(${e.id})" data-id="${e.id}">
+        <td>${fmtTime(e.timestamp)}</td>
+        <td>${esc(e.alert_type)}</td>
+        <td>${badge(e.level)}</td>
+        <td>${esc(e.src_ip)}</td>
+        <td>${esc(e.dst_ip)}</td>
+        <td class="desc" title="${esc(e.description)}">${esc(e.description)}</td>
+      </tr>`
+    );
+    if (expanded) {
+      rows.push(buildDetailRow(e));
+    }
+  });
+  tbody.innerHTML = rows.join('');
+}
+
+function buildDetailRow(e) {
+  const deepLink = e.src_ip && !e.src_ip.startsWith('192.168') && !e.src_ip.startsWith('10.')
+    ? `<a class="deep-btn" href="/deep-inspect-${esc(e.src_ip)}.html" target="_blank">&#128269; Deep Inspect ${esc(e.src_ip)}</a>`
+    : '';
+  return `<tr class="detail-row" onclick="event.stopPropagation()">
+    <td colspan="6">
+      <div class="detail-grid">
+        <div class="detail-field"><span class="detail-label">ID</span><span class="detail-value">${e.id}</span></div>
+        <div class="detail-field"><span class="detail-label">Time</span><span class="detail-value">${fmtTime(e.timestamp)}</span></div>
+        <div class="detail-field"><span class="detail-label">Type</span><span class="detail-value">${esc(e.alert_type)}</span></div>
+        <div class="detail-field"><span class="detail-label">Level</span><span class="detail-value">${badge(e.level)}</span></div>
+        <div class="detail-field"><span class="detail-label">Source IP</span><span class="detail-value">${esc(e.src_ip)}</span></div>
+        <div class="detail-field"><span class="detail-label">Dest IP</span><span class="detail-value">${esc(e.dst_ip)}</span></div>
+      </div>
+      <div class="detail-desc">${esc(e.description)}</div>
+      ${deepLink}
+    </td>
+  </tr>`;
+}
+
+function toggleDetail(id) {
+  _expandedId = (_expandedId === id) ? null : id;
+  applyFilters();
+}
+
+function exportCSV() {
+  const search = document.getElementById('search').value.toLowerCase();
+  const level  = document.getElementById('levelFilter').value;
+  const type   = document.getElementById('typeFilter').value;
+  const filtered = _allEvents.filter(e => {
+    if (level && e.level !== level) return false;
+    if (type  && e.alert_type !== type) return false;
+    if (search) {
+      const hay = [e.alert_type, e.level, e.src_ip, e.dst_ip, e.description].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+  const cols = ['id','timestamp','alert_type','level','src_ip','dst_ip','description'];
+  const csv  = [cols.join(',')].concat(
+    filtered.map(e => cols.map(c => {
+      const v = c === 'timestamp' ? fmtTime(e[c]) : (e[c] ?? '');
+      return '"' + String(v).replace(/"/g,'""') + '"';
+    }).join(','))
+  ).join('\\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'netwatchm-events.csv';
+  a.click();
+}
+
+function resetCountdown() {
+  _countdown = 15;
+  document.getElementById('countdown').textContent = '';
+}
+
+function tickCountdown() {
+  if (!document.getElementById('autoRefresh').checked) {
+    document.getElementById('countdown').textContent = '';
+    return;
+  }
+  _countdown--;
+  if (_countdown <= 0) {
+    loadEvents();
+  } else {
+    document.getElementById('countdown').textContent = 'Next refresh in ' + _countdown + 's';
+  }
+}
+
+document.getElementById('autoRefresh').addEventListener('change', function() {
+  if (this.checked) { resetCountdown(); }
+  else { document.getElementById('countdown').textContent = ''; }
+});
+
+setInterval(tickCountdown, 1000);
+loadEvents();
+</script>
+</body>
+</html>"""
+    return page.encode()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -97,6 +701,77 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/report/status":
             with _lock:
                 self._send_json(dict(_state))
+            return
+
+        if path == "/api/investigate/status":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0]
+            with _inv_lock:
+                state = _inv_state.get(target, {"status": "unknown", "error": None})
+            self._send_json({"target": target, **state})
+            return
+
+        if path == "/api/deep-inspect/status":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0]
+            with _deep_lock:
+                st = _deep_state.get(target, {"status": "unknown", "error": None})
+            self._send_json({"target": target, **st})
+            return
+
+        if path == "/api/analytics/status":
+            with _anal_lock:
+                self._send_json(dict(_anal_state))
+            return
+
+        if path.startswith("/api/flows/"):
+            sub = path.removeprefix("/api/flows/")
+            try:
+                result = _query_flows_endpoint(sub)
+                self._send_json(result if isinstance(result, (list, dict)) else [])
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/events":
+            qs = parse_qs(parsed.query)
+            try:
+                events = _query_events(
+                    limit=min(int(qs.get("limit", ["500"])[0]), 1000),
+                    alert_type=qs.get("type", [None])[0] or None,
+                    level=qs.get("level", [None])[0] or None,
+                    ip=qs.get("ip", [None])[0] or None,
+                )
+                self._send_json(events)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/events/types":
+            try:
+                self._send_json(_query_event_types())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/events.html":
+            body = _render_events_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path in ("/reports", "/reports/"):
+            body = _render_reports_index()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         # Static file serving — prevent path traversal
@@ -138,6 +813,59 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"status": "running", "duration": duration, "network": network})
             return
 
+        if parsed.path == "/api/investigate":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0].strip()
+            ports  = qs.get("ports",  [""])[0].strip()
+            if not target:
+                self._send_json({"error": "target required"}, 400)
+                return
+            with _inv_lock:
+                if _inv_state.get(target, {}).get("status") == "running":
+                    self._send_json({"status": "running", "target": target})
+                    return
+                _inv_state[target] = {"status": "running", "error": None}
+            thread = threading.Thread(
+                target=_run_investigate, args=(target, ports), daemon=True
+            )
+            thread.start()
+            self._send_json({
+                "status": "running",
+                "target": target,
+                "result_url": f"/investigate-{target}.html",
+            })
+            return
+
+        if parsed.path == "/api/deep-inspect":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0].strip()
+            ports  = qs.get("ports",  [""])[0].strip()
+            if not target:
+                self._send_json({"error": "target required"}, 400)
+                return
+            with _deep_lock:
+                if _deep_state.get(target, {}).get("status") == "running":
+                    self._send_json({"error": "Deep inspect already running"}, 409)
+                    return
+            threading.Thread(
+                target=_run_deep_inspect, args=(target, ports), daemon=True
+            ).start()
+            self._send_json({
+                "status": "running",
+                "target": target,
+                "result_url": f"/deep-inspect-{target}.html",
+            })
+            return
+
+        if parsed.path == "/api/analytics":
+            with _anal_lock:
+                if _anal_state.get("status") == "running":
+                    self._send_json({"status": "running"}, 409)
+                    return
+            threading.Thread(target=_run_analytics, daemon=True).start()
+            self._send_json({"status": "running", "result_url": "/analytics.html"})
+            return
+
         self.send_error(404, "Not Found")
 
     def do_OPTIONS(self) -> None:
@@ -174,8 +902,76 @@ def _ensure_cert() -> None:
     print(f"Certificate written to {CERT_FILE}", flush=True)
 
 
+HTTP_PORT = int(os.environ.get("NETWATCHM_HTTP_PORT", "8766"))
+
+
+class GrafanaHandler(BaseHTTPRequestHandler):
+    """Minimal plain-HTTP handler for Grafana Infinity datasource (localhost only)."""
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _send_json(self, data: object, code: int = 200) -> None:
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+
+        if path == "/inventory.json":
+            inv = SERVE_DIR / "inventory.json"
+            if inv.exists():
+                devices = json.loads(inv.read_text())
+                for d in devices:
+                    d["ip_category"] = _classify_ip(d.get("ip", ""))
+                self._send_json(devices)
+            else:
+                self._send_json([])
+            return
+
+        if path.startswith("/api/inventory/"):
+            inv = SERVE_DIR / "inventory.json"
+            devices = json.loads(inv.read_text()) if inv.exists() else []
+            counts = {"total": len(devices), "high": 0, "medium": 0, "low": 0}
+            for d in devices:
+                lvl = (d.get("threat_level") or "").lower()
+                if lvl in counts:
+                    counts[lvl] += 1
+            metric = path.removeprefix("/api/inventory/")
+            now_ms = int(_time.time() * 1000)
+            if metric == "stats":
+                self._send_json([{**counts, "time": now_ms}])
+            elif metric in counts:
+                self._send_json([{"time": now_ms, "value": counts[metric]}])
+            else:
+                self._send_json({"error": "unknown metric"}, 404)
+            return
+
+        if path.startswith("/api/flows/"):
+            sub = path.removeprefix("/api/flows/")
+            try:
+                self._send_json(_query_flows_endpoint(sub))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        self.send_error(404, "Not Found")
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+
 if __name__ == "__main__":
     SERVE_DIR.mkdir(parents=True, exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     _ensure_cert()
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -183,6 +979,11 @@ if __name__ == "__main__":
 
     server = HTTPServer(("0.0.0.0", PORT), Handler)
     server.socket = ctx.wrap_socket(server.socket, server_side=True)
+
+    # Plain HTTP server for Grafana Infinity (localhost only, no TLS)
+    grafana_server = HTTPServer(("127.0.0.1", HTTP_PORT), GrafanaHandler)
+    threading.Thread(target=grafana_server.serve_forever, daemon=True).start()
+    print(f"Grafana HTTP endpoint listening on http://127.0.0.1:{HTTP_PORT}", flush=True)
 
     print(f"NetWatchM web server listening on https://0.0.0.0:{PORT}", flush=True)
     print("Note: browser will show a self-signed cert warning — click 'Advanced > Proceed'.", flush=True)

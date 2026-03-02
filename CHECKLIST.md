@@ -17,7 +17,7 @@ Last updated: 2026-03-02 (end of session)
 - [x] arp-scan integration (cap_net_raw, no sudo needed)
 - [x] Grafana Infinity dashboard
 - [x] install.sh + install.bat (HTTPS cert setup via mkcert or openssl fallback)
-- [x] 130 tests, all passing
+- [x] 143 tests, all passing
 
 ## Phase 1 — Deep Inspection + GeoIP  ✅ COMPLETE (2026-02-24)
 - [x] `src/netwatchm/reports/deep_inspect.py` — inspection engine (GeoIP, port scan, SSH, SMB, HTTP, RDP)
@@ -59,11 +59,11 @@ sudo cp netwatchm_server.py /usr/local/bin/netwatchm-server
 sudo systemctl daemon-reload && sudo systemctl restart netwatchm-web
 ```
 
-## Phase 3 — Behavioral Threat Detectors  🔄 IN PROGRESS
+## Phase 3 — Behavioral Threat Detectors  ✅ COMPLETE (2026-03-02)
 - [x] Tor exit node detector (daily list download + real-time flow check)
 - [x] Adult content domain detector — DNS query + TLS SNI, Steven Black porn list (153k domains), 24h refresh, per-device dedup, `extra_domains` config, 12 tests
 - [x] Data hog alert — 24h rolling byte counter per local device (sent + received), configurable threshold (default 10 GiB), HIGH alert, per-device dedup, 12 tests
-- [ ] `/events.html` portal page — threat event table with filter + drill-down
+- [x] `/events.html` portal — SQLite event store (72h retention), live SPA: text search + level/type filters, expandable rows, deep-inspect link, auto-refresh, CSV export, 13 tests
 
 ---
 

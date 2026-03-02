@@ -11,6 +11,7 @@ from pathlib import Path
 from rich.console import Console
 
 from .alerts.email_alert import EmailAlert
+from .alerts.event_handler import EventStoreHandler
 from .alerts.logfile import LogFileAlert
 from .alerts.sound import SoundAlert
 from .alerts.terminal import TerminalAlert
@@ -100,6 +101,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
         handlers.append(SoundAlert(config.alerts.sound))
     if config.alerts.email.enabled:
         handlers.append(EmailAlert(config.alerts.email))
+    handlers.append(EventStoreHandler())
 
     # --- UI ---
     dashboard = None
