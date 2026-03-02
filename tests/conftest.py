@@ -10,6 +10,7 @@ from netwatchm.config import (
     AdultDomainConfig,
     BruteForceThreshold,
     Config,
+    DataHogConfig,
     ExfiltrationThreshold,
     InventoryConfig,
     NewIPThreshold,
@@ -78,3 +79,8 @@ def tor_exit_config() -> TorExitConfig:
 @pytest.fixture
 def adult_domain_config() -> AdultDomainConfig:
     return AdultDomainConfig(alert_window_seconds=10)
+
+
+@pytest.fixture
+def data_hog_config() -> DataHogConfig:
+    return DataHogConfig(bytes_per_24h=1000, window_seconds=86400, alert_window_seconds=10)

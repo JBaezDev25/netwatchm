@@ -9,6 +9,7 @@ import pytest
 from netwatchm.config import (
     AdultDomainConfig,
     BruteForceThreshold,
+    DataHogConfig,
     ExfiltrationThreshold,
     NewIPThreshold,
     PortScanThreshold,
@@ -16,6 +17,7 @@ from netwatchm.config import (
 )
 from netwatchm.detector.adult_domain import AdultDomainDetector
 from netwatchm.detector.brute_force import BruteForceDetector
+from netwatchm.detector.data_hog import DataHogDetector
 from netwatchm.detector.exfiltration import ExfiltrationDetector
 from netwatchm.detector.new_ip import NewIPDetector
 from netwatchm.detector.port_scan import PortScanDetector
@@ -359,3 +361,146 @@ class TestAdultDomainDetector:
         result = det.process(make_packet(dns_query=f"{self.ADULT_DOMAIN}."))
         assert result is not None
         assert self.ADULT_DOMAIN in result.description
+
+
+# ──────────────── Data Hog ────────────────
+
+class TestDataHogDetector:
+    LOCAL = "192.168.1.50"
+    EXTERNAL = "8.8.8.8"
+
+    def _detector(self, threshold=1000, window=86400, alert_window=10) -> DataHogDetector:
+        cfg = DataHogConfig(
+            bytes_per_24h=threshold,
+            window_seconds=window,
+            alert_window_seconds=alert_window,
+        )
+        return DataHogDetector(cfg)
+
+    def test_no_alert_below_threshold(self) -> None:
+        det = self._detector(threshold=10_000)
+        for _ in range(5):
+            result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+        assert result is None
+
+    def test_alert_on_sent_bytes(self) -> None:
+        det = self._detector(threshold=500)
+        alert = None
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                alert = r
+        assert alert is not None
+        assert alert.alert_type == "DATA_HOG"
+        assert alert.level == ThreatLevel.HIGH
+        assert self.LOCAL in alert.description
+
+    def test_alert_on_received_bytes(self) -> None:
+        # External → local (download): should count toward local device
+        det = self._detector(threshold=500)
+        alert = None
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.EXTERNAL, dst_ip=self.LOCAL, length=100))
+            if r:
+                alert = r
+        assert alert is not None
+        assert alert.alert_type == "DATA_HOG"
+        assert self.LOCAL in alert.description
+
+    def test_no_alert_external_src(self) -> None:
+        # External → external should never alert
+        det = self._detector(threshold=100)
+        for _ in range(10):
+            result = det.process(make_packet(src_ip=self.EXTERNAL, dst_ip="1.1.1.1", length=100))
+        assert result is None
+
+    def test_local_to_local_no_double_count(self) -> None:
+        # Local → local: only src_ip counted (no double-count)
+        LOCAL2 = "192.168.1.51"
+        det = self._detector(threshold=500)
+        alerts = []
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=LOCAL2, length=100))
+            if r:
+                alerts.append(r)
+        # src_ip should still alert (600 bytes sent)
+        assert len(alerts) == 1
+        assert alerts[0].src_ip == self.LOCAL
+
+    def test_different_devices_independent(self) -> None:
+        LOCAL2 = "192.168.1.51"
+        det = self._detector(threshold=500)
+        alert1, alert2 = None, None
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                alert1 = r
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=LOCAL2, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                alert2 = r
+        assert alert1 is not None
+        assert alert2 is not None
+        assert alert1.src_ip != alert2.src_ip
+
+    def test_dedup_suppresses_second_alert(self) -> None:
+        det = self._detector(threshold=500)
+        alerts = []
+        for _ in range(20):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                alerts.append(r)
+        assert len(alerts) == 1
+
+    def test_dedup_expires_re_alerts(self) -> None:
+        det = self._detector(threshold=500, alert_window=1)
+        first = None
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                first = r
+        assert first is not None
+        det._alerted[self.LOCAL] = time.time() - 2
+        second = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+        assert second is not None
+
+    def test_disabled_no_alert(self) -> None:
+        cfg = DataHogConfig(enabled=False, bytes_per_24h=100)
+        det = DataHogDetector(cfg)
+        for _ in range(10):
+            result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+        assert result is None
+
+    def test_flush_expired_removes_old_data(self) -> None:
+        det = self._detector(threshold=500, window=1)
+        for _ in range(3):
+            det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+        assert self.LOCAL in det._windows
+        det._windows[self.LOCAL][0] = (time.time() - 2, 100)
+        # backdate all entries
+        old_dq = det._windows[self.LOCAL]
+        det._windows[self.LOCAL] = type(old_dq)((time.time() - 2, b) for _, b in old_dq)
+        det.flush_expired()
+        assert self.LOCAL not in det._windows
+
+    def test_alert_type_and_level(self) -> None:
+        det = self._detector(threshold=500)
+        alert = None
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                alert = r
+        assert alert is not None
+        assert alert.alert_type == "DATA_HOG"
+        assert alert.level == ThreatLevel.HIGH
+
+    def test_description_shows_volume_and_threshold(self) -> None:
+        det = self._detector(threshold=500)
+        alert = None
+        for _ in range(6):
+            r = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL, length=100))
+            if r:
+                alert = r
+        assert alert is not None
+        assert "threshold" in alert.description
+        assert self.LOCAL in alert.description

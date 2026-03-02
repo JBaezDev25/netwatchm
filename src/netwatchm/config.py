@@ -42,6 +42,14 @@ class TorExitConfig:
 
 
 @dataclass
+class DataHogConfig:
+    enabled: bool = True
+    bytes_per_24h: int = 10_737_418_240  # 10 GiB
+    window_seconds: int = 86400          # 24 hours
+    alert_window_seconds: int = 3600     # re-alert same device after 1 hour
+
+
+@dataclass
 class AdultDomainConfig:
     enabled: bool = True
     list_url: str = "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts"
@@ -58,6 +66,7 @@ class Thresholds:
     new_ip: NewIPThreshold = field(default_factory=NewIPThreshold)
     tor_exit: TorExitConfig = field(default_factory=TorExitConfig)
     adult_domain: AdultDomainConfig = field(default_factory=AdultDomainConfig)
+    data_hog: DataHogConfig = field(default_factory=DataHogConfig)
 
 
 @dataclass
@@ -167,6 +176,7 @@ def load_config(path: str | Path | None = None) -> Config:
     ex = thresh_raw.get("exfiltration", {})
     ni = thresh_raw.get("new_ip", {})
     ad = thresh_raw.get("adult_domain", {})
+    dh = thresh_raw.get("data_hog", {})
 
     alerts_raw = raw.get("alerts", {})
     log_raw = alerts_raw.get("log", {})
@@ -201,6 +211,12 @@ def load_config(path: str | Path | None = None) -> Config:
                 refresh_hours=ad.get("refresh_hours", 24),
                 alert_window_seconds=ad.get("alert_window_seconds", 3600),
                 extra_domains=ad.get("extra_domains", []),
+            ),
+            data_hog=DataHogConfig(
+                enabled=dh.get("enabled", True),
+                bytes_per_24h=dh.get("bytes_per_24h", 10_737_418_240),
+                window_seconds=dh.get("window_seconds", 86400),
+                alert_window_seconds=dh.get("alert_window_seconds", 3600),
             ),
         ),
         alerts=AlertsConfig(

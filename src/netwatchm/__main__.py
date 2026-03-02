@@ -19,6 +19,7 @@ from .config import Config, load_config
 from .detector import (
     AdultDomainDetector,
     BruteForceDetector,
+    DataHogDetector,
     ExfiltrationDetector,
     NewIPDetector,
     PortScanDetector,
@@ -76,6 +77,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
         NewIPDetector(config.thresholds.new_ip, config.baseline_period),
         TorExitDetector(config.thresholds.tor_exit),
         AdultDomainDetector(config.thresholds.adult_domain),
+        DataHogDetector(config.thresholds.data_hog),
     ]
 
     # --- Scorer ---
