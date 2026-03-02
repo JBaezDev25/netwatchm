@@ -11,6 +11,8 @@ StartLimitBurst=5
 Type=simple
 WorkingDirectory=/var/lib/netwatchm
 Environment=NETWATCHM_CMD=/home/jbaez120/.local/bin/netwatchm
+Environment=NETWATCHM_GEOIP_DB=/var/lib/netwatchm/GeoLite2-City.mmdb
+Environment=NETWATCHM_FLOW_DB=/var/lib/netwatchm/flows.db
 ExecStart=/usr/local/bin/netwatchm-server
 Restart=always
 RestartSec=5

@@ -553,6 +553,12 @@ def render_html(
     background: var(--accent); color: #fff; border: none; padding: 7px 16px;
     border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;
   }}
+  .toolbar select {{
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 4px; font-family: monospace; font-size: 12px;
+    cursor: pointer;
+  }}
+  #refresh-countdown {{ color: var(--muted); font-size: 11px; white-space: nowrap; }}
   table {{ width: 100%; border-collapse: collapse; }}
   th {{
     background: var(--surface); color: var(--muted); text-transform: uppercase;
@@ -624,6 +630,9 @@ def render_html(
   }}
   .inv-cmd-box button:hover {{ color: var(--accent); }}
   .inv-note {{ color: var(--muted); font-size: 11px; }}
+  .inv-deep {{ background: rgba(63,185,80,0.15); border-color: #3fb950; color: #3fb950; }}
+  .inv-deep:hover {{ background: rgba(63,185,80,0.25); }}
+  .inv-sep {{ font-size: 11px; color: var(--muted); text-align: center; margin: 8px 0 4px; }}
   .inv-context {{
     background: rgba(88,166,255,0.05); border: 1px solid var(--border);
     border-radius: 4px; padding: 10px 12px; margin: 12px 0; font-size: 12px; line-height: 1.6;
@@ -651,6 +660,16 @@ def render_html(
 <div class="toolbar">
   <input type="text" id="search" placeholder="Filter rows…" oninput="filterTable()" />
   <button onclick="exportCSV()">⬇ Download CSV</button>
+  <button id="analytics-btn" onclick="openAnalytics()" style="background:rgba(88,166,255,.15);color:#58a6ff;border-color:#58a6ff55">&#x1F4CA; Analytics</button>
+  <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
+  <button id="refresh-btn" onclick="triggerRefresh()" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35)">&#x21BB; Refresh</button>
+  <select id="auto-refresh" onchange="setAutoRefresh(this.value)">
+    <option value="0">Auto: Off</option>
+    <option value="60">Auto: 1 min</option>
+    <option value="300">Auto: 5 min</option>
+    <option value="600">Auto: 10 min</option>
+  </select>
+  <span id="refresh-countdown"></span>
 </div>
 <table id="flows-table">
 <thead>
@@ -673,6 +692,9 @@ def render_html(
 {rows_html.getvalue()}</tbody>
 </table>
 <script>
+const REPORT_DURATION = {duration};
+const REPORT_NETWORK  = "{_esc(network)}";
+
 let sortCol = 8, sortAsc = false;
 
 function cellVal(row, col) {{
@@ -820,8 +842,7 @@ function openInvestigate(btn) {{
   document.getElementById('inv-context').innerHTML = getConnectionContext(btn.dataset.dst, btn.dataset.port, btn.dataset.domain, btn.dataset.app);
   document.getElementById('inv-src-btn').classList.remove('active');
   document.getElementById('inv-dst-btn').classList.remove('active');
-  document.getElementById('inv-cmd').textContent  = '';
-  document.getElementById('inv-note').textContent = '';
+  document.getElementById('inv-status').textContent = '';
   document.getElementById('inv-overlay').classList.add('active');
 }}
 
@@ -831,17 +852,203 @@ function closeInvestigate() {{
 
 function setInvTarget(which) {{
   const ip  = which === 'src' ? _invSrcIp : _invDstIp;
-  const cmd = 'sudo netwatchm investigate --target ' + ip +
-              (_invPort ? ' --ports ' + _invPort : '');
-  document.getElementById('inv-cmd').textContent  = cmd;
-  document.getElementById('inv-note').textContent = 'Output: /tmp/netwatchm-investigate-' + ip + '.html';
   document.getElementById('inv-src-btn').classList.toggle('active', which === 'src');
   document.getElementById('inv-dst-btn').classList.toggle('active', which === 'dst');
+  document.getElementById('inv-status').textContent = '';
+
+  const statusEl = document.getElementById('inv-status');
+  statusEl.style.color = 'var(--muted)';
+  statusEl.textContent = 'Starting scan on ' + ip + '...';
+
+  const url = '/api/investigate?target=' + encodeURIComponent(ip) +
+              (_invPort ? '&ports=' + encodeURIComponent(_invPort) : '');
+
+  fetch(url, {{ method: 'POST' }})
+    .then(r => r.json())
+    .then(data => {{
+      if (data.error) {{
+        statusEl.style.color = 'var(--red, #f85149)';
+        statusEl.textContent = 'Error: ' + data.error;
+        return;
+      }}
+      statusEl.textContent = 'Scanning ' + ip + '... (this may take up to 2 min)';
+      _pollInvestigate(ip, data.result_url, statusEl);
+    }})
+    .catch(err => {{
+      statusEl.style.color = 'var(--red, #f85149)';
+      statusEl.textContent = 'Failed to reach server: ' + err;
+    }});
 }}
 
-function copyInvCmd() {{
-  const cmd = document.getElementById('inv-cmd').textContent;
-  if (cmd) navigator.clipboard.writeText(cmd).catch(() => {{}});
+function _pollInvestigate(ip, resultUrl, statusEl) {{
+  const check = () => {{
+    fetch('/api/investigate/status?target=' + encodeURIComponent(ip))
+      .then(r => r.json())
+      .then(data => {{
+        if (data.status === 'ready') {{
+          statusEl.style.color = '#3fb950';
+          statusEl.textContent = 'Scan complete — opening report...';
+          setTimeout(() => window.open(resultUrl, '_blank'), 400);
+        }} else if (data.status === 'error') {{
+          statusEl.style.color = '#f85149';
+          statusEl.textContent = 'Scan error: ' + (data.error || 'unknown');
+        }} else {{
+          setTimeout(check, 2000);
+        }}
+      }})
+      .catch(() => setTimeout(check, 3000));
+  }};
+  setTimeout(check, 2000);
+}}
+
+function setDeepInspect(which) {{
+  const target = which === 'src' ? _invSrcIp : _invDstIp;
+  const ports  = _invPort || '';
+  setInvStatus('running', 'Deep inspect started on ' + target + '...');
+  fetch('/api/deep-inspect?target=' + encodeURIComponent(target) + '&ports=' + encodeURIComponent(ports), {{method: 'POST'}})
+    .then(r => r.json())
+    .then(data => {{
+      if (data.error) {{ setInvStatus('error', data.error); return; }}
+      _pollDeepInspect(target, data.result_url);
+    }})
+    .catch(e => setInvStatus('error', e.message));
+}}
+
+function _pollDeepInspect(target, resultUrl) {{
+  const check = () => {{
+    fetch('/api/deep-inspect/status?target=' + encodeURIComponent(target))
+      .then(r => r.json())
+      .then(data => {{
+        if (data.status === 'ready') {{
+          setInvStatus('ready', 'Done \u2014 opening report...');
+          setTimeout(() => window.open(resultUrl, '_blank'), 400);
+        }} else if (data.status === 'error') {{
+          setInvStatus('error', data.error || 'Deep inspect failed');
+        }} else {{
+          setTimeout(check, 3000);
+        }}
+      }})
+      .catch(() => setTimeout(check, 3000));
+  }};
+  setTimeout(check, 2000);
+}}
+
+function setInvStatus(state, msg) {{
+  const statusEl = document.getElementById('inv-status');
+  if (state === 'error') {{
+    statusEl.style.color = '#f85149';
+  }} else if (state === 'ready') {{
+    statusEl.style.color = '#3fb950';
+  }} else {{
+    statusEl.style.color = 'var(--muted)';
+  }}
+  statusEl.textContent = msg;
+}}
+
+// ── Refresh / Auto-refresh ─────────────────────────────────────────────────
+let _autoInterval = 0, _autoTimer = null, _cdownTimer = null, _nextRefresh = null;
+
+function triggerRefresh() {{
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Capturing…';
+  clearTimeout(_autoTimer);
+  clearInterval(_cdownTimer);
+  document.getElementById('refresh-countdown').textContent = '';
+  fetch('/api/report?duration=' + REPORT_DURATION + '&network=' + encodeURIComponent(REPORT_NETWORK), {{method: 'POST'}})
+    .then(r => r.json())
+    .then(data => {{
+      if (data.error && data.error !== 'Report already running') {{
+        btn.textContent = '↻ Refresh'; btn.disabled = false;
+        alert('Error: ' + data.error); return;
+      }}
+      _pollReport(btn);
+    }})
+    .catch(e => {{ btn.textContent = '↻ Refresh'; btn.disabled = false; alert('Failed: ' + e); }});
+}}
+
+function _pollReport(btn) {{
+  fetch('/api/report/status')
+    .then(r => r.json())
+    .then(data => {{
+      if      (data.status === 'ready') {{ location.reload(); }}
+      else if (data.status === 'error') {{
+        btn.textContent = '↻ Refresh'; btn.disabled = false;
+        alert('Report error: ' + (data.error || 'unknown'));
+      }} else {{ setTimeout(() => _pollReport(btn), 2000); }}
+    }})
+    .catch(() => setTimeout(() => _pollReport(btn), 3000));
+}}
+
+function setAutoRefresh(val) {{
+  _autoInterval = parseInt(val) || 0;
+  localStorage.setItem('nwm_auto_refresh', String(_autoInterval));
+  clearTimeout(_autoTimer); clearInterval(_cdownTimer);
+  document.getElementById('refresh-countdown').textContent = '';
+  _nextRefresh = null;
+  if (_autoInterval > 0) _scheduleNext();
+}}
+
+function _scheduleNext() {{
+  _nextRefresh = Date.now() + _autoInterval * 1000;
+  _autoTimer   = setTimeout(triggerRefresh, _autoInterval * 1000);
+  _cdownTimer  = setInterval(_updateCountdown, 1000);
+  _updateCountdown();
+}}
+
+function _updateCountdown() {{
+  if (_nextRefresh === null) {{ clearInterval(_cdownTimer); return; }}
+  const secs = Math.max(0, Math.round((_nextRefresh - Date.now()) / 1000));
+  const m = Math.floor(secs / 60), s = secs % 60;
+  document.getElementById('refresh-countdown').textContent =
+    'Next refresh in ' + m + ':' + String(s).padStart(2, '0');
+}}
+
+document.addEventListener('DOMContentLoaded', () => {{
+  const saved = localStorage.getItem('nwm_auto_refresh');
+  if (saved && saved !== '0') {{
+    const sel = document.getElementById('auto-refresh');
+    // only restore if the saved value matches one of the options
+    if ([...sel.options].some(o => o.value === saved)) {{
+      sel.value = saved;
+      setAutoRefresh(saved);
+    }}
+  }}
+}});
+
+// ── Analytics ──────────────────────────────────────────────────────────────
+function openAnalytics() {{
+  const btn = document.getElementById('analytics-btn');
+  btn.textContent = '⏳ Generating…';
+  btn.disabled = true;
+  fetch('/api/analytics', {{method: 'POST'}})
+    .then(r => r.json())
+    .then(() => _pollAnalytics())
+    .catch(e => {{
+      btn.textContent = '📊 Analytics';
+      btn.disabled = false;
+      alert('Analytics error: ' + e);
+    }});
+}}
+
+function _pollAnalytics() {{
+  fetch('/api/analytics/status')
+    .then(r => r.json())
+    .then(data => {{
+      const btn = document.getElementById('analytics-btn');
+      if (data.status === 'ready') {{
+        btn.textContent = '📊 Analytics';
+        btn.disabled = false;
+        window.open('/analytics.html', '_blank');
+      }} else if (data.status === 'error') {{
+        btn.textContent = '📊 Analytics';
+        btn.disabled = false;
+        alert('Analytics error: ' + (data.error || 'unknown'));
+      }} else {{
+        setTimeout(_pollAnalytics, 1000);
+      }}
+    }})
+    .catch(() => setTimeout(_pollAnalytics, 2000));
 }}
 </script>
 
@@ -861,11 +1068,12 @@ function copyInvCmd() {{
       <button id="inv-src-btn" onclick="setInvTarget('src')">Investigate Source</button>
       <button id="inv-dst-btn" onclick="setInvTarget('dst')">Investigate Destination</button>
     </div>
-    <div class="inv-cmd-box">
-      <code id="inv-cmd"></code>
-      <button onclick="copyInvCmd()">Copy</button>
+    <div class="inv-sep">\u2014 Deep Inspect (GeoIP + security checks) \u2014</div>
+    <div class="inv-targets">
+      <button class="inv-deep" onclick="setDeepInspect('src')">Deep Inspect Source</button>
+      <button class="inv-deep" onclick="setDeepInspect('dst')">Deep Inspect Dest</button>
     </div>
-    <div class="inv-note" id="inv-note"></div>
+    <div class="inv-note" id="inv-status"></div>
   </div>
 </div>
 </body>

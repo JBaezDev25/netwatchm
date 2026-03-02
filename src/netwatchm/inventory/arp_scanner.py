@@ -7,6 +7,8 @@ import re
 import subprocess
 from typing import TYPE_CHECKING
 
+from ..models import Alert, ThreatLevel
+
 if TYPE_CHECKING:
     from .store import DeviceStore
 
@@ -65,8 +67,13 @@ async def run_arp_scan_loop(
     interval: int,
     network: str,
     stop_event: asyncio.Event,
+    alert_queue: "asyncio.Queue[Alert] | None" = None,
 ) -> None:
-    """Periodically run arp-scan and update DeviceStore with MAC/vendor."""
+    """Periodically run arp-scan and update DeviceStore with MAC/vendor.
+
+    When a device is seen for the first time (not in inventory), emits a
+    NEW_DEVICE alert into alert_queue if one is provided.
+    """
     logger.info("ARP scanner started (interval=%ds, network=%s)", interval, network)
 
     # Run immediately on start, then on interval
@@ -77,7 +84,21 @@ async def run_arp_scan_loop(
         if results:
             logger.debug("arp-scan found %d devices", len(results))
             for ip, mac, vendor in results:
-                await store.update_arp(ip, mac, vendor)
+                is_new = await store.update_arp(ip, mac, vendor)
+                if is_new and alert_queue is not None:
+                    vendor_str = vendor or "unknown vendor"
+                    alert = Alert(
+                        alert_type="NEW_DEVICE",
+                        level=ThreatLevel.MEDIUM,
+                        src_ip=ip,
+                        dst_ip=None,
+                        description=(
+                            f"New device detected by arp-scan: {ip}"
+                            f"  MAC: {mac}  Vendor: {vendor_str}"
+                        ),
+                    )
+                    await alert_queue.put(alert)
+                    logger.warning("New device on network: %s (MAC: %s, Vendor: %s)", ip, mac, vendor_str)
 
         # Wait for next scan
         try:

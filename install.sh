@@ -111,6 +111,24 @@ sudo env NETWATCHM_EMAIL_PASSWORD="${NETWATCHM_EMAIL_PASSWORD:-}" \
 
 # 9. Install web dashboard service and server script
 info "Installing web dashboard..."
+
+# 8b. Install GeoLite2-City.mmdb if present in the repo
+GEOIP_TAR=$(find "$SCRIPT_DIR/geolite2-city-gzip" -name "GeoLite2-City*.tar.gz" 2>/dev/null | head -1)
+GEOIP_MMDB="$SCRIPT_DIR/geolite2-city-gzip/GeoLite2-City.mmdb"
+if [ -f "$GEOIP_MMDB" ]; then
+    info "Installing GeoLite2-City database..."
+    sudo cp "$GEOIP_MMDB" /var/lib/netwatchm/GeoLite2-City.mmdb
+    info "  GeoIP: database installed at /var/lib/netwatchm/GeoLite2-City.mmdb"
+elif [ -f "$GEOIP_TAR" ]; then
+    info "Extracting and installing GeoLite2-City database..."
+    sudo tar -xzf "$GEOIP_TAR" -C /tmp/ --wildcards "*/GeoLite2-City.mmdb" 2>/dev/null
+    sudo find /tmp -name "GeoLite2-City.mmdb" -exec mv {} /var/lib/netwatchm/GeoLite2-City.mmdb \;
+    info "  GeoIP: database installed at /var/lib/netwatchm/GeoLite2-City.mmdb"
+else
+    warning "GeoLite2-City database not found in geolite2-city-gzip/ — GeoIP lookups will be skipped."
+    warning "Download from https://dev.maxmind.com/geoip/geolite2-free-geolocation-data (free account required)"
+fi
+
 sudo cp "$SCRIPT_DIR/report.html" /var/lib/netwatchm/report.html
 sudo cp "$SCRIPT_DIR/netwatchm_server.py" /usr/local/bin/netwatchm-server
 sudo chmod +x /usr/local/bin/netwatchm-server

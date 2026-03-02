@@ -112,3 +112,28 @@ class TestDeviceStore:
         unresolved = await store.get_unresolved_ips()
         assert "5.6.7.8" in unresolved
         assert "1.2.3.4" not in unresolved
+
+    @pytest.mark.asyncio
+    async def test_update_arp_returns_true_for_new_device(self) -> None:
+        store = DeviceStore()
+        is_new = await store.update_arp("10.0.0.1", "aa:bb:cc:dd:ee:ff", "Acme Corp")
+        assert is_new is True
+        records = await store.get_all()
+        rec = next(r for r in records if r.ip == "10.0.0.1")
+        assert rec.mac == "aa:bb:cc:dd:ee:ff"
+        assert rec.vendor == "Acme Corp"
+
+    @pytest.mark.asyncio
+    async def test_update_arp_returns_false_for_known_device(self) -> None:
+        store = DeviceStore()
+        await store.update_arp("10.0.0.2", "11:22:33:44:55:66", "Vendor A")
+        is_new = await store.update_arp("10.0.0.2", "11:22:33:44:55:66", "Vendor A")
+        assert is_new is False
+
+    @pytest.mark.asyncio
+    async def test_update_arp_returns_false_for_device_in_traffic(self) -> None:
+        """Devices already seen in packet traffic should not be flagged as new."""
+        store = DeviceStore()
+        await store.update(make_packet(src_ip="10.0.0.3"))
+        is_new = await store.update_arp("10.0.0.3", "aa:aa:aa:aa:aa:aa", None)
+        assert is_new is False

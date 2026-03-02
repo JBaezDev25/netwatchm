@@ -153,11 +153,15 @@ class DeviceStore:
         except (OSError, json.JSONDecodeError, KeyError) as exc:
             logger.warning("Failed to load inventory: %s", exc)
 
-    async def update_arp(self, ip: str, mac: str, vendor: str | None) -> None:
-        """Upsert a device record from arp-scan results (MAC + vendor)."""
+    async def update_arp(self, ip: str, mac: str, vendor: str | None) -> bool:
+        """Upsert a device record from arp-scan results (MAC + vendor).
+
+        Returns True if this IP was not previously in the inventory (new device).
+        """
         now = datetime.now()
         async with self._lock:
-            if ip not in self._records:
+            is_new = ip not in self._records
+            if is_new:
                 self._records[ip] = DeviceRecord(ip=ip, first_seen=now, last_seen=now)
             rec = self._records[ip]
             rec.last_seen = now
@@ -165,6 +169,7 @@ class DeviceStore:
                 rec.mac = mac
             if vendor:
                 rec.vendor = vendor
+        return is_new
 
     async def run_persist_loop(
         self,
