@@ -659,6 +659,13 @@ document.getElementById('autoRefresh').addEventListener('change', function() {
   else { document.getElementById('countdown').textContent = ''; }
 });
 
+// Pre-fill search from ?ip= or ?search= URL param (e.g. from Grafana data links)
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const ip = p.get('ip') || p.get('search');
+  if (ip) document.getElementById('search').value = ip;
+})();
+
 setInterval(tickCountdown, 1000);
 loadEvents();
 </script>
@@ -955,12 +962,22 @@ def _query_browsing() -> list[dict]:
                    dst_port,
                    COALESCE(SUM(bytes), 0) AS bytes
             FROM flows
-            WHERE src_ip LIKE '192.168.%'
-               OR src_ip LIKE '10.%'
-               OR src_ip LIKE '172.1_.%'
-               OR src_ip LIKE '172.2_.%'
-               OR src_ip LIKE '172.30.%'
-               OR src_ip LIKE '172.31.%'
+            WHERE (   src_ip LIKE '192.168.%'
+                   OR src_ip LIKE '10.%'
+                   OR src_ip LIKE '172.1_.%'
+                   OR src_ip LIKE '172.2_.%'
+                   OR src_ip LIKE '172.30.%'
+                   OR src_ip LIKE '172.31.%')
+              AND dst_ip NOT LIKE '192.168.%'
+              AND dst_ip NOT LIKE '10.%'
+              AND dst_ip NOT LIKE '172.1_.%'
+              AND dst_ip NOT LIKE '172.2_.%'
+              AND dst_ip NOT LIKE '172.30.%'
+              AND dst_ip NOT LIKE '172.31.%'
+              AND dst_ip NOT LIKE '127.%'
+              AND dst_ip NOT LIKE '224.%'
+              AND dst_ip NOT LIKE '239.%'
+              AND dst_ip NOT LIKE '255.%'
             GROUP BY src_ip, COALESCE(domain, dst_ip), dst_port
             ORDER BY bytes DESC
             LIMIT 200
