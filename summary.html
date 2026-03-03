@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NetWatchM — Project Summary</title>
+<style>
+  @media print {
+    body { font-size: 11pt; }
+    .no-print { display: none; }
+    .page-break { page-break-before: always; }
+    a { color: #000; text-decoration: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 12px;
+    color: #1a1a2e;
+    background: #fff;
+    padding: 32px 40px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 3px solid #1a1a2e;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+  }
+  .header h1 { font-size: 22px; letter-spacing: 1px; }
+  .header .meta { font-size: 11px; color: #555; text-align: right; line-height: 1.7; }
+  .header .badge {
+    display: inline-block;
+    background: #1a1a2e;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Section ── */
+  .section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #fff;
+    background: #1a1a2e;
+    padding: 5px 12px;
+    margin-bottom: 10px;
+    border-radius: 3px;
+  }
+
+  /* ── Two-column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* ── Phase block ── */
+  .phase {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f4f6f9;
+    padding: 7px 12px;
+    border-bottom: 1px solid #ddd;
+  }
+  .phase-title { font-weight: bold; font-size: 12px; }
+  .phase-date { font-size: 10px; color: #777; }
+  .phase-status {
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .status-complete { background: #d4edda; color: #155724; }
+  .status-pending  { background: #fff3cd; color: #856404; }
+
+  .phase ul { list-style: none; padding: 8px 12px; }
+  .phase ul li {
+    padding: 3px 0;
+    font-size: 11px;
+    color: #333;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.4;
+  }
+  .phase ul li::before { content: "✓"; color: #28a745; font-weight: bold; flex-shrink: 0; }
+  .phase ul li.pending::before { content: "○"; color: #f0ad4e; }
+  .phase ul li.bug::before    { content: "⚠"; color: #dc3545; }
+
+  /* ── Stats bar ── */
+  .stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-box {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: center;
+  }
+  .stat-box .num { font-size: 26px; font-weight: bold; color: #1a1a2e; }
+  .stat-box .lbl { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* ── Next tasks ── */
+  .task-list { list-style: none; }
+  .task-list li {
+    display: flex;
+    gap: 10px;
+    padding: 7px 10px;
+    border-bottom: 1px solid #eee;
+    font-size: 11px;
+    align-items: flex-start;
+    line-height: 1.4;
+  }
+  .task-list li:last-child { border-bottom: none; }
+  .priority {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 2px 7px;
+    border-radius: 10px;
+    text-transform: uppercase;
+  }
+  .p-now  { background: #f8d7da; color: #721c24; }
+  .p-next { background: #d1ecf1; color: #0c5460; }
+  .p-later{ background: #e2e3e5; color: #383d41; }
+
+  /* ── Architecture ── */
+  .arch { font-family: monospace; font-size: 10px; line-height: 1.7;
+          background: #f8f9fa; border: 1px solid #ddd; padding: 12px;
+          border-radius: 4px; }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 28px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+    font-size: 10px;
+    color: #999;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── Print button ── */
+  .print-btn {
+    position: fixed;
+    top: 20px; right: 20px;
+    background: #1a1a2e; color: #fff;
+    border: none; padding: 10px 20px;
+    border-radius: 6px; cursor: pointer;
+    font-size: 13px; font-weight: bold;
+  }
+  .print-btn:hover { background: #2d2d5e; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">🖨 Print</button>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <h1>NetWatchM — Network Monitor</h1>
+    <div style="font-size:11px;color:#555;margin-top:4px;">Project Progress Summary &nbsp;|&nbsp; Home Network Security</div>
+  </div>
+  <div class="meta">
+    <span class="badge">In Production</span><br>
+    Generated: 2026-03-02<br>
+    Branch: master
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat-box"><div class="num">143</div><div class="lbl">Tests Passing</div></div>
+  <div class="stat-box"><div class="num">3</div><div class="lbl">Phases Complete</div></div>
+  <div class="stat-box"><div class="num">7</div><div class="lbl">Threat Detectors</div></div>
+  <div class="stat-box"><div class="num">475</div><div class="lbl">Devices Tracked</div></div>
+  <div class="stat-box"><div class="num">5</div><div class="lbl">Next Tasks</div></div>
+</div>
+
+<!-- Two column: phases + architecture -->
+<div class="two-col">
+<div>
+
+  <!-- Phase 1 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">Phase 1 — Deep Inspection + GeoIP</span>
+      <span class="phase-status status-complete">✓ Complete</span>
+    </div>
+    <ul>
+      <li>GeoIP engine (GeoLite2-City, 61 MB DB) — country + city lookup</li>
+      <li>Deep inspect: port scan, SSH, SMB, HTTP, RDP fingerprinting</li>
+      <li>Metasploit/nmap investigate subcommand</li>
+      <li><code>/api/deep-inspect</code> POST + status polling in web server</li>
+      <li>Deep Inspect buttons in connection report portal</li>
+    </ul>
+  </div>
+
+  <!-- Phase 2 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">Phase 2 — Flow Store + Analytics</span>
+      <span class="phase-status status-complete">✓ Complete</span>
+    </div>
+    <ul>
+      <li>SQLite flow store — 72h rolling purge, indexed</li>
+      <li>Analytics report: Chart.js dark-theme HTML (device, destination, protocol, hourly)</li>
+      <li><code>netwatchm analytics</code> CLI + web trigger button</li>
+      <li>Report history — last 50 archived, dark-theme index</li>
+    </ul>
+  </div>
+
+  <!-- Phase 3 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">Phase 3 — Behavioral Threat Detectors</span>
+      <span class="phase-status status-complete">✓ Complete</span>
+    </div>
+    <ul>
+      <li>Tor exit node detector — daily list, real-time flow check</li>
+      <li>Adult domain detector — DNS + TLS SNI, 153k domain blocklist, 24h refresh</li>
+      <li>Data hog alert — 24h rolling byte counter per device, 10 GiB threshold</li>
+      <li>Events portal (<code>/events.html</code>) — SPA, filters, CSV export, auto-refresh</li>
+    </ul>
+  </div>
+
+  <!-- Grafana -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">Grafana Dashboard</span>
+      <span class="phase-status status-complete">✓ Complete — v5</span>
+    </div>
+    <ul>
+      <li>Grafana 12.4.0 + Infinity v3.7.2 datasource</li>
+      <li>Stat panels: Total / HIGH / MEDIUM / LOW device counts</li>
+      <li>Threat Distribution donut — device counts by level</li>
+      <li>Device Inventory table — IP, hostname, MAC, vendor, threat, sent/received</li>
+      <li>Top Devices + Top Destinations — tables with clickable IP data links</li>
+      <li>Protocol doughnut + hourly activity bar</li>
+      <li><strong>Intelligence row:</strong> Trigger Sites + Browsing Activity</li>
+    </ul>
+  </div>
+
+</div>
+<div>
+
+  <!-- Architecture -->
+  <div class="section">
+    <div class="section-title">Architecture</div>
+    <div class="arch">
+netwatchm/
+├── src/netwatchm/
+│   ├── capture.py        tshark async capture
+│   ├── scorer.py         threat scoring
+│   ├── whitelist.py      CIDR whitelist
+│   ├── detector/
+│   │   ├── port_scan     HIGH
+│   │   ├── brute_force   HIGH
+│   │   ├── exfiltration  CRITICAL
+│   │   ├── new_ip        LOW
+│   │   ├── tor_exit      HIGH
+│   │   ├── adult_domain  MEDIUM
+│   │   └── data_hog      HIGH
+│   ├── alerts/
+│   │   ├── event_store   SQLite 72h
+│   │   └── event_handler always-on
+│   ├── reports/
+│   │   ├── flow_store    SQLite 72h
+│   │   ├── connection_report
+│   │   ├── analytics_report
+│   │   └── deep_inspect
+│   └── inventory/
+│       └── arp_scanner
+├── netwatchm_server.py   HTTPS :8765
+│                         HTTP  :8766 (Grafana)
+└── scripts/
+    ├── deploy-server.sh
+    ├── import-dashboard.sh
+    └── seed-events.sh
+    </div>
+  </div>
+
+  <!-- Key endpoints -->
+  <div class="section" style="margin-top:14px;">
+    <div class="section-title">Live Endpoints</div>
+    <div class="arch">
+https://localhost:8765/
+  /connection-report.html   live report
+  /events.html              threat events portal
+  /analytics.html           flow analytics
+  /reports/                 report history
+
+http://127.0.0.1:8766/  (Grafana only)
+  /api/inventory/{total|high|medium|low|stats}
+  /api/flows/{stats|devices|destinations|
+              protocols|hourly|browsing}
+  /api/events/adult-domains
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- Next Tasks -->
+<div class="section page-break">
+  <div class="section-title">Next Tasks</div>
+  <ul class="task-list">
+    <li>
+      <span class="priority p-now">Fix</span>
+      <div><strong>Alert timeline panel in Grafana</strong> — bar chart showing event/alert frequency by hour; completes the dashboard picture alongside hourly flow activity.</div>
+    </li>
+    <li>
+      <span class="priority p-next">Next</span>
+      <div><strong>Grafana alerting rules</strong> — fire notifications (email / Telegram / Slack) when HIGH threat count &gt; 0 or data hog threshold crossed. Data is available; rules not yet configured.</div>
+    </li>
+    <li>
+      <span class="priority p-next">Next</span>
+      <div><strong>Device friendly names</strong> — user-editable aliases for local IPs (e.g. label <code>192.168.1.248</code> as "Smart TV"). Inventory shows MAC + vendor but no custom label field.</div>
+    </li>
+    <li>
+      <span class="priority p-later">Later</span>
+      <div><strong>Utility scripts</strong> — <code>scripts/clear-events.sh</code> to purge events.db, <code>scripts/clear-flows.sh</code> to purge flows.db for a clean slate without restarting the service.</div>
+    </li>
+    <li>
+      <span class="priority p-later">Later</span>
+      <div><strong>Mobile push notifications</strong> — integrate ntfy or Pushover as an alert handler so HIGH/CRITICAL alerts appear on phone without checking the dashboard.</div>
+    </li>
+  </ul>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <span>NetWatchM · github.com/al4nbr3/netwatchm · branch: master</span>
+  <span>Printed 2026-03-02 · 143 tests passing · 3 phases complete</span>
+</div>
+
+</body>
+</html>
