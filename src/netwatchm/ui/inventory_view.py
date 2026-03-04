@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ..inventory.exporter import export_inventory
+from ..inventory.exporter import _load_aliases, export_inventory
 from ..inventory.store import DeviceStore
 from ..models import DeviceRecord, ThreatLevel
 
@@ -35,6 +35,7 @@ class InventoryView:
         self._notification_until: float = 0.0
         self._live: Live | None = None
         self._records: list[DeviceRecord] = []
+        self._aliases: dict[str, str] = {}
 
     def set_filter(self, query: str) -> None:
         self._filter = query
@@ -49,13 +50,26 @@ class InventoryView:
         self._filter = self._filter[:-1]
 
     async def refresh_records(self) -> None:
-        self._records = await self._store.get_all(self._filter or None)
+        self._aliases = _load_aliases()
+        all_records = await self._store.get_all(None)
+        if self._filter:
+            q = self._filter.lower()
+            self._records = [
+                r for r in all_records
+                if q in (r.ip or "").lower()
+                or q in (r.hostname or "").lower()
+                or q in (r.mac or "").lower()
+                or q in (r.vendor or "").lower()
+                or q in self._aliases.get(r.ip, "").lower()
+            ]
+        else:
+            self._records = all_records
 
     def export_csv(self, export_dir: str = ".") -> str:
         ts = datetime.now().strftime("%Y%m%dT%H%M%S")
         filename = f"netwatchm-inventory-{ts}.csv"
         path = Path(export_dir) / filename
-        export_inventory(self._records, path)
+        export_inventory(self._records, path, aliases=self._aliases)
         self._notification = f"Exported: {path}"
         self._notification_until = time.time() + 2.0
         return str(path)
@@ -68,28 +82,29 @@ class InventoryView:
             expand=True,
             padding=(0, 1),
         )
+        table.add_column("Label", no_wrap=True, min_width=14)
         table.add_column("IP", no_wrap=True, min_width=15)
-        table.add_column("Hostname", no_wrap=True, min_width=20)
+        table.add_column("Hostname", no_wrap=True, min_width=18)
         table.add_column("MAC", no_wrap=True, min_width=18)
         table.add_column("Vendor", no_wrap=True, min_width=12)
-        table.add_column("First Seen", width=19)
         table.add_column("Last Seen", width=19)
         table.add_column("↑ Sent", justify="right", width=10)
         table.add_column("↓ Recv", justify="right", width=10)
-        table.add_column("Ports", min_width=20)
+        table.add_column("Ports", min_width=16)
         table.add_column("Level", width=8)
 
         for rec in self._records:
             style = _LEVEL_STYLE.get(rec.threat_level, "")
-            ports = ";".join(str(p) for p in sorted(rec.ports_observed)[:10])
-            if len(rec.ports_observed) > 10:
+            ports = ";".join(str(p) for p in sorted(rec.ports_observed)[:8])
+            if len(rec.ports_observed) > 8:
                 ports += "…"
+            label = self._aliases.get(rec.ip, "")
             table.add_row(
+                f"[bold]{label}[/bold]" if label else "[dim]—[/dim]",
                 rec.ip,
                 rec.hostname or "—",
                 rec.mac or "—",
                 rec.vendor or "—",
-                rec.first_seen.strftime("%Y-%m-%d %H:%M:%S"),
                 rec.last_seen.strftime("%Y-%m-%d %H:%M:%S"),
                 _fmt_bytes(rec.bytes_sent),
                 _fmt_bytes(rec.bytes_received),

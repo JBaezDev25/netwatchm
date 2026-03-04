@@ -18,6 +18,24 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
+def _load_aliases() -> dict[str, str]:
+    """Return {ip: label} from aliases.json; empty dict if missing or corrupt."""
+    if not ALIASES_FILE.exists():
+        return {}
+    try:
+        return json.loads(ALIASES_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_aliases(aliases: dict[str, str]) -> None:
+    """Persist aliases dict atomically to aliases.json."""
+    ALIASES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ALIASES_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(aliases, indent=2))
+    tmp.replace(ALIASES_FILE)
+
+
 def _classify_ip(ip_str: str) -> str:
     """Return 'Local(IP)' for RFC-1918/loopback/multicast, 'External(IP)' otherwise."""
     try:
@@ -34,8 +52,9 @@ NETWATCHM_CMD = os.environ.get("NETWATCHM_CMD", "netwatchm")
 NETWATCHM_CONFIG = os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml")
 DEFAULT_NETWORK = os.environ.get("NETWATCHM_NETWORK", "192.168.1.0/24")
 GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB", "/var/lib/netwatchm/GeoLite2-City.mmdb")
-FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",  "/var/lib/netwatchm/flows.db")
-EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB", "/var/lib/netwatchm/events.db")
+FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",    "/var/lib/netwatchm/flows.db")
+EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",   "/var/lib/netwatchm/events.db")
+ALIASES_FILE = Path(os.environ.get("NETWATCHM_ALIASES_FILE", "/var/lib/netwatchm/aliases.json"))
 REPORTS_DIR = SERVE_DIR / "reports"
 REPORTS_MAX = 50  # keep this many archived reports
 
@@ -674,6 +693,269 @@ loadEvents();
     return page.encode()
 
 
+def _render_inventory_html() -> bytes:
+    """Return the self-contained device inventory + label editor SPA."""
+    page = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Device Inventory</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;color:var(--blue)}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}
+  input[type=search]{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;width:220px}
+  input[type=search]:focus{outline:none;border-color:var(--blue)}
+  button{background:var(--accent);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+  button:hover{opacity:.85}
+  button.secondary{background:var(--surface);border:1px solid var(--border);color:var(--text)}
+  .count{color:var(--muted);font-size:12px}
+  table{width:100%;border-collapse:collapse}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;cursor:pointer;user-select:none}
+  thead th:hover{color:var(--text)}
+  thead th.sorted{color:var(--blue)}
+  tbody tr{border-bottom:1px solid var(--border)}
+  tbody tr:hover{background:rgba(255,255,255,.03)}
+  td{padding:7px 10px;vertical-align:middle}
+  .label-cell{min-width:140px;max-width:200px}
+  .label-display{cursor:pointer;color:var(--blue);padding:2px 6px;border-radius:4px;display:inline-block;min-width:80px}
+  .label-display:hover{background:rgba(88,166,255,.12)}
+  .label-display.empty{color:var(--muted);font-style:italic}
+  .label-input{background:var(--bg);border:1px solid var(--blue);color:var(--text);padding:2px 6px;border-radius:4px;font-size:13px;width:140px;outline:none}
+  .threat{font-weight:600;font-size:11px;padding:2px 7px;border-radius:10px;display:inline-block}
+  .HIGH{background:rgba(248,81,73,.15);color:var(--red)}
+  .MEDIUM{background:rgba(210,153,34,.15);color:var(--yellow)}
+  .LOW{background:rgba(63,185,80,.15);color:var(--green)}
+  .CRITICAL{background:rgba(248,81,73,.3);color:var(--red)}
+  .ip{font-family:monospace;font-size:12px}
+  .scroll{overflow-x:auto}
+  .empty-state{text-align:center;padding:60px;color:var(--muted)}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:#000;padding:8px 16px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  nav{display:flex;gap:16px;align-items:center}
+  nav a{color:var(--muted);font-size:13px}
+  nav a:hover{color:var(--text)}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128241; Device Inventory</h1>
+  <nav>
+    <a href="/connection-report.html">&#8592; Report</a>
+    <a href="/events.html">Events</a>
+    <a href="/analytics.html">Analytics</a>
+  </nav>
+  <div class="toolbar">
+    <input type="search" id="searchBox" placeholder="Search IP, label, hostname, vendor…">
+    <span class="count" id="countLabel">— devices</span>
+    <button class="secondary" id="exportBtn">&#11123; Export CSV</button>
+  </div>
+</header>
+<div class="scroll">
+<table id="devTable">
+  <thead>
+    <tr>
+      <th data-col="label" class="sorted">Label &#9660;</th>
+      <th data-col="ip">IP</th>
+      <th data-col="hostname">Hostname</th>
+      <th data-col="mac">MAC</th>
+      <th data-col="vendor">Vendor</th>
+      <th data-col="threat_level">Threat</th>
+      <th data-col="bytes_sent">&#8593; Sent</th>
+      <th data-col="bytes_received">&#8595; Recv</th>
+      <th data-col="last_seen">Last Seen</th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+</div>
+<div class="empty-state" id="emptyState" style="display:none">No devices match your search.</div>
+<div class="toast" id="toast"></div>
+<script>
+let _devices = [], _aliases = {}, _sortCol = 'label', _sortAsc = true;
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function fmtBytes(n){
+  n = parseInt(n)||0;
+  if(n<1024) return n+' B';
+  if(n<1048576) return (n/1024).toFixed(1)+' KB';
+  if(n<1073741824) return (n/1048576).toFixed(1)+' MB';
+  return (n/1073741824).toFixed(1)+' GB';
+}
+
+function fmtTime(s){
+  if(!s) return '—';
+  const d=new Date(s); if(isNaN(d)) return s;
+  return d.toLocaleString();
+}
+
+function toast(msg, ok=true){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.style.background=ok?'#3fb950':'#f85149';
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+async function loadData(){
+  const [devResp, aliasResp] = await Promise.all([
+    fetch('/inventory.json'),
+    fetch('/api/aliases')
+  ]);
+  _devices = await devResp.json();
+  _aliases  = await aliasResp.json();
+  render();
+}
+
+function getLabel(ip){ return _aliases[ip] || ''; }
+
+function sortDevices(devices){
+  return [...devices].sort((a,b)=>{
+    let av='', bv='';
+    if(_sortCol==='label'){
+      av=getLabel(a.ip).toLowerCase();
+      bv=getLabel(b.ip).toLowerCase();
+      // unlabelled items always last
+      if(!av && bv) return 1;
+      if(av && !bv) return -1;
+    } else if(_sortCol==='bytes_sent'||_sortCol==='bytes_received'){
+      av=parseInt(a[_sortCol])||0;
+      bv=parseInt(b[_sortCol])||0;
+    } else {
+      av=String(a[_sortCol]||'').toLowerCase();
+      bv=String(b[_sortCol]||'').toLowerCase();
+    }
+    if(av<bv) return _sortAsc?-1:1;
+    if(av>bv) return _sortAsc?1:-1;
+    return 0;
+  });
+}
+
+function render(){
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  let rows = _devices.filter(d=>{
+    if(!q) return true;
+    const label = getLabel(d.ip).toLowerCase();
+    return (d.ip||'').includes(q) || label.includes(q) ||
+           (d.hostname||'').toLowerCase().includes(q) ||
+           (d.vendor||'').toLowerCase().includes(q) ||
+           (d.mac||'').toLowerCase().includes(q);
+  });
+  rows = sortDevices(rows);
+  document.getElementById('countLabel').textContent = rows.length+' device'+(rows.length!==1?'s':'');
+  document.getElementById('emptyState').style.display = rows.length?'none':'block';
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = rows.map(d=>{
+    const label = getLabel(d.ip);
+    const lvl = d.threat_level||'LOW';
+    return `<tr>
+      <td class="label-cell"><span class="label-display ${label?'':'empty'}" data-ip="${esc(d.ip)}">${label?esc(label):'Add label…'}</span></td>
+      <td class="ip">${esc(d.ip)}</td>
+      <td>${esc(d.hostname)||'—'}</td>
+      <td class="ip">${esc(d.mac)||'—'}</td>
+      <td>${esc(d.vendor)||'—'}</td>
+      <td><span class="threat ${lvl}">${lvl}</span></td>
+      <td>${fmtBytes(d.bytes_sent)}</td>
+      <td>${fmtBytes(d.bytes_received)}</td>
+      <td>${fmtTime(d.last_seen)}</td>
+    </tr>`;
+  }).join('');
+  attachLabelEditors();
+}
+
+function attachLabelEditors(){
+  document.querySelectorAll('.label-display').forEach(el=>{
+    el.addEventListener('click', startEdit);
+  });
+}
+
+function startEdit(e){
+  const el = e.currentTarget;
+  const ip = el.dataset.ip;
+  const current = _aliases[ip]||'';
+  const input = document.createElement('input');
+  input.type='text';
+  input.className='label-input';
+  input.value=current;
+  input.placeholder='Device label…';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const commit = async ()=>{
+    const val = input.value.trim();
+    try{
+      const r = await fetch('/api/aliases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip,label:val})});
+      const j = await r.json();
+      _aliases = j.aliases;
+      toast(val ? `Saved: ${val}` : 'Label cleared');
+    } catch(_){ toast('Save failed',false); }
+    render();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev=>{
+    if(ev.key==='Enter'){ ev.preventDefault(); input.blur(); }
+    if(ev.key==='Escape'){ input.removeEventListener('blur',commit); render(); }
+  });
+}
+
+// Column sort
+document.querySelectorAll('thead th[data-col]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const col=th.dataset.col;
+    if(_sortCol===col) _sortAsc=!_sortAsc;
+    else{ _sortCol=col; _sortAsc=true; }
+    document.querySelectorAll('thead th').forEach(t=>t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.textContent=th.textContent.replace(/[▲▼]/g,'').trim()+(_sortAsc?' ▲':' ▼');
+    render();
+  });
+});
+
+// Search
+document.getElementById('searchBox').addEventListener('input', render);
+
+// CSV export (with labels)
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  let rows = _devices.filter(d=>{
+    if(!q) return true;
+    const label = getLabel(d.ip).toLowerCase();
+    return (d.ip||'').includes(q)||label.includes(q)||(d.hostname||'').toLowerCase().includes(q)||(d.vendor||'').toLowerCase().includes(q)||(d.mac||'').toLowerCase().includes(q);
+  });
+  const header = 'Label,IP,Hostname,MAC,Vendor,Threat Level,Bytes Sent,Bytes Received,Last Seen\\n';
+  const body = rows.map(d=>[
+    `"${(getLabel(d.ip)||'').replace(/"/g,'""')}"`,
+    `"${(d.ip||'').replace(/"/g,'""')}"`,
+    `"${(d.hostname||'').replace(/"/g,'""')}"`,
+    `"${(d.mac||'').replace(/"/g,'""')}"`,
+    `"${(d.vendor||'').replace(/"/g,'""')}"`,
+    d.threat_level||'LOW',
+    d.bytes_sent||0,
+    d.bytes_received||0,
+    `"${(d.last_seen||'').replace(/"/g,'""')}"`
+  ].join(',')).join('\\n');
+  const blob=new Blob([header+body],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='netwatchm-inventory-'+new Date().toISOString().slice(0,19).replace(/:/g,'-')+'.csv';
+  a.click();
+});
+
+loadData();
+</script>
+</body>
+</html>"""
+    return page.encode()
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # silence default access log
         pass
@@ -761,8 +1043,22 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, 500)
             return
 
+        if path == "/api/aliases":
+            self._send_json(_load_aliases())
+            return
+
         if path == "/events.html":
             body = _render_events_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/inventory.html":
+            body = _render_inventory_html()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -794,6 +1090,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/aliases":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length))
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            ip = (body.get("ip") or "").strip()
+            label = (body.get("label") or "").strip()
+            if not ip:
+                self._send_json({"error": "ip required"}, 400)
+                return
+            aliases = _load_aliases()
+            if label:
+                aliases[ip] = label
+            else:
+                aliases.pop(ip, None)
+            _save_aliases(aliases)
+            self._send_json({"ok": True, "aliases": aliases})
+            return
 
         if parsed.path == "/api/report":
             qs = parse_qs(parsed.query)
@@ -947,6 +1264,24 @@ def _query_adult_domains() -> list[dict]:
         con.close()
 
 
+def _query_data_hog_count() -> list[dict]:
+    """Return count of DATA_HOG events in the last 24 h as a single-row metric list."""
+    db = Path(EVENT_DB)
+    now_ms = int(_time.time() * 1000)
+    if not db.exists():
+        return [{"value": 0}]
+    con = sqlite3.connect(str(db))
+    try:
+        cutoff = _time.time() - 86400
+        row = con.execute(
+            "SELECT COUNT(*) FROM events WHERE alert_type='DATA_HOG' AND timestamp >= ?",
+            (cutoff,),
+        ).fetchone()
+        return [{"value": row[0] if row else 0}]
+    finally:
+        con.close()
+
+
 def _query_browsing() -> list[dict]:
     """Return local-device browsing activity: src → site, grouped by device + site."""
     db = Path(FLOW_DB)
@@ -1019,8 +1354,10 @@ class GrafanaHandler(BaseHTTPRequestHandler):
             inv = SERVE_DIR / "inventory.json"
             if inv.exists():
                 devices = json.loads(inv.read_text())
+                aliases = _load_aliases()
                 for d in devices:
                     d["ip_category"] = _classify_ip(d.get("ip", ""))
+                    d["label"] = aliases.get(d.get("ip", ""), "")
                 self._send_json(devices)
             else:
                 self._send_json([])
@@ -1039,7 +1376,7 @@ class GrafanaHandler(BaseHTTPRequestHandler):
             if metric == "stats":
                 self._send_json([{**counts, "time": now_ms}])
             elif metric in counts:
-                self._send_json([{"time": now_ms, "value": counts[metric]}])
+                self._send_json([{"value": counts[metric]}])
             else:
                 self._send_json({"error": "unknown metric"}, 404)
             return
@@ -1054,6 +1391,13 @@ class GrafanaHandler(BaseHTTPRequestHandler):
         if path == "/api/events/adult-domains":
             try:
                 self._send_json(_query_adult_domains())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/alerts/data-hog":
+            try:
+                self._send_json(_query_data_hog_count())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return

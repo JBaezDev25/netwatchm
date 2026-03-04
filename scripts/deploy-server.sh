@@ -10,4 +10,4 @@ sudo chmod +x /usr/local/bin/netwatchm-server
 sudo systemctl daemon-reload
 sudo systemctl restart netwatchm-web
 echo "Done. Service restarted."
-sudo systemctl status netwatchm-web --no-pager -l
+systemctl status netwatchm-web --no-pager -l 2>/dev/null || true

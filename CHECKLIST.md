@@ -67,6 +67,40 @@ sudo systemctl daemon-reload && sudo systemctl restart netwatchm-web
 
 ---
 
+## Stack 4 — Grafana Alerting  ✅ COMPLETE (2026-03-02)
+- [x] `GET /api/alerts/data-hog` (port 8766) — returns 24h DATA_HOG event count as `[{value, time}]`
+- [x] `GET /api/inventory/high` already returns `[{value, time}]` — reused for High Threat rule
+- [x] `scripts/setup-grafana-alerts.sh` — interactive setup: SMTP drop-in, contact point, two alert rules
+- [x] SMTP via systemd drop-in `/etc/systemd/system/grafana-server.service.d/netwatchm-smtp.conf` (no grafana.ini edits needed)
+- [x] Grafana email contact point → jbaez120@gmail.com
+- [x] Alert rule: **High Threat Detected** — HIGH device count > 0, fires after 1 min
+- [x] Alert rule: **Data Hog Alert** — DATA_HOG events last 24h > 0, fires after 1 min
+- [x] Notification policy updated: NetWatchM Email as default receiver, 4h repeat interval
+
+### Deploy commands (run once)
+```bash
+bash scripts/deploy-server.sh          # deploy server with new /api/alerts/data-hog endpoint
+bash scripts/setup-grafana-alerts.sh   # interactive: enter Gmail app password → wires everything
+```
+
+---
+
+## Stack 5 — Device Friendly Names  ✅ COMPLETE (2026-03-02)
+- [x] `/var/lib/netwatchm/aliases.json` — `{ip: label}` store, separate from inventory.json
+- [x] `GET /api/aliases` — returns full alias dict (HTTPS server)
+- [x] `POST /api/aliases` — `{ip, label}` — set or clear label (empty = delete)
+- [x] `/inventory.html` — dark-theme SPA: sortable table, inline click-to-edit labels, search filter (includes label), CSV export with Label column
+- [x] Grafana `/inventory.json` enriched with `label` field per device
+- [x] `src/netwatchm/inventory/exporter.py` — Label as first CSV column, aliases loaded from disk
+- [x] `src/netwatchm/ui/inventory_view.py` — Label column in terminal table, filter searches labels
+
+### Access
+```
+https://localhost:8765/inventory.html
+```
+
+---
+
 ## In Progress / Next Up
 - [x] Demo report script with synthetic high/medium/low risk flows (`sudo bash scripts/run-demo.sh`)
 - [x] gen-report.sh uses PYTHONPATH to guarantee local source (fixes modal disappearing)
