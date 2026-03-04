@@ -35,6 +35,13 @@ alerts:
     recipient: jbaez120@gmail.com
     min_level: HIGH
     cooldown_seconds: 300  # min gap between emails for same alert type
+  ntfy:
+    enabled: false
+    server: https://ntfy.sh  # or http://localhost:2586 for self-hosted
+    topic: ""                # your ntfy topic name (keep secret for basic privacy)
+    # token: ""              # set via NETWATCHM_NTFY_TOKEN for private topics
+    min_level: HIGH
+    cooldown_seconds: 300    # min gap between notifications for same alert type
 
 inventory:
   enabled: true

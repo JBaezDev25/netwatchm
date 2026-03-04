@@ -97,11 +97,22 @@ class EmailAlertConfig:
 
 
 @dataclass
+class NtfyAlertConfig:
+    enabled: bool = False
+    server: str = "https://ntfy.sh"
+    topic: str = ""
+    token: str = ""  # always loaded from env var NETWATCHM_NTFY_TOKEN
+    min_level: str = "HIGH"
+    cooldown_seconds: int = 300
+
+
+@dataclass
 class AlertsConfig:
     terminal: bool = True
     log: LogAlertConfig = field(default_factory=LogAlertConfig)
     sound: SoundAlertConfig = field(default_factory=SoundAlertConfig)
     email: EmailAlertConfig = field(default_factory=EmailAlertConfig)
+    ntfy: NtfyAlertConfig = field(default_factory=NtfyAlertConfig)
 
 
 @dataclass
@@ -142,6 +153,10 @@ class Config:
         env_pass = os.environ.get("NETWATCHM_EMAIL_PASSWORD", "")
         if env_pass:
             self.alerts.email.password = env_pass
+        # Always load ntfy token from env var
+        env_token = os.environ.get("NETWATCHM_NTFY_TOKEN", "")
+        if env_token:
+            self.alerts.ntfy.token = env_token
 
 
 def _merge(base: Any, override: Any) -> Any:
@@ -182,6 +197,7 @@ def load_config(path: str | Path | None = None) -> Config:
     log_raw = alerts_raw.get("log", {})
     sound_raw = alerts_raw.get("sound", {})
     email_raw = alerts_raw.get("email", {})
+    ntfy_raw = alerts_raw.get("ntfy", {})
 
     inv_raw = raw.get("inventory", {})
 
@@ -241,6 +257,14 @@ def load_config(path: str | Path | None = None) -> Config:
                 recipient=email_raw.get("recipient", ""),
                 min_level=email_raw.get("min_level", "HIGH"),
                 cooldown_seconds=email_raw.get("cooldown_seconds", 300),
+            ),
+            ntfy=NtfyAlertConfig(
+                enabled=ntfy_raw.get("enabled", False),
+                server=ntfy_raw.get("server", "https://ntfy.sh"),
+                topic=ntfy_raw.get("topic", ""),
+                token=ntfy_raw.get("token", ""),
+                min_level=ntfy_raw.get("min_level", "HIGH"),
+                cooldown_seconds=ntfy_raw.get("cooldown_seconds", 300),
             ),
         ),
         inventory=InventoryConfig(
