@@ -157,6 +157,7 @@ DEFAULT_NETWORK = os.environ.get("NETWATCHM_NETWORK", "192.168.1.0/24")
 GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB", "/var/lib/netwatchm/GeoLite2-City.mmdb")
 FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",    "/var/lib/netwatchm/flows.db")
 EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",   "/var/lib/netwatchm/events.db")
+ADMIN_TOKEN = os.environ.get("NETWATCHM_ADMIN_TOKEN", "netwatchm-admin")
 ALIASES_FILE = Path(os.environ.get("NETWATCHM_ALIASES_FILE", "/var/lib/netwatchm/aliases.json"))
 REPORTS_DIR = SERVE_DIR / "reports"
 REPORTS_MAX = 50  # keep this many archived reports
@@ -190,8 +191,7 @@ def _run_deep_inspect(target_ip: str, ports: str) -> None:
     try:
         out_path = SERVE_DIR / f"deep-inspect-{target_ip}.html"
         cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
-               "deep-inspect", "--target", target_ip, "--output", str(out_path),
-               "--db-path", GEOIP_DB]
+               "deep-inspect", "--target", target_ip, "--output", str(out_path)]
         if ports:
             cmd += ["--ports", ports]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -762,6 +762,30 @@ def _render_events_html() -> bytes:
   }
   .notify-btn:hover { color:#3fb950; border-color:#3fb950; }
   .notify-btn:disabled { opacity:0.5; cursor:default; }
+  .clear-btn {
+    background:var(--surface2); color:#f85149; border:1px solid #f85149;
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .clear-btn:hover { background:#f85149; color:#fff; }
+  /* ── Clear modal ── */
+  #clearModal {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,.75); z-index:999; align-items:center; justify-content:center;
+  }
+  .modal-box {
+    background:#1e1e2e; border:1px solid #444; border-radius:8px;
+    padding:28px 32px; min-width:320px; text-align:center;
+  }
+  .modal-box h3 { color:#f85149; margin:0 0 8px; }
+  .modal-box p  { color:#888; font-size:13px; margin:0 0 16px; }
+  .modal-box input {
+    width:100%; padding:8px 10px; background:#2a2a3e; border:1px solid #555;
+    border-radius:4px; color:#e6e6e6; font-size:14px; box-sizing:border-box; margin-bottom:14px;
+  }
+  .modal-actions { display:flex; gap:10px; justify-content:center; }
+  .modal-actions button { padding:8px 22px; border:none; border-radius:4px; cursor:pointer; font-size:14px; }
+  .modal-confirm { background:#f85149; color:#fff; }
+  .modal-cancel  { background:#333; color:#e6e6e6; }
   /* ── Toast ── */
   #toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
@@ -793,8 +817,20 @@ def _render_events_html() -> bytes:
   <button class="refresh-btn" onclick="loadEvents()">&#8635; Refresh</button>
   <button class="export-btn" onclick="exportCSV()">&#11123; CSV</button>
   <button class="notify-btn" id="testNtfyBtn" onclick="testNtfy()">&#128276; Test Notify</button>
+  <button class="clear-btn" onclick="clearAlerts()">&#128465; Clear Alerts</button>
 </div>
 <div id="toast"></div>
+<div id="clearModal">
+  <div class="modal-box">
+    <h3>&#9888; Clear All Alerts?</h3>
+    <p>This permanently deletes all events from the database.<br>Enter your admin token to confirm.</p>
+    <input type="password" id="adminToken" placeholder="Admin token" onkeydown="if(event.key==='Enter')confirmClear()">
+    <div class="modal-actions">
+      <button class="modal-confirm" onclick="confirmClear()">Clear</button>
+      <button class="modal-cancel" onclick="closeClearModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <div class="filterbar">
   <label>Search:</label>
@@ -858,6 +894,36 @@ async function testNtfy() {
   } finally {
     btn.disabled = false;
     btn.textContent = '\\u{1F514} Test Notify';
+  }
+}
+
+function clearAlerts() {
+  document.getElementById('adminToken').value = '';
+  const m = document.getElementById('clearModal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('adminToken').focus(), 80);
+}
+function closeClearModal() {
+  document.getElementById('clearModal').style.display = 'none';
+}
+async function confirmClear() {
+  const token = document.getElementById('adminToken').value.trim();
+  if (!token) { showToast('Admin token required', false); return; }
+  try {
+    const r = await fetch('/api/events', {
+      method: 'DELETE',
+      headers: {'X-Admin-Token': token}
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      closeClearModal();
+      showToast('All alerts cleared', true);
+      loadEvents();
+    } else {
+      showToast(d.error || 'Failed — check token', false);
+    }
+  } catch(e) {
+    showToast('Request failed: ' + e, false);
   }
 }
 
@@ -1559,10 +1625,29 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404, "Not Found")
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/events":
+            token = self.headers.get("X-Admin-Token", "")
+            if token != ADMIN_TOKEN:
+                self._send_json({"error": "unauthorized"}, 401)
+                return
+            try:
+                con = sqlite3.connect(str(Path(EVENT_DB)))
+                con.execute("DELETE FROM events")
+                con.commit()
+                con.close()
+                self._send_json({"ok": True, "message": "All alerts cleared"})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+        self.send_error(404, "Not Found")
+
     def do_OPTIONS(self) -> None:
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token")
         self.end_headers()
 
 
@@ -1689,6 +1774,20 @@ def _query_events_for_grafana(limit: int = 200) -> list[dict]:
     return rows
 
 
+def _count_events_by_level(level: str) -> list[dict]:
+    """Return count of events at the given threat level as a single Grafana row."""
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return [{"time": int(_time.time() * 1000), "value": 0}]
+    con = sqlite3.connect(str(db))
+    try:
+        cur = con.execute("SELECT COUNT(*) FROM events WHERE level = ?", (level.upper(),))
+        count = cur.fetchone()[0]
+    finally:
+        con.close()
+    return [{"time": int(_time.time() * 1000), "value": count}]
+
+
 def _query_browsing() -> list[dict]:
     """Return local-device browsing activity: src → site, grouped by device + site."""
     db = Path(FLOW_DB)
@@ -1805,6 +1904,16 @@ class GrafanaHandler(BaseHTTPRequestHandler):
         if path == "/api/events/adult-domains":
             try:
                 self._send_json(_query_adult_domains())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path in ("/api/events/count/critical",
+                    "/api/events/count/high",
+                    "/api/events/count/medium"):
+            level = path.split("/")[-1]
+            try:
+                self._send_json(_count_events_by_level(level))
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return
