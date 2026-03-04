@@ -257,14 +257,14 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "#fade2a",
+            "fixedColor": "#cc8800",
             "mode": "fixed"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "#fade2a",
+                "color": "#cc8800",
                 "value": null
               }
             ]
@@ -461,7 +461,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "#fade2a",
+                  "fixedColor": "#cc8800",
                   "mode": "fixed"
                 }
               }
@@ -607,7 +607,7 @@
                     "type": "value",
                     "options": {
                       "MEDIUM": {
-                        "color": "#fade2a",
+                        "color": "#cc8800",
                         "index": 1
                       }
                     }
@@ -1814,7 +1814,7 @@
                     "type": "value",
                     "options": {
                       "MEDIUM": {
-                        "color": "#fade2a",
+                        "color": "#cc8800",
                         "index": 1
                       }
                     }
@@ -2048,5 +2048,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 10
+  "version": 11
 }
