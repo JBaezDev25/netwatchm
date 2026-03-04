@@ -736,8 +736,8 @@
       "title": "#1 Traffic Sender",
       "description": "Device sending the most data right now",
       "gridPos": {
-        "h": 4,
-        "w": 6,
+        "h": 3,
+        "w": 5,
         "x": 0,
         "y": 16
       },
@@ -838,9 +838,9 @@
       "title": "Top Traffic Devices \u2014 Live",
       "description": "Devices ranked by bytes sent (72h). Updates with dashboard refresh.",
       "gridPos": {
-        "h": 10,
-        "w": 18,
-        "x": 6,
+        "h": 8,
+        "w": 11,
+        "x": 5,
         "y": 16
       },
       "options": {
@@ -2217,6 +2217,162 @@
           }
         }
       ]
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Why \u2014 Top Sender Breakdown",
+      "description": "Top destinations for the #1 traffic device",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "destination"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Destination"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 160
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Service"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff9900"
+                }
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 110,
+                  "cellOptions": {
+                    "type": "color-text"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Traffic"
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 90
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "connections"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Conns"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 60
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_NETWATCHM}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "url": "http://127.0.0.1:8766/api/flows/devices/top/why",
+          "parser": "backend",
+          "columns": [
+            {
+              "selector": "destination",
+              "text": "destination",
+              "type": "string"
+            },
+            {
+              "selector": "service",
+              "text": "service",
+              "type": "string"
+            },
+            {
+              "selector": "bytes",
+              "text": "bytes",
+              "type": "number"
+            },
+            {
+              "selector": "connections",
+              "text": "connections",
+              "type": "number"
+            }
+          ],
+          "filters": [],
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
+        }
+      ],
+      "transformations": []
     }
   ],
   "refresh": "30s",
@@ -2237,5 +2393,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 14
+  "version": 15
 }

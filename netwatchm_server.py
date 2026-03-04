@@ -392,6 +392,41 @@ def _query_flows_endpoint(sub: str) -> object:
             label = f"{row['host'] or row['ip']} ({row['ip']})"
             return [{"value": row["bytes"], "label": label,
                      "time": int(_time.time() * 1000)}]
+        if sub == "devices/top/why":
+            _PORT_SERVICES = {
+                80: "HTTP", 443: "HTTPS", 8080: "HTTP-alt", 8443: "HTTPS-alt",
+                22: "SSH", 3389: "RDP", 21: "FTP", 23: "Telnet",
+                25: "SMTP", 587: "SMTP", 465: "SMTPS",
+                53: "DNS", 123: "NTP", 161: "SNMP",
+                445: "SMB/File Share", 139: "NetBIOS", 3306: "MySQL",
+                5432: "PostgreSQL", 6379: "Redis", 27017: "MongoDB",
+                1194: "OpenVPN", 51820: "WireGuard",
+            }
+            # Find top sender
+            top = cur.execute("""
+                SELECT src_ip, MAX(src_host) AS host, COALESCE(SUM(bytes),0) AS total
+                FROM flows GROUP BY src_ip ORDER BY total DESC LIMIT 1
+            """).fetchone()
+            if not top:
+                return []
+            top_ip = top["src_ip"]
+            rows = cur.execute("""
+                SELECT dst_ip, MAX(domain) AS domain, dst_port,
+                       COALESCE(SUM(bytes),0) AS bytes, COUNT(*) AS conns
+                FROM flows WHERE src_ip=?
+                GROUP BY dst_ip ORDER BY bytes DESC LIMIT 8
+            """, (top_ip,)).fetchall()
+            result = []
+            for r in rows:
+                svc = _PORT_SERVICES.get(r["dst_port"], f"port {r['dst_port']}")
+                dest = r["domain"] or r["dst_ip"]
+                result.append({
+                    "destination": dest,
+                    "service": svc,
+                    "bytes": r["bytes"],
+                    "connections": r["conns"],
+                })
+            return result
         if sub == "destinations":
             cur.execute("""
                 SELECT dst_ip AS ip, MAX(domain) AS domain,
