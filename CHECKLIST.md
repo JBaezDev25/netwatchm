@@ -109,6 +109,25 @@ https://localhost:8765/inventory.html
 - [x] Alert on new/unknown devices detected by arp-scan (NEW_DEVICE MEDIUM alert → all handlers)
 - [x] Grafana dashboard panels for connection report data (flows, devices, destinations, protocols, hourly)
 
+---
+
+## Pending — Next Session
+
+### Must Do
+- [ ] **README.md** — outdated, still describes v0.1.0 (Feb 2026); needs full rewrite to reflect current state
+- [ ] **Commit `scripts/fix-admin-token.sh`** — not yet pushed to GitHub
+
+### Improvements / Nice to Have
+- [ ] **Events retention setting** — 72h is hardcoded in `event_store.py`; expose as config option
+- [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
+- [ ] **Events portal paging** — currently loads up to 500 events; add pagination for large datasets
+- [ ] **Inventory.html link from Grafana** — no link from dashboard to `/inventory.html`
+- [ ] **Windows support** — ntfy, events portal, GeoIP all untested on Windows
+- [ ] **Dark/Light theme** — events portal is dark-only; connection report has toggle but events portal doesn't
+- [ ] **Alert suppression** — no way to silence a recurring low-value alert type (e.g. NEW_IP flood)
+- [ ] **Role-based access** — single admin token; no read-only vs admin distinction
+- [ ] **Mobile-friendly** — events portal not tested on phone browser (ntfy app covers this partially)
+
 ## Grafana Setup — ✅ COMPLETE (2026-03-02)
 
 ### What works:
