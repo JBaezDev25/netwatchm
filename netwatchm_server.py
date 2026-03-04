@@ -197,6 +197,25 @@ def _run_deep_inspect(target_ip: str, ports: str) -> None:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "deep-inspect failed")
+        # Inject hostname into generated report
+        try:
+            inv_file = SERVE_DIR / "inventory.json"
+            if inv_file.exists():
+                inv = json.loads(inv_file.read_text())
+                hostname = next((d.get("hostname", "") for d in inv
+                                 if d.get("ip") == target_ip and d.get("hostname")), "")
+                if hostname:
+                    html = out_path.read_text()
+                    html = html.replace(
+                        f"Deep Inspect: {target_ip}",
+                        f"Deep Inspect: {hostname} ({target_ip})"
+                    ).replace(
+                        f"Deep Inspect — {target_ip}",
+                        f"Deep Inspect — {hostname} ({target_ip})"
+                    )
+                    out_path.write_text(html)
+        except Exception:  # noqa: BLE001
+            pass  # hostname injection is best-effort
         with _deep_lock:
             _deep_state[target_ip] = {"status": "ready", "error": None}
     except Exception as exc:
@@ -557,6 +576,91 @@ def _query_event_types() -> list[str]:
         con.close()
 
 
+def _render_inspect_launcher(ip: str) -> str:
+    """Launcher page: triggers deep-inspect job, shows progress, redirects when done."""
+    # Look up hostname from inventory
+    hostname = ""
+    try:
+        inv_file = SERVE_DIR / "inventory.json"
+        if inv_file.exists():
+            inv = json.loads(inv_file.read_text())
+            hostname = next((d.get("hostname", "") for d in inv
+                             if d.get("ip") == ip and d.get("hostname")), "")
+    except Exception:  # noqa: BLE001
+        pass
+    display = f"{hostname} ({ip})" if hostname else ip
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Deep Inspect — {display}</title>
+<style>
+  body{{background:#0d1117;color:#c9d1d9;font-family:monospace;display:flex;
+       align-items:center;justify-content:center;min-height:100vh;margin:0;flex-direction:column;gap:20px}}
+  h2{{color:#58a6ff;font-size:18px;margin:0}}
+  .sub{{color:#8b949e;font-size:13px}}
+  .spinner{{width:40px;height:40px;border:3px solid #30363d;border-top-color:#58a6ff;
+            border-radius:50%;animation:spin 0.8s linear infinite}}
+  @keyframes spin{{to{{transform:rotate(360deg)}}}}
+  .status{{color:#8b949e;font-size:12px;min-height:18px}}
+  .err{{color:#f85149}}
+  .links{{display:flex;gap:12px;margin-top:8px}}
+  a.btn{{background:#21262d;color:#58a6ff;border:1px solid #30363d;padding:6px 16px;
+         border-radius:4px;text-decoration:none;font-size:13px}}
+  a.btn:hover{{border-color:#58a6ff}}
+</style>
+</head>
+<body>
+<h2>&#128269; Deep Inspect: {display}</h2>
+<div class="spinner" id="spin"></div>
+<div class="status" id="status">Starting inspection…</div>
+<div class="links">
+  <a class="btn" href="/events.html?q={ip}" target="_blank">&#9888; View Events</a>
+  <a class="btn" href="/connection-report.html">&#8592; Connection Report</a>
+</div>
+<script>
+const ip = {json.dumps(ip)};
+const resultUrl = '/deep-inspect-' + ip + '.html';
+
+async function trigger() {{
+  // Check if already done
+  const s = await fetch('/api/deep-inspect/status?target=' + ip).then(r=>r.json()).catch(()=>({{}}));
+  if (s.status === 'ready') {{ window.location.href = resultUrl; return; }}
+  if (s.status !== 'running') {{
+    // Trigger new job
+    await fetch('/api/deep-inspect?target=' + ip, {{method:'POST'}}).catch(()=>{{}});
+  }}
+  poll();
+}}
+
+function poll() {{
+  const t = setInterval(async () => {{
+    try {{
+      const d = await fetch('/api/deep-inspect/status?target=' + ip).then(r=>r.json());
+      if (d.status === 'ready') {{
+        clearInterval(t);
+        document.getElementById('status').textContent = 'Done! Loading report…';
+        window.location.href = resultUrl;
+      }} else if (d.status === 'error') {{
+        clearInterval(t);
+        document.getElementById('spin').style.display = 'none';
+        document.getElementById('status').innerHTML =
+          '<span class="err">Error: ' + (d.error||'unknown') + '</span>';
+      }} else {{
+        document.getElementById('status').textContent = 'Scanning… ' + new Date().toLocaleTimeString();
+      }}
+    }} catch(e) {{
+      document.getElementById('status').textContent = 'Waiting for server…';
+    }}
+  }}, 2000);
+}}
+
+trigger();
+</script>
+</body>
+</html>"""
+
+
 def _render_events_html() -> bytes:
     """Return the self-contained events portal SPA."""
     page = """<!DOCTYPE html>
@@ -853,7 +957,7 @@ function renderTable(events) {
 
 function buildDetailRow(e) {
   const deepLink = e.src_ip && !e.src_ip.startsWith('192.168') && !e.src_ip.startsWith('10.')
-    ? `<a class="deep-btn" href="/deep-inspect-${esc(e.src_ip)}.html" target="_blank">&#128269; Deep Inspect ${esc(e.src_ip)}</a>`
+    ? `<a class="deep-btn" href="/inspect/${esc(e.src_ip)}" target="_blank">&#128269; Deep Inspect ${esc(e.src_ip)}</a>`
     : '';
   return `<tr class="detail-row" onclick="event.stopPropagation()">
     <td colspan="6">
@@ -1292,6 +1396,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/aliases":
             self._send_json(_load_aliases())
+            return
+
+        if path.startswith("/inspect/"):
+            ip = path.removeprefix("/inspect/").strip("/")
+            body = _render_inspect_launcher(ip).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if path == "/events.html":

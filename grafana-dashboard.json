@@ -777,6 +777,21 @@
                 "value": {
                   "width": 130
                 }
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View Events",
+                    "url": "https://localhost:8765/events.html?q=${__value.text}",
+                    "targetBlank": true
+                  },
+                  {
+                    "title": "Deep Inspect",
+                    "url": "https://localhost:8765/inspect/${__value.text}",
+                    "targetBlank": true
+                  }
+                ]
               }
             ]
           },
@@ -1722,12 +1737,12 @@
                 "value": [
                   {
                     "title": "View Events",
-                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                    "url": "https://localhost:8765/events.html?q=${__value.text}",
                     "targetBlank": true
                   },
                   {
                     "title": "Deep Inspect",
-                    "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
+                    "url": "https://localhost:8765/inspect/${__value.text}",
                     "targetBlank": true
                   }
                 ]
@@ -2193,5 +2208,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 16
+  "version": 17
 }
