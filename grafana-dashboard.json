@@ -1385,6 +1385,22 @@
               {
                 "id": "displayName",
                 "value": "Hits"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff9900"
+                }
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 80,
+                  "cellOptions": {
+                    "type": "color-text"
+                  }
+                }
               }
             ]
           },
@@ -2032,5 +2048,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 7
+  "version": 8
 }
