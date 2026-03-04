@@ -18,6 +18,49 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
+def _send_test_ntfy() -> tuple[bool, str]:
+    """Read ntfy config from YAML and fire a test notification. Returns (ok, message)."""
+    import urllib.request
+    from urllib.error import URLError
+    import yaml
+
+    cfg_path = Path(os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml"))
+    try:
+        raw = yaml.safe_load(cfg_path.read_text()) or {} if cfg_path.exists() else {}
+    except Exception as exc:
+        return False, f"Could not read config: {exc}"
+
+    ntfy = raw.get("alerts", {}).get("ntfy", {})
+    if not ntfy.get("enabled", False):
+        return False, "ntfy is not enabled in config"
+    server = ntfy.get("server", "https://ntfy.sh").rstrip("/")
+    topic  = ntfy.get("topic", "")
+    token  = os.environ.get("NETWATCHM_NTFY_TOKEN", ntfy.get("token", ""))
+
+    if not topic:
+        return False, "ntfy topic is not configured"
+
+    url  = f"{server}/{topic}"
+    body = b"This is a test notification from NetWatchM. If you see this, push alerts are working!"
+    headers = {
+        "X-Title":    "[TEST] NetWatchM Alert",
+        "X-Priority": "3",
+        "X-Tags":     "white_check_mark",
+        "Content-Type": "text/plain",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10):
+            return True, f"Test notification sent to topic '{topic}'"
+    except URLError as exc:
+        return False, f"ntfy request failed: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Unexpected error: {exc}"
+
+
 def _load_aliases() -> dict[str, str]:
     """Return {ip: label} from aliases.json; empty dict if missing or corrupt."""
     if not ALIASES_FILE.exists():
@@ -447,6 +490,22 @@ def _render_events_html() -> bytes:
     padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
   }
   .export-btn:hover { color:var(--accent); border-color:var(--accent); }
+  /* ── Test notify btn ── */
+  .notify-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .notify-btn:hover { color:#3fb950; border-color:#3fb950; }
+  .notify-btn:disabled { opacity:0.5; cursor:default; }
+  /* ── Toast ── */
+  #toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+    padding:10px 20px; font-size:13px; z-index:999; display:none;
+    box-shadow:0 4px 16px rgba(0,0,0,0.5);
+  }
+  #toast.ok  { border-color:#3fb950; color:#3fb950; }
+  #toast.err { border-color:#f85149; color:#f85149; }
   /* ── Auto-refresh toggle ── */
   .auto-toggle {
     display:flex; align-items:center; gap:6px; cursor:pointer;
@@ -468,7 +527,9 @@ def _render_events_html() -> bytes:
   <span class="countdown" id="countdown"></span>
   <button class="refresh-btn" onclick="loadEvents()">&#8635; Refresh</button>
   <button class="export-btn" onclick="exportCSV()">&#11123; CSV</button>
+  <button class="notify-btn" id="testNtfyBtn" onclick="testNtfy()">&#128276; Test Notify</button>
 </div>
+<div id="toast"></div>
 
 <div class="filterbar">
   <label>Search:</label>
@@ -509,6 +570,31 @@ let _allEvents = [];
 let _expandedId = null;
 let _autoTimer = null;
 let _countdown = 15;
+
+function showToast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = ok ? 'ok' : 'err';
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+async function testNtfy() {
+  const btn = document.getElementById('testNtfyBtn');
+  btn.disabled = true;
+  btn.textContent = '… Sending';
+  try {
+    const r = await fetch('/api/test-ntfy', {method:'POST'});
+    const d = await r.json();
+    showToast(d.message, d.ok);
+  } catch(e) {
+    showToast('Request failed: ' + e, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '\\u{1F514} Test Notify';
+  }
+}
 
 function fmtTime(ts) {
   const d = new Date(ts * 1000);
@@ -1188,6 +1274,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
             threading.Thread(target=_run_analytics, daemon=True).start()
             self._send_json({"status": "running", "result_url": "/analytics.html"})
+            return
+
+        if parsed.path == "/api/test-ntfy":
+            ok, msg = _send_test_ntfy()
+            self._send_json({"ok": ok, "message": msg}, 200 if ok else 400)
             return
 
         self.send_error(404, "Not Found")
