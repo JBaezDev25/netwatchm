@@ -170,14 +170,14 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "red",
+            "fixedColor": "#ff9900",
             "mode": "fixed"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "#ff9900",
                 "value": null
               }
             ]
@@ -257,14 +257,14 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "orange",
+            "fixedColor": "#d29922",
             "mode": "fixed"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "orange",
+                "color": "#d29922",
                 "value": null
               }
             ]
@@ -446,7 +446,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "#F85149",
+                  "fixedColor": "#ff9900",
                   "mode": "fixed"
                 }
               }
@@ -461,7 +461,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "#D29922",
+                  "fixedColor": "#d29922",
                   "mode": "fixed"
                 }
               }
@@ -476,7 +476,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "#3FB950",
+                  "fixedColor": "#3fb950",
                   "mode": "fixed"
                 }
               }
@@ -598,7 +598,7 @@
                     "type": "value",
                     "options": {
                       "LOW": {
-                        "color": "green",
+                        "color": "#3fb950",
                         "index": 0
                       }
                     }
@@ -607,7 +607,7 @@
                     "type": "value",
                     "options": {
                       "MEDIUM": {
-                        "color": "orange",
+                        "color": "#d29922",
                         "index": 1
                       }
                     }
@@ -616,7 +616,7 @@
                     "type": "value",
                     "options": {
                       "HIGH": {
-                        "color": "red",
+                        "color": "#ff9900",
                         "index": 2
                       }
                     }
@@ -625,7 +625,7 @@
                     "type": "value",
                     "options": {
                       "CRITICAL": {
-                        "color": "purple",
+                        "color": "#f85149",
                         "index": 3
                       }
                     }
@@ -2048,5 +2048,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 8
+  "version": 9
 }
