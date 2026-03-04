@@ -444,12 +444,66 @@ def _query_flows_endpoint(sub: str) -> object:
             """)
             return [{"name": r["name"], "bytes": r["bytes"]} for r in cur.fetchall()]
         if sub == "hourly":
+            # Rolling last 24h, grouped by hour-of-day
             cur.execute("""
-                SELECT strftime('%Y-%m-%dT%H:00', captured_at) AS hour,
+                SELECT strftime('%H:00', captured_at) AS hour,
                        COALESCE(SUM(bytes),0) AS bytes
-                FROM flows GROUP BY hour ORDER BY hour
+                FROM flows
+                WHERE captured_at >= datetime('now', '-24 hours')
+                GROUP BY hour ORDER BY hour
             """)
             return [{"hour": r["hour"], "bytes": r["bytes"]} for r in cur.fetchall()]
+        if sub == "top-apps":
+            _SVC = {
+                80:"HTTP", 443:"HTTPS", 8080:"HTTP-alt", 8443:"HTTPS-alt",
+                22:"SSH", 3389:"RDP", 21:"FTP", 25:"SMTP", 587:"SMTP",
+                53:"DNS", 123:"NTP", 445:"SMB", 3306:"MySQL",
+                5432:"PostgreSQL", 6379:"Redis", 1194:"OpenVPN", 51820:"WireGuard",
+            }
+            cur.execute("""
+                SELECT dst_port, COALESCE(SUM(bytes),0) AS bytes
+                FROM flows GROUP BY dst_port ORDER BY bytes DESC LIMIT 12
+            """)
+            result: dict[str, int] = {}
+            for r in cur.fetchall():
+                name = _SVC.get(r["dst_port"], f"port {r['dst_port']}")
+                result[name] = result.get(name, 0) + r["bytes"]
+            return [{"app": k, "bytes": v} for k, v in
+                    sorted(result.items(), key=lambda x: -x[1])]
+        if sub == "devices/enriched":
+            cur.execute("""
+                SELECT src_ip AS ip, MAX(src_host) AS host,
+                       COALESCE(SUM(bytes),0) AS total
+                FROM flows GROUP BY src_ip ORDER BY total DESC LIMIT 10
+            """)
+            devices = [dict(r) for r in cur.fetchall()]
+            _SVC2 = {
+                80:"HTTP", 443:"HTTPS", 8080:"HTTP-alt", 8443:"HTTPS-alt",
+                22:"SSH", 3389:"RDP", 21:"FTP", 25:"SMTP", 587:"SMTP",
+                53:"DNS", 123:"NTP", 445:"SMB", 3306:"MySQL",
+                5432:"PostgreSQL", 6379:"Redis", 1194:"OpenVPN", 51820:"WireGuard",
+            }
+            result2 = []
+            for dev in devices:
+                top = cur.execute("""
+                    SELECT dst_ip, MAX(domain) AS domain, dst_port,
+                           COALESCE(SUM(bytes),0) AS bytes
+                    FROM flows WHERE src_ip=?
+                    GROUP BY dst_ip ORDER BY bytes DESC LIMIT 1
+                """, (dev["ip"],)).fetchone()
+                dest = ""
+                svc = ""
+                if top:
+                    dest = top["domain"] or top["dst_ip"]
+                    svc = _SVC2.get(top["dst_port"], f"port {top['dst_port']}")
+                result2.append({
+                    "ip": dev["ip"],
+                    "device": dev["host"] or dev["ip"],
+                    "traffic": dev["total"],
+                    "top_destination": dest,
+                    "service": svc,
+                })
+            return result2
         return {"error": "unknown endpoint"}
     finally:
         con.close()
@@ -1495,7 +1549,7 @@ def _geoip_country(ip: str) -> str:
 
 
 def _query_events_for_grafana(limit: int = 200) -> list[dict]:
-    """Return recent alerts enriched with GeoIP country for Grafana history panel."""
+    """Return MEDIUM+ alerts enriched with GeoIP country for Grafana history panel."""
     db = Path(EVENT_DB)
     if not db.exists():
         return []
@@ -1504,7 +1558,9 @@ def _query_events_for_grafana(limit: int = 200) -> list[dict]:
     try:
         cur = con.execute(
             """SELECT id, timestamp, alert_type, level, src_ip, dst_ip, description
-               FROM events ORDER BY timestamp DESC LIMIT ?""",
+               FROM events
+               WHERE level IN ('MEDIUM','HIGH','CRITICAL')
+               ORDER BY timestamp DESC LIMIT ?""",
             (limit,),
         )
         rows = [dict(r) for r in cur.fetchall()]

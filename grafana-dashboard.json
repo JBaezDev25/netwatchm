@@ -731,116 +731,14 @@
       ]
     },
     {
-      "id": 21,
-      "type": "stat",
-      "title": "#1 Traffic Sender",
-      "description": "Device sending the most data right now",
-      "gridPos": {
-        "h": 3,
-        "w": 5,
-        "x": 0,
-        "y": 16
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "/^value$/",
-          "values": false
-        },
-        "textMode": "value_and_name"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#3fb950",
-                "value": null
-              },
-              {
-                "color": "#cc8800",
-                "value": 524288000
-              },
-              {
-                "color": "#ff9900",
-                "value": 1073741824
-              },
-              {
-                "color": "#f85149",
-                "value": 5368709120
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/devices/top",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "value",
-              "text": "value",
-              "type": "number"
-            },
-            {
-              "selector": "label",
-              "text": "label",
-              "type": "string"
-            },
-            {
-              "selector": "time",
-              "text": "time",
-              "type": "timestamp_epoch_ms"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "value"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "id": 7,
+      "id": 23,
       "type": "table",
       "title": "Top Traffic Devices \u2014 Live",
-      "description": "Devices ranked by bytes sent (72h). Updates with dashboard refresh.",
+      "description": "Top senders with their primary destination and service. Updates with dashboard refresh.",
       "gridPos": {
-        "h": 8,
-        "w": 11,
-        "x": 5,
+        "h": 7,
+        "w": 24,
+        "x": 0,
         "y": 16
       },
       "options": {
@@ -885,7 +783,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "host"
+              "options": "device"
             },
             "properties": [
               {
@@ -895,7 +793,7 @@
               {
                 "id": "custom",
                 "value": {
-                  "width": 180
+                  "width": 160
                 }
               }
             ]
@@ -903,7 +801,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "bytes"
+              "options": "traffic"
             },
             "properties": [
               {
@@ -941,10 +839,56 @@
               {
                 "id": "custom",
                 "value": {
+                  "width": 110,
                   "cellOptions": {
                     "type": "color-text"
-                  },
-                  "width": 140
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "top_destination"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Top Destination"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 200
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Service"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff9900"
+                }
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 120,
+                  "cellOptions": {
+                    "type": "color-text"
+                  }
                 }
               }
             ]
@@ -960,7 +904,7 @@
           "refId": "A",
           "type": "json",
           "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/devices",
+          "url": "http://127.0.0.1:8766/api/flows/devices/enriched",
           "parser": "backend",
           "columns": [
             {
@@ -969,8 +913,85 @@
               "type": "string"
             },
             {
-              "selector": "host",
-              "text": "host",
+              "selector": "device",
+              "text": "device",
+              "type": "string"
+            },
+            {
+              "selector": "traffic",
+              "text": "traffic",
+              "type": "number"
+            },
+            {
+              "selector": "top_destination",
+              "text": "top_destination",
+              "type": "string"
+            },
+            {
+              "selector": "service",
+              "text": "service",
+              "type": "string"
+            }
+          ],
+          "filters": [],
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
+        }
+      ],
+      "transformations": []
+    },
+    {
+      "id": 14,
+      "type": "piechart",
+      "title": "Application Activity",
+      "description": "Network traffic by application/service (last 72h)",
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 0,
+        "y": 24
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "donut",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_NETWATCHM}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "url": "http://127.0.0.1:8766/api/flows/top-apps",
+          "parser": "backend",
+          "columns": [
+            {
+              "selector": "app",
+              "text": "app",
               "type": "string"
             },
             {
@@ -985,46 +1006,37 @@
             "data": ""
           }
         }
-      ],
-      "transformations": []
+      ]
     },
     {
-      "id": 8,
-      "type": "row",
-      "title": "Connection Report \u2014 Last 72 Hours",
+      "id": 15,
+      "type": "barchart",
+      "title": "Hourly Activity (Last 24h)",
       "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 26
-      },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "id": 9,
-      "type": "stat",
-      "title": "Total Flows (72h)",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 27
+        "h": 9,
+        "w": 14,
+        "x": 10,
+        "y": 24
       },
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "barRadius": 0.05,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "stacking": "none",
+        "xTickLabelRotation": -45,
+        "tooltip": {
+          "mode": "single"
         }
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "bytes",
           "color": {
             "fixedColor": "blue",
             "mode": "fixed"
@@ -1039,438 +1051,15 @@
       "targets": [
         {
           "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/stats",
-          "parser": "jsonata",
-          "root_selector": "",
-          "columns": [],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
-      "id": 10,
-      "type": "stat",
-      "title": "Total Data (72h)",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 27
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "color": {
-            "fixedColor": "purple",
-            "mode": "fixed"
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/stats",
-          "parser": "jsonata",
-          "root_selector": "",
-          "columns": [],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
-      "id": 11,
-      "type": "stat",
-      "title": "Active Devices (72h)",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 27
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "yellow",
-            "mode": "fixed"
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/stats",
-          "parser": "jsonata",
-          "root_selector": "",
-          "columns": [],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
-      "id": 12,
-      "type": "table",
-      "title": "Top Devices by Data Sent",
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 31
-      },
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "bytes"
-          }
-        ]
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "ip"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "IP"
-              },
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Events for this IP",
-                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
-                    "targetBlank": true
-                  },
-                  {
-                    "title": "Deep Inspect",
-                    "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
-                    "targetBlank": true
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "host"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Hostname"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "bytes"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Bytes Sent"
-              },
-              {
-                "id": "unit",
-                "value": "bytes"
-              }
-            ]
-          }
-        ]
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/devices",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "ip",
-              "text": "ip",
-              "type": "string"
-            },
-            {
-              "selector": "host",
-              "text": "host",
-              "type": "string"
-            },
-            {
-              "selector": "bytes",
-              "text": "bytes",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
-      "id": 13,
-      "type": "table",
-      "title": "Top Destinations",
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 31
-      },
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "bytes"
-          }
-        ]
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "ip"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "IP"
-              },
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Events for this IP",
-                    "url": "https://localhost:8765/events.html?ip=${__value.text}",
-                    "targetBlank": true
-                  },
-                  {
-                    "title": "Deep Inspect",
-                    "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
-                    "targetBlank": true
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "domain"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Domain / Host"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "port"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Port"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "bytes"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Bytes"
-              },
-              {
-                "id": "unit",
-                "value": "bytes"
-              }
-            ]
-          }
-        ]
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/destinations",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "ip",
-              "text": "ip",
-              "type": "string"
-            },
-            {
-              "selector": "domain",
-              "text": "domain",
-              "type": "string"
-            },
-            {
-              "selector": "port",
-              "text": "port",
-              "type": "number"
-            },
-            {
-              "selector": "bytes",
-              "text": "bytes",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
-      "id": 14,
-      "type": "piechart",
-      "title": "Protocol Mix",
-      "gridPos": {
-        "h": 10,
-        "w": 8,
-        "x": 0,
-        "y": 41
-      },
-      "options": {
-        "displayLabels": [
-          "name",
-          "value"
-        ],
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "values": [
-            "value",
-            "percent"
-          ]
-        },
-        "pieType": "donut",
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
           "type": "uql",
           "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/protocols",
+          "url": "http://127.0.0.1:8766/api/flows/hourly",
           "parser": "jsonata",
           "root_selector": "",
           "columns": [
             {
-              "selector": "name",
-              "text": "Protocol",
+              "selector": "hour",
+              "text": "Hour",
               "type": "string"
             },
             {
@@ -1485,6 +1074,441 @@
             "data": ""
           }
         }
+      ],
+      "description": "Data transferred per hour over the last 24 hours"
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Connection Report \u2014 Last 72 Hours  \u25b8 click to expand",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "panels": [
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Total Flows (72h)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 27
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "blue",
+                "mode": "fixed"
+              }
+            },
+            "overrides": []
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_NETWATCHM}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "http://127.0.0.1:8766/api/flows/stats",
+              "parser": "jsonata",
+              "root_selector": "",
+              "columns": [],
+              "filters": [],
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              }
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Total Data (72h)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 27
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "color": {
+                "fixedColor": "purple",
+                "mode": "fixed"
+              }
+            },
+            "overrides": []
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_NETWATCHM}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "http://127.0.0.1:8766/api/flows/stats",
+              "parser": "jsonata",
+              "root_selector": "",
+              "columns": [],
+              "filters": [],
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              }
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Active Devices (72h)",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 27
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "yellow",
+                "mode": "fixed"
+              }
+            },
+            "overrides": []
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_NETWATCHM}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "http://127.0.0.1:8766/api/flows/stats",
+              "parser": "jsonata",
+              "root_selector": "",
+              "columns": [],
+              "filters": [],
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              }
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "table",
+          "title": "Top Devices by Data Sent",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 31
+          },
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": true,
+                "displayName": "bytes"
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ip"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "IP"
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Events for this IP",
+                        "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                        "targetBlank": true
+                      },
+                      {
+                        "title": "Deep Inspect",
+                        "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "host"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Hostname"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "bytes"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Bytes Sent"
+                  },
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              }
+            ]
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_NETWATCHM}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "http://127.0.0.1:8766/api/flows/devices",
+              "parser": "backend",
+              "columns": [
+                {
+                  "selector": "ip",
+                  "text": "ip",
+                  "type": "string"
+                },
+                {
+                  "selector": "host",
+                  "text": "host",
+                  "type": "string"
+                },
+                {
+                  "selector": "bytes",
+                  "text": "bytes",
+                  "type": "number"
+                }
+              ],
+              "filters": [],
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              }
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "table",
+          "title": "Top Destinations",
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 31
+          },
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": true,
+                "displayName": "bytes"
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ip"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "IP"
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Events for this IP",
+                        "url": "https://localhost:8765/events.html?ip=${__value.text}",
+                        "targetBlank": true
+                      },
+                      {
+                        "title": "Deep Inspect",
+                        "url": "https://localhost:8765/deep-inspect-${__value.text}.html",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "domain"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Domain / Host"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "port"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Port"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "bytes"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Bytes"
+                  },
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              }
+            ]
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_NETWATCHM}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "type": "json",
+              "source": "url",
+              "url": "http://127.0.0.1:8766/api/flows/destinations",
+              "parser": "backend",
+              "columns": [
+                {
+                  "selector": "ip",
+                  "text": "ip",
+                  "type": "string"
+                },
+                {
+                  "selector": "domain",
+                  "text": "domain",
+                  "type": "string"
+                },
+                {
+                  "selector": "port",
+                  "text": "port",
+                  "type": "number"
+                },
+                {
+                  "selector": "bytes",
+                  "text": "bytes",
+                  "type": "number"
+                }
+              ],
+              "filters": [],
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              }
+            }
+          ]
+        }
       ]
     },
     {
@@ -1495,7 +1519,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 34
       },
       "collapsed": false,
       "panels": []
@@ -1509,7 +1533,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 35
       },
       "options": {
         "cellHeight": "sm",
@@ -1661,7 +1685,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 35
       },
       "options": {
         "cellHeight": "sm",
@@ -1811,74 +1835,6 @@
       ]
     },
     {
-      "id": 15,
-      "type": "barchart",
-      "title": "Hourly Activity",
-      "gridPos": {
-        "h": 10,
-        "w": 16,
-        "x": 8,
-        "y": 41
-      },
-      "options": {
-        "barRadius": 0.05,
-        "barWidth": 0.9,
-        "groupWidth": 0.7,
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "stacking": "none",
-        "xTickLabelRotation": -45,
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "color": {
-            "fixedColor": "blue",
-            "mode": "fixed"
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "uql",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/hourly",
-          "parser": "jsonata",
-          "root_selector": "",
-          "columns": [
-            {
-              "selector": "hour",
-              "text": "Hour",
-              "type": "string"
-            },
-            {
-              "selector": "bytes",
-              "text": "Bytes",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
       "id": 19,
       "type": "row",
       "title": "Alert History",
@@ -1887,7 +1843,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 45
       }
     },
     {
@@ -1899,7 +1855,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 46
       },
       "options": {
         "cellHeight": "sm",
@@ -2217,162 +2173,6 @@
           }
         }
       ]
-    },
-    {
-      "id": 22,
-      "type": "table",
-      "title": "Why \u2014 Top Sender Breakdown",
-      "description": "Top destinations for the #1 traffic device",
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 16
-      },
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "destination"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Destination"
-              },
-              {
-                "id": "custom",
-                "value": {
-                  "width": 160
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "service"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Service"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#ff9900"
-                }
-              },
-              {
-                "id": "custom",
-                "value": {
-                  "width": 110,
-                  "cellOptions": {
-                    "type": "color-text"
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "bytes"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Traffic"
-              },
-              {
-                "id": "unit",
-                "value": "bytes"
-              },
-              {
-                "id": "custom",
-                "value": {
-                  "width": 90
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "connections"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Conns"
-              },
-              {
-                "id": "custom",
-                "value": {
-                  "width": 60
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/devices/top/why",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "destination",
-              "text": "destination",
-              "type": "string"
-            },
-            {
-              "selector": "service",
-              "text": "service",
-              "type": "string"
-            },
-            {
-              "selector": "bytes",
-              "text": "bytes",
-              "type": "number"
-            },
-            {
-              "selector": "connections",
-              "text": "connections",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ],
-      "transformations": []
     }
   ],
   "refresh": "30s",
@@ -2393,5 +2193,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 15
+  "version": 16
 }
