@@ -1749,9 +1749,19 @@
                 "value": "Type"
               },
               {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff9900"
+                }
+              },
+              {
                 "id": "custom",
                 "value": {
-                  "width": 160
+                  "width": 160,
+                  "cellOptions": {
+                    "type": "color-text"
+                  }
                 }
               }
             ]
@@ -1797,7 +1807,7 @@
                     "type": "value",
                     "options": {
                       "HIGH": {
-                        "color": "#f85149",
+                        "color": "#ff9900",
                         "index": 2
                       }
                     }
@@ -1806,7 +1816,7 @@
                     "type": "value",
                     "options": {
                       "CRITICAL": {
-                        "color": "#ff7b72",
+                        "color": "#f85149",
                         "index": 3
                       }
                     }
@@ -2022,5 +2032,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 6
+  "version": 7
 }
