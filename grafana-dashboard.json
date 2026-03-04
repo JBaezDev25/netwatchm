@@ -749,7 +749,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^bytes$/",
+          "fields": "/^value$/",
           "values": false
         },
         "textMode": "value_and_name"
@@ -793,23 +793,23 @@
           "refId": "A",
           "type": "json",
           "source": "url",
-          "url": "http://127.0.0.1:8766/api/flows/devices",
+          "url": "http://127.0.0.1:8766/api/flows/devices/top",
           "parser": "backend",
           "columns": [
             {
-              "selector": "ip",
-              "text": "ip",
-              "type": "string"
-            },
-            {
-              "selector": "host",
-              "text": "host",
-              "type": "string"
-            },
-            {
-              "selector": "bytes",
-              "text": "bytes",
+              "selector": "value",
+              "text": "value",
               "type": "number"
+            },
+            {
+              "selector": "label",
+              "text": "label",
+              "type": "string"
+            },
+            {
+              "selector": "time",
+              "text": "time",
+              "type": "timestamp_epoch_ms"
             }
           ],
           "filters": [],
@@ -821,18 +821,13 @@
       ],
       "transformations": [
         {
-          "id": "limit",
+          "id": "filterFieldsByName",
           "options": {
-            "limitField": 1
-          }
-        },
-        {
-          "id": "mergeByLabels",
-          "options": {
-            "by": [
-              "ip",
-              "host"
-            ]
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
           }
         }
       ]
@@ -991,14 +986,7 @@
           }
         }
       ],
-      "transformations": [
-        {
-          "id": "limit",
-          "options": {
-            "limitField": 10
-          }
-        }
-      ]
+      "transformations": []
     },
     {
       "id": 8,
@@ -2249,5 +2237,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 13
+  "version": 14
 }

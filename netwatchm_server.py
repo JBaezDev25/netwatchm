@@ -380,6 +380,18 @@ def _query_flows_endpoint(sub: str) -> object:
             """)
             return [{"ip": r["ip"], "host": r["host"] or r["ip"], "bytes": r["bytes"]}
                     for r in cur.fetchall()]
+        if sub == "devices/top":
+            cur.execute("""
+                SELECT src_ip AS ip, MAX(src_host) AS host,
+                       COALESCE(SUM(bytes),0) AS bytes
+                FROM flows GROUP BY src_ip ORDER BY bytes DESC LIMIT 1
+            """)
+            row = cur.fetchone()
+            if not row:
+                return [{"value": 0, "label": "—", "time": int(_time.time() * 1000)}]
+            label = f"{row['host'] or row['ip']} ({row['ip']})"
+            return [{"value": row["bytes"], "label": label,
+                     "time": int(_time.time() * 1000)}]
         if sub == "destinations":
             cur.execute("""
                 SELECT dst_ip AS ip, MAX(domain) AS domain,
