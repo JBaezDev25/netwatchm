@@ -1433,6 +1433,44 @@ def _query_data_hog_count() -> list[dict]:
         con.close()
 
 
+def _geoip_country(ip: str) -> str:
+    """Return ISO country code for ip, or '' if unavailable."""
+    db = Path(GEOIP_DB)
+    if not db.exists():
+        return ""
+    try:
+        import geoip2.database  # type: ignore
+        with geoip2.database.Reader(str(db)) as reader:
+            rec = reader.city(ip)
+            return rec.country.iso_code or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _query_events_for_grafana(limit: int = 200) -> list[dict]:
+    """Return recent alerts enriched with GeoIP country for Grafana history panel."""
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return []
+    con = sqlite3.connect(str(db))
+    con.row_factory = sqlite3.Row
+    try:
+        cur = con.execute(
+            """SELECT id, timestamp, alert_type, level, src_ip, dst_ip, description
+               FROM events ORDER BY timestamp DESC LIMIT ?""",
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        con.close()
+
+    for row in rows:
+        row["time"] = int(row["timestamp"] * 1000)  # epoch_ms for Grafana
+        ip = row.get("src_ip") or ""
+        row["country"] = _geoip_country(ip) if ip else ""
+    return rows
+
+
 def _query_browsing() -> list[dict]:
     """Return local-device browsing activity: src → site, grouped by device + site."""
     db = Path(FLOW_DB)
@@ -1535,6 +1573,13 @@ class GrafanaHandler(BaseHTTPRequestHandler):
         if path == "/api/flows/browsing":
             try:
                 self._send_json(_query_browsing())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/events/history":
+            try:
+                self._send_json(_query_events_for_grafana())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return

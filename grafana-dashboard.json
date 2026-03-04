@@ -1672,6 +1672,336 @@
           }
         }
       ]
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Alert History",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      }
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Alert History (72h)",
+      "description": "All threat alerts with GeoIP country. Click Source IP to deep-inspect.",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Time"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Time"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsLocal"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 160
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alert_type"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Type"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 160
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "level"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Level"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 90
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "LOW": {
+                        "color": "#3fb950",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "MEDIUM": {
+                        "color": "#d29922",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "HIGH": {
+                        "color": "#f85149",
+                        "index": 2
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "CRITICAL": {
+                        "color": "#ff7b72",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "cellOptions": {
+                    "type": "color-text"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "src_ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Source IP"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 130
+                }
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Deep Inspect",
+                    "url": "https://localhost:8765/events.html?q=${__value.text}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "country"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Country"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 80
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "description"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Description"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "custom",
+                "value": {
+                  "hidden": true
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timestamp"
+            },
+            "properties": [
+              {
+                "id": "custom",
+                "value": {
+                  "hidden": true
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dst_ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Dest IP"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 130
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_NETWATCHM}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "url": "http://127.0.0.1:8766/api/events/history",
+          "parser": "backend",
+          "columns": [
+            {
+              "selector": "time",
+              "text": "time",
+              "type": "timestamp_epoch_ms"
+            },
+            {
+              "selector": "alert_type",
+              "text": "alert_type",
+              "type": "string"
+            },
+            {
+              "selector": "level",
+              "text": "level",
+              "type": "string"
+            },
+            {
+              "selector": "src_ip",
+              "text": "src_ip",
+              "type": "string"
+            },
+            {
+              "selector": "dst_ip",
+              "text": "dst_ip",
+              "type": "string"
+            },
+            {
+              "selector": "country",
+              "text": "country",
+              "type": "string"
+            },
+            {
+              "selector": "description",
+              "text": "description",
+              "type": "string"
+            }
+          ],
+          "filters": [],
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "time",
+                "alert_type",
+                "level",
+                "src_ip",
+                "dst_ip",
+                "country",
+                "description"
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "refresh": "30s",
@@ -1692,5 +2022,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 5
+  "version": 6
 }
