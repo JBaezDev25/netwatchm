@@ -858,6 +858,316 @@ python3 -c "import pygame; pygame.mixer.init(); print('Audio OK')"
 
 ---
 
+## 16. Phase 3 Threat Detectors
+
+Three additional detectors were added after the core four:
+
+### TorExitDetector (`detector/tor_exit.py`)
+Downloads the Tor Project's daily exit node list and checks every source IP against it.
+- Alert type: `TOR_EXIT` — level: **HIGH**
+- List refreshed every 24 hours automatically
+- Config: `tor_exit.enabled`, `tor_exit.refresh_interval_hours`
+
+### AdultDomainDetector (`detector/adult_domain.py`)
+Checks DNS queries and TLS SNI fields against the Steven Black porn domain list (153k domains).
+- Alert type: `ADULT_DOMAIN` — level: **MEDIUM**
+- Fired once per device/domain pair per session (deduplication)
+- Config: `adult_domain.enabled`, `adult_domain.extra_domains`, `adult_domain.refresh_hours`
+
+### DataHogDetector (`detector/data_hog.py`)
+Tracks total bytes sent and received per local device over a 24-hour rolling window.
+- Alert type: `DATA_HOG` — level: **HIGH**
+- Default threshold: 10 GiB in 24 hours
+- Config: `data_hog.enabled`, `data_hog.threshold_gb`, `data_hog.window_hours`
+- Avoids double-counting: only adds destination bytes when the source is external
+
+---
+
+## 17. Events Portal (`/events.html`)
+
+The Events Portal is a built-in web SPA at `https://localhost:8765/events.html`.
+It shows a searchable, filterable live view of all security alerts from the last 72 hours.
+
+### Features
+
+| Feature | Details |
+|---------|---------|
+| Auto-refresh | Every 15 seconds with countdown timer |
+| Text search | Filters by IP, type, or description as you type |
+| Level filter | ALL / LOW / MEDIUM / HIGH / CRITICAL |
+| Type filter | Populated dynamically from events in DB |
+| Expandable rows | Click any row to see full description |
+| Deep Inspect link | Launches `/inspect/{ip}` for the source IP |
+| CSV export | Downloads filtered table as `.csv` |
+| Test Notify | Fires a live ntfy push notification |
+| **Clear Alerts** | Deletes all events (admin token required) |
+
+### Clear Alerts
+
+1. Click **🗑 Clear Alerts** in the toolbar
+2. A modal prompts for the **admin token**
+3. Default token: `netwatchm-admin`
+4. Change via env var: `NETWATCHM_ADMIN_TOKEN=your-token` in the service file
+5. On success all events are deleted and the table reloads empty
+
+### Event Store
+
+- Database: `/var/lib/netwatchm/events.db` (SQLite)
+- Retention: 72 hours (auto-purged)
+- All alert types are stored regardless of level
+
+---
+
+## 18. Push Notifications (ntfy.sh)
+
+NetWatchM can send push notifications to your phone via [ntfy.sh](https://ntfy.sh) —
+a free, open-source push notification service.
+
+### How it works
+
+Every alert that passes the `min_level` threshold is sent as an HTTP POST to:
+```
+https://ntfy.sh/{your-topic}
+```
+The priority maps to threat level: LOW=2, MEDIUM=3, HIGH=4, CRITICAL=5.
+
+### Config (`netwatchm.yaml`)
+
+```yaml
+alerts:
+  ntfy:
+    enabled: true
+    server: https://ntfy.sh       # or self-hosted ntfy instance
+    topic: your-topic-name        # unique topic name (keep it private)
+    min_level: HIGH               # LOW / MEDIUM / HIGH / CRITICAL
+    cooldown_seconds: 300         # silence same alert type for 5 min
+    # token: ""                   # optional Bearer token for private topics
+```
+
+### Token authentication
+
+For private topics, set the token via environment variable — never in YAML:
+```bash
+# Add to /etc/systemd/system/netwatchm.service [Service] section:
+Environment=NETWATCHM_NTFY_TOKEN=tk_your_token_here
+```
+
+### Subscribe on your phone
+
+1. Install the ntfy app (Android / iOS)
+2. Add subscription → enter your topic name
+3. Push notifications arrive whenever an alert fires
+
+### Test Notify button
+
+The **🔔 Test Notify** button in the Events Portal fires a test notification
+immediately by calling `POST /api/test-ntfy` on the web server.
+
+---
+
+## 19. Grafana → ntfy Webhook Bridge
+
+Grafana can forward its own alert notifications to ntfy via the NetWatchM bridge.
+
+### Setup
+
+```bash
+bash scripts/setup-grafana-ntfy.sh
+```
+
+This creates a Grafana contact point (`NetWatchM ntfy`) pointing to:
+```
+http://127.0.0.1:8766/api/grafana-ntfy
+```
+
+Grafana's notification policy routes all `source=netwatchm` alerts through this bridge.
+
+### How it works
+
+1. Grafana fires an alert (e.g. HIGH device count > 0)
+2. Grafana POSTs a JSON webhook to `/api/grafana-ntfy`
+3. NetWatchM reads the payload, extracts title + summary
+4. Forwards to ntfy.sh as a push notification
+
+### Manual test
+
+```bash
+curl -s -X POST http://localhost:8766/api/grafana-ntfy \
+  -H "Content-Type: application/json" \
+  -d '{"status":"firing","title":"Test","alerts":[]}'
+```
+
+---
+
+## 20. Grafana Dashboard Guide
+
+The Grafana dashboard is at `http://localhost:3000`.
+Credentials: `admin` / `BioIluvleeloo@5858`
+
+### Top Row — Inventory Stats (y=0)
+
+| Panel | Source | Description |
+|-------|--------|-------------|
+| Total Devices | `/api/inventory/total` | All devices seen in inventory |
+| HIGH Threat | `/api/inventory/high` | Devices with HIGH threat level |
+| MEDIUM Threat | `/api/inventory/medium` | Devices with MEDIUM threat level |
+| LOW Threat | `/api/inventory/low` | Devices with LOW threat level |
+| Threat Distribution | `/api/inventory/stats` | Donut chart: HIGH/MEDIUM/LOW device counts |
+
+### Second Row — Alert Count Stats (y=4)
+
+These pull from the **events database** (not inventory) and show live alert counts:
+
+| Panel | Source | Color |
+|-------|--------|-------|
+| CRITICAL Alerts | `/api/events/count/critical` | Red `#f85149` |
+| HIGH Alerts | `/api/events/count/high` | Orange `#ff9900` |
+| MEDIUM Alerts | `/api/events/count/medium` | Amber `#cc8800` |
+
+### Device Inventory Table (y=8)
+
+Full device table: IP, Hostname, MAC, Vendor, Threat (colour-coded), Bytes Sent, Bytes Received, Last Seen.
+
+### Top Traffic Devices (y=16)
+
+Live enriched traffic table from `/api/flows/devices/enriched`:
+- Columns: IP, Device, Sent, Received, Total
+- Each IP has **View Events** link → events portal filtered by IP
+- Each IP has **Deep Inspect** link → `/inspect/{ip}` launcher
+
+### Application Activity + Hourly Activity (y=24)
+
+- **Application Activity** — donut showing top applications by traffic (port-based)
+- **Hourly Activity** — bar chart of traffic volume per hour over the last 24 hours
+
+### Connection Report Row (y=33, collapsed)
+
+Click the row header to expand. Contains historical connection data panels.
+Collapse keeps the dashboard clean.
+
+### Intelligence Row (y=34)
+
+| Panel | Source | Description |
+|-------|--------|-------------|
+| Trigger Sites | `/api/events/adult-domains` | ADULT_DOMAIN events grouped by device + domain |
+| Browsing Activity | `/api/flows/browsing` | Local device → external site traffic |
+
+Browsing Activity links: Deep Inspect → `/inspect/{src_ip}`
+
+### Alert History (y=46)
+
+Table of last 72h MEDIUM/HIGH/CRITICAL alerts from the events database.
+Columns: Time, Type, Level (colour-coded), Source IP, Dest IP, Description, Country (GeoIP).
+Source IP links → events portal filtered by IP.
+
+### Dashboard maintenance
+
+```bash
+bash scripts/import-dashboard.sh    # re-import after grafana-dashboard.json changes
+bash scripts/deploy-server.sh       # deploy server changes + restart service
+bash scripts/test-all-alerts.sh     # smoke test: seeds events + fires ntfy + Grafana bridge
+```
+
+### Parser rules (hard-won lessons)
+
+- **Always use `backend` parser** with explicit columns — `jsonata` dumps all JSON fields
+- All Infinity targets require `"url_options": {"method": "GET", "data": ""}` or panels fail silently
+- Specific routes must be checked BEFORE generic `startswith` handlers in `GrafanaHandler.do_GET()`
+- Use `timestamp_epoch_ms` column type for time fields in stat panels
+
+---
+
+## 21. Deep Inspect
+
+Deep Inspect runs a security analysis on any IP address on your network.
+
+### What it checks
+
+| Check | Details |
+|-------|---------|
+| Port scan | Probes 15 common ports (21, 22, 80, 443, 3306, 3389, etc.) |
+| GeoIP | Country, city, ISP, ASN (external IPs only) |
+| HTTP/HTTPS | Attempts connection, checks for web server banner |
+| SSH fingerprint | Reads host key type (via paramiko) |
+| SMB/CIFS | Detects Windows file sharing |
+| RDP | Detects Remote Desktop Protocol |
+| Risk score | low / medium / high based on open ports + findings |
+
+### How to launch
+
+1. **Events Portal** — click **Deep Inspect** on any event row
+2. **Grafana** — click the Deep Inspect link in the Traffic or Browsing table
+3. **Direct URL** — `https://localhost:8765/inspect/{ip}`
+
+### Launcher page
+
+`/inspect/{ip}` shows a spinner while the job runs in the background.
+It polls `/api/deep-inspect/status?target={ip}` every 2 seconds.
+When complete, it auto-redirects to the report at `/deep-inspect-{ip}.html`.
+
+### CLI
+
+```bash
+uv run netwatchm deep-inspect --target 192.168.1.100 --output /tmp/report.html
+```
+
+---
+
+## 22. Web Server API Reference
+
+The NetWatchM web server runs on two ports:
+
+| Port | Protocol | Used by |
+|------|----------|---------|
+| 8765 | HTTPS | Browser (Events Portal, reports, launcher pages) |
+| 8766 | HTTP | Grafana Infinity datasource |
+
+### HTTPS API (port 8765)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/events.html` | Events Portal SPA |
+| GET | `/api/events` | Query events (params: `limit`, `type`, `level`, `ip`) |
+| GET | `/api/events/types` | List distinct alert types in DB |
+| GET | `/api/aliases` | Get all device aliases `{ip: label}` |
+| POST | `/api/aliases` | Set alias `{ip, label}` (empty label = delete) |
+| POST | `/api/deep-inspect` | Start deep inspect job `{target, ports}` |
+| GET | `/api/deep-inspect/status` | Poll job status `?target=ip` |
+| POST | `/api/test-ntfy` | Fire test push notification |
+| POST | `/api/analytics` | Generate analytics report |
+| DELETE | `/api/events` | Clear all events (requires `X-Admin-Token` header) |
+| GET | `/inspect/{ip}` | Deep Inspect launcher page |
+
+### HTTP API (port 8766, Grafana only)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/inventory/{total\|high\|medium\|low\|stats}` | Device counts |
+| GET | `/api/events/history` | MEDIUM+ alert history (with GeoIP country) |
+| GET | `/api/events/adult-domains` | ADULT_DOMAIN events grouped by device+domain |
+| GET | `/api/events/count/{critical\|high\|medium}` | Count of alerts by level |
+| GET | `/api/alerts/data-hog` | DATA_HOG event count last 24h |
+| GET | `/api/flows/browsing` | Local device → site browsing activity |
+| GET | `/api/flows/devices/enriched` | Top devices with sent/received/total |
+| GET | `/api/flows/top-apps` | Top applications by traffic (port-based) |
+| GET | `/api/flows/hourly` | Hourly traffic for last 24h |
+| POST | `/api/grafana-ntfy` | Grafana webhook → ntfy bridge |
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NETWATCHM_PORT` | `8765` | HTTPS port |
+| `NETWATCHM_GEOIP_DB` | `/var/lib/netwatchm/GeoLite2-City.mmdb` | GeoIP database |
+| `NETWATCHM_FLOW_DB` | `/var/lib/netwatchm/flows.db` | Flow store database |
+| `NETWATCHM_EVENT_DB` | `/var/lib/netwatchm/events.db` | Events database |
+| `NETWATCHM_ADMIN_TOKEN` | `netwatchm-admin` | Admin token for DELETE /api/events |
+| `NETWATCHM_CMD` | `netwatchm` | CLI binary path |
+| `NETWATCHM_CONFIG` | `/etc/netwatchm/netwatchm.yaml` | Config file path |
+| `NETWATCHM_NTFY_TOKEN` | _(none)_ | ntfy Bearer token for private topics |
+
+---
+
 ## 16. Glossary
 
 | Term | Meaning |

@@ -151,6 +151,77 @@ bash scripts/import-dashboard.sh  # re-import dashboard after JSON changes
 
 ---
 
+---
+
+## Session 3 — Push Notifications + Dashboard Overhaul  ✅ COMPLETE (2026-03-03)
+
+### Stack 6 — ntfy.sh Push Notifications
+- [x] `src/netwatchm/alerts/ntfy_alert.py` — NtfyAlert handler (urllib, priority map, cooldown, Bearer token)
+- [x] `src/netwatchm/config.py` — NtfyAlertConfig dataclass; wired into AlertsConfig + load_config()
+- [x] `src/netwatchm/__main__.py` — NtfyAlert registered when `config.alerts.ntfy.enabled`
+- [x] `netwatchm.yaml.example` — ntfy section (server, topic, min_level, cooldown_seconds)
+- [x] Live config `/etc/netwatchm/netwatchm.yaml` — enabled with topic `netwatchm-abc123`
+- [x] `tests/test_ntfy_alert.py` — 20 tests (priority, min_level, cooldown, headers, token, URLError)
+- [x] Events portal — **Test Notify** button fires live ntfy push via `POST /api/test-ntfy`
+
+### Stack 6b — Grafana → ntfy Webhook Bridge
+- [x] `POST /api/grafana-ntfy` (port 8766) — receives Grafana unified alerting webhook, forwards to ntfy
+- [x] ASCII-safe header encoding (em-dash fix for latin-1 codec error)
+- [x] `scripts/setup-grafana-ntfy.sh` — creates Grafana contact point + notification policy route
+- [x] End-to-end tested: Grafana alert → webhook → ntfy push on phone
+
+### GeoIP + Deploy Fix
+- [x] `scripts/deploy-geoip.sh` — copies GeoLite2-City.mmdb to `/var/lib/netwatchm/`
+- [x] `scripts/deploy-server.sh` — fixed to use venv Python (system python3 was missing geoip2)
+  - Server now runs via bash wrapper at `/usr/local/bin/netwatchm-server` → venv Python
+  - Also syncs `~/.local/bin/netwatchm` CLI from venv on deploy
+- [x] GeoIP country column working in Alert History (Grafana) and deep inspect reports
+
+### Grafana Dashboard v17 Overhaul
+- [x] Color standard: HIGH=#ff9900 (orange), MEDIUM=#cc8800 (amber), LOW=#3fb950, CRITICAL=#f85149
+- [x] Device Inventory panel height 14 → 8
+- [x] Top Devices barchart replaced with enriched live traffic table (IP, device, sent, received, total)
+  - Endpoint: `/api/flows/devices/enriched`
+  - Columns have View Events + Deep Inspect data links
+- [x] "Why" breakdown merged into traffic table (consolidated panel 23)
+- [x] Alert History table (panel 20) — MEDIUM+ only, GeoIP country column, src_ip links to events portal
+- [x] Alert History endpoint: `GET /api/events/history` (port 8766)
+- [x] Application Activity donut (panel 14) replacing Protocol Mix — `/api/flows/top-apps`
+- [x] Hourly Activity fixed to last 24h rolling window
+- [x] Connection Report row collapsed (click to expand)
+- [x] Browsing Activity deep-inspect link → `/inspect/{ip}` launcher
+- [x] **Alert count stat panels** (panels 24/25/26) at y=4 filling empty space:
+  - CRITICAL Alerts (red) — `/api/events/count/critical`
+  - HIGH Alerts (orange) — `/api/events/count/high`
+  - MEDIUM Alerts (amber) — `/api/events/count/medium`
+- [x] Dashboard v17, revert tag: `dashboard-pre-cleanup`
+
+### Deep Inspect 404 Fix
+- [x] `/inspect/{ip}` launcher page — triggers POST, shows spinner, polls status, auto-redirects
+- [x] Hostname injected into deep inspect report title
+- [x] Events + Deep Inspect data links added to Browsing Activity and Traffic tables
+- [x] `--db-path` removed from deep-inspect subprocess call (uses DEFAULT_GEOIP_DB)
+
+### Clear Alerts + Admin Token
+- [x] `DELETE /api/events` endpoint — requires `X-Admin-Token` header (env: `NETWATCHM_ADMIN_TOKEN`, default: `netwatchm-admin`)
+- [x] Events portal — **🗑 Clear Alerts** button + password modal (admin token required)
+- [x] `do_OPTIONS` updated: allows DELETE method + `X-Admin-Token` header
+
+### Test Scripts
+- [x] `scripts/test-all-alerts.sh` — fires all 3 channels simultaneously:
+  1. Seeds events.db with MEDIUM/HIGH/CRITICAL alerts
+  2. Direct ntfy pushes for all 3 levels (bypasses cooldown)
+  3. POST to `/api/grafana-ntfy` to test bridge
+
+### Deploy commands (session 3)
+```bash
+bash scripts/deploy-server.sh       # deploy latest server + sync CLI
+bash scripts/import-dashboard.sh    # import dashboard v17 (alert count panels)
+bash scripts/test-all-alerts.sh     # smoke test all alert channels
+```
+
+---
+
 ## Known Issues / Notes
 - `sudo uv` fails — always use full path: `sudo /home/jbaez120/.local/bin/uv`
 - Regenerate report: `sudo bash scripts/gen-report.sh` (optional duration arg, default 30s)
