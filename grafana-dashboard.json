@@ -731,38 +731,55 @@
       ]
     },
     {
-      "id": 7,
-      "type": "barchart",
-      "title": "Top Devices by Traffic (Sent)",
+      "id": 21,
+      "type": "stat",
+      "title": "#1 Traffic Sender",
+      "description": "Device sending the most data right now",
       "gridPos": {
-        "h": 10,
-        "w": 24,
+        "h": 4,
+        "w": 6,
         "x": 0,
         "y": 16
       },
       "options": {
-        "barRadius": 0.05,
-        "barWidth": 0.7,
-        "colorByField": "Sent (B)",
-        "groupWidth": 0.7,
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^bytes$/",
+          "values": false
         },
-        "orientation": "horizontal",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single"
-        },
-        "xTickLabelMaxLength": 0,
-        "xTickLabelRotation": 0
+        "textMode": "value_and_name"
       },
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3fb950",
+                "value": null
+              },
+              {
+                "color": "#cc8800",
+                "value": 524288000
+              },
+              {
+                "color": "#ff9900",
+                "value": 1073741824
+              },
+              {
+                "color": "#f85149",
+                "value": 5368709120
+              }
+            ]
+          },
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           }
         },
         "overrides": []
@@ -774,20 +791,24 @@
       "targets": [
         {
           "refId": "A",
-          "type": "uql",
+          "type": "json",
           "source": "url",
-          "url": "http://127.0.0.1:8766/inventory.json",
-          "parser": "jsonata",
-          "root_selector": "",
+          "url": "http://127.0.0.1:8766/api/flows/devices",
+          "parser": "backend",
           "columns": [
             {
               "selector": "ip",
-              "text": "IP",
+              "text": "ip",
               "type": "string"
             },
             {
-              "selector": "bytes_sent",
-              "text": "Sent (B)",
+              "selector": "host",
+              "text": "host",
+              "type": "string"
+            },
+            {
+              "selector": "bytes",
+              "text": "bytes",
               "type": "number"
             }
           ],
@@ -795,6 +816,186 @@
           "url_options": {
             "method": "GET",
             "data": ""
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 1
+          }
+        },
+        {
+          "id": "mergeByLabels",
+          "options": {
+            "by": [
+              "ip",
+              "host"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Top Traffic Devices \u2014 Live",
+      "description": "Devices ranked by bytes sent (72h). Updates with dashboard refresh.",
+      "gridPos": {
+        "h": 10,
+        "w": 18,
+        "x": 6,
+        "y": 16
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Traffic"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ip"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "IP"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 130
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Device"
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "width": 180
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Traffic"
+              },
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#3fb950",
+                      "value": null
+                    },
+                    {
+                      "color": "#cc8800",
+                      "value": 524288000
+                    },
+                    {
+                      "color": "#ff9900",
+                      "value": 1073741824
+                    },
+                    {
+                      "color": "#f85149",
+                      "value": 5368709120
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom",
+                "value": {
+                  "cellOptions": {
+                    "type": "color-text"
+                  },
+                  "width": 140
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_NETWATCHM}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "url": "http://127.0.0.1:8766/api/flows/devices",
+          "parser": "backend",
+          "columns": [
+            {
+              "selector": "ip",
+              "text": "ip",
+              "type": "string"
+            },
+            {
+              "selector": "host",
+              "text": "host",
+              "type": "string"
+            },
+            {
+              "selector": "bytes",
+              "text": "bytes",
+              "type": "number"
+            }
+          ],
+          "filters": [],
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 10
           }
         }
       ]
@@ -2048,5 +2249,5 @@
   "timezone": "browser",
   "title": "NetWatchM Network Monitor",
   "uid": "netwatchm-inventory",
-  "version": 12
+  "version": 13
 }
