@@ -61,6 +61,66 @@ def _send_test_ntfy() -> tuple[bool, str]:
         return False, f"Unexpected error: {exc}"
 
 
+def _forward_grafana_ntfy(payload: dict) -> tuple[bool, str]:
+    """Receive a Grafana unified-alerting webhook payload and send an ntfy notification."""
+    import urllib.request
+    from urllib.error import URLError
+    import yaml
+
+    cfg_path = Path(os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml"))
+    try:
+        raw = yaml.safe_load(cfg_path.read_text()) or {} if cfg_path.exists() else {}
+    except Exception as exc:
+        return False, f"Could not read config: {exc}"
+
+    ntfy = raw.get("alerts", {}).get("ntfy", {})
+    if not ntfy.get("enabled", False):
+        return False, "ntfy not enabled"
+    server = ntfy.get("server", "https://ntfy.sh").rstrip("/")
+    topic  = ntfy.get("topic", "")
+    token  = os.environ.get("NETWATCHM_NTFY_TOKEN", ntfy.get("token", ""))
+    if not topic:
+        return False, "ntfy topic not configured"
+
+    status  = payload.get("status", "firing")
+    alerts  = payload.get("alerts", [])
+    title   = payload.get("title", "") or f"[{status.upper()}] Grafana Alert"
+
+    # Build message body from alert annotations
+    lines: list[str] = []
+    for a in alerts:
+        ann = a.get("annotations", {})
+        summary = ann.get("summary") or ann.get("description") or a.get("labels", {}).get("alertname", "")
+        if summary:
+            lines.append(summary)
+    body_text = "\n".join(lines) if lines else title
+
+    priority = "4" if status == "firing" else "2"
+    tag      = "warning" if status == "firing" else "white_check_mark"
+
+    # HTTP headers must be ASCII — strip/replace non-ASCII chars
+    safe_title = title.encode("ascii", errors="replace").decode("ascii")
+
+    url = f"{server}/{topic}"
+    headers = {
+        "X-Title":    safe_title,
+        "X-Priority": priority,
+        "X-Tags":     tag,
+        "Content-Type": "text/plain",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    req = urllib.request.Request(url, data=body_text.encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10):
+            return True, f"Grafana alert forwarded to ntfy (status={status})"
+    except URLError as exc:
+        return False, f"ntfy request failed: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Unexpected error: {exc}"
+
+
 def _load_aliases() -> dict[str, str]:
     """Return {ip: label} from aliases.json; empty dict if missing or corrupt."""
     if not ALIASES_FILE.exists():
@@ -1499,6 +1559,26 @@ class GrafanaHandler(BaseHTTPRequestHandler):
                 self._send_json(_query_flows_endpoint(sub))
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
+            return
+
+        self.send_error(404, "Not Found")
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/grafana-ntfy":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                payload = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+
+            ok, msg = _forward_grafana_ntfy(payload)
+            body = json.dumps({"ok": ok, "message": msg}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         self.send_error(404, "Not Found")
