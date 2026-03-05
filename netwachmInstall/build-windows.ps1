@@ -33,9 +33,10 @@ function Write-Warn { param($m) Write-Host "[WARN]  $m" -ForegroundColor Yellow 
 function Write-Err  { param($m) Write-Host "[ERR ]  $m" -ForegroundColor Red; exit 1 }
 function Write-Step { param($m) Write-Host "[STEP]  $m" -ForegroundColor Cyan   }
 
-$InstallerDir = $PSScriptRoot
-$RepoRoot     = Split-Path -Parent $InstallerDir
-$Spec         = Join-Path $InstallerDir 'netwatchm.spec'
+$InstallerDir  = $PSScriptRoot
+$RepoRoot      = Split-Path -Parent $InstallerDir
+$Spec          = Join-Path $InstallerDir 'netwatchm.spec'
+$InstallerSpec = Join-Path $InstallerDir 'installer.spec'
 
 Set-Location $RepoRoot
 Write-Info "Repository root: $RepoRoot"
@@ -72,12 +73,18 @@ if ($Clean) {
     }
 }
 
-# ── Build ─────────────────────────────────────────────────────────────────────
-Write-Step "Running PyInstaller..."
+# ── Build CLI + Server executables ────────────────────────────────────────────
+Write-Step "Building netwatchm.exe and netwatchm-server.exe..."
 pyinstaller $Spec --clean --noconfirm
-
 if ($LASTEXITCODE -ne 0) {
     Write-Err "PyInstaller failed (exit code $LASTEXITCODE). See output above."
+}
+
+# ── Build GUI installer executable ────────────────────────────────────────────
+Write-Step "Building netwatchm-setup.exe (GUI installer)..."
+pyinstaller $InstallerSpec --clean --noconfirm
+if ($LASTEXITCODE -ne 0) {
+    Write-Warn "netwatchm-setup.exe build failed — check installer.spec and installer_gui.py"
 }
 
 # ── Verify outputs ────────────────────────────────────────────────────────────
@@ -90,6 +97,14 @@ foreach ($exe in @("$distDir\netwatchm.exe", "$distDir\netwatchm-server.exe")) {
     } else {
         Write-Warn "  MISSING: $exe"
     }
+}
+
+$setupExe = "dist\netwatchm-setup.exe"
+if (Test-Path $setupExe) {
+    $size = (Get-Item $setupExe).Length / 1MB
+    Write-Info "  $setupExe  ($([math]::Round($size, 1)) MB)"
+} else {
+    Write-Warn "  MISSING: $setupExe"
 }
 
 Write-Step "Smoke-testing netwatchm.exe --help..."
@@ -108,14 +123,23 @@ if ($Zip) {
     Compress-Archive -Path "dist\netwatchm" -DestinationPath $zipPath
     $zipSize = (Get-Item $zipPath).Length / 1MB
     Write-Info "  Created $zipPath  ($([math]::Round($zipSize, 1)) MB)"
+
+    # Copy setup.exe into zip
+    if (Test-Path $setupExe) {
+        $tmp = "dist\_setup_tmp"
+        New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+        Copy-Item $setupExe $tmp
+        Compress-Archive -Path "$tmp\netwatchm-setup.exe" -Update -DestinationPath $zipPath
+        Remove-Item $tmp -Recurse -Force
+        Write-Info "  netwatchm-setup.exe added to zip"
+    }
 }
 
 Write-Host ""
 Write-Info "Build complete!"
-Write-Info "  Output folder:   dist\netwatchm\"
-Write-Info "  CLI executable:  dist\netwatchm\netwatchm.exe"
-Write-Info "  Web executable:  dist\netwatchm\netwatchm-server.exe"
+Write-Info "  CLI + Server:    dist\netwatchm\  (netwatchm.exe + netwatchm-server.exe)"
+Write-Info "  GUI Installer:   dist\netwatchm-setup.exe"
 if ($Zip) { Write-Info "  Zip archive:     dist\netwatchm-windows.zip" }
 Write-Info ""
-Write-Info "Quick test:"
-Write-Info "  .\dist\netwatchm\netwatchm.exe --help"
+Write-Info "To install — double-click:"
+Write-Info "  dist\netwatchm-setup.exe"

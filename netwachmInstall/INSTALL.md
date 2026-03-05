@@ -121,7 +121,55 @@ them manually if desired.
 
 ---
 
-## Option B — Windows install (PowerShell)
+## Option B — Windows install (GUI installer — recommended)
+
+> **Easiest option.** Double-click to install — no PowerShell knowledge needed.
+
+### 1. Clone or download the repo
+```powershell
+git clone https://github.com/al4nbr3/netwatchm.git
+cd netwatchm
+```
+
+### 2. Run the GUI installer
+Double-click:
+```
+netwachmInstall\netwatchm-setup.exe
+```
+Or from PowerShell:
+```powershell
+.\netwachmInstall\netwatchm-setup.exe
+```
+
+Windows will prompt for Administrator access (UAC) — click **Yes**.
+
+If SmartScreen appears: click **More info** → **Run anyway**.
+
+The installer shows a progress window and will:
+- Detect any existing installation and offer Upgrade / Uninstall / Cancel
+- Install Python 3.12 and Wireshark automatically if missing
+- Install all dependencies and the netwatchm CLI
+- Register `netwatchm` and `netwatchm-web` as Windows services
+- Generate a self-signed TLS certificate
+- Add a Desktop shortcut and Start Menu entry
+- Add a Windows Defender exclusion for the data directory
+
+### 3. Verify
+```powershell
+sc query netwatchm
+sc query netwatchm-web
+```
+
+### 4. Open the dashboard
+Click the **NetWatchM Dashboard** shortcut on your Desktop, or:
+```
+https://localhost:8765/events.html
+```
+> Browser will warn about the self-signed cert — click **Advanced → Proceed**.
+
+---
+
+## Option B2 — Windows install (PowerShell)
 
 > Run from an **elevated** PowerShell — the script will self-elevate if needed.
 
