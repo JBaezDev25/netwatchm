@@ -1,6 +1,6 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-02 (session 2)
+Last updated: 2026-03-04 (session 4)
 
 ## Completed
 - [x] Core capture engine (tshark + async)
@@ -111,22 +111,61 @@ https://localhost:8765/inventory.html
 
 ---
 
+---
+
+## Session 4 — Windows Installer + GitHub Release  ✅ COMPLETE (2026-03-04)
+
+### GitHub
+- [x] All session 3/4 changes pushed to `al4nbr3/netwatchm` (master)
+- [x] `netwachmInstall/` folder tracked in repo (was untracked)
+- [x] `geolite2-city-gzip/` added to `.gitignore` (61 MB binary, not for repo)
+- [x] `INSTALL.md` clone URLs fixed → `https://github.com/al4nbr3/netwatchm.git`
+
+### Windows Installer (`netwachmInstall/install.ps1`)
+- [x] **GUI progress window** — WinForms dark-theme dialog: step label, progress bar 0→100%, color-coded scrolling log
+- [x] **Version detection** — reads `%PROGRAMDATA%\netwatchm\version.txt` on startup
+- [x] **Upgrade / Reinstall / Uninstall / Cancel dialog** — shown when existing install detected
+- [x] **Desktop shortcut** — `NetWatchM Dashboard.url` on Desktop (all users) → `https://localhost:8765/events.html`
+- [x] **Start Menu shortcut** — `Start Menu\Programs\NetWatchM\NetWatchM Dashboard.url`
+- [x] **Windows Defender exclusion** — auto-adds `%PROGRAMDATA%\netwatchm` on install
+- [x] **Uninstall** cleans shortcuts and removes version file
+- [x] **Saves version** to `version.txt` after successful install
+- [x] **Error dialog** pops up if any step fails; Close button enables
+- [x] **Success dialog** at end with dashboard URL confirmation
+- [x] **`-Yes` flag** skips GUI entirely for CI/scripted deploys
+
+### Documentation
+- [x] `netwachmInstall/INSTALL.md` — Windows Defender/SmartScreen section added
+  - Explains why popups happen (no code signing — cost not justified at this stage)
+  - Step-by-step: unblock `.ps1` via Properties, bypass SmartScreen on `.exe`
+  - Manual Defender exclusion command
+
+### Deploy command (Windows — from fresh clone)
+```
+1. git clone https://github.com/al4nbr3/netwatchm.git
+2. cd netwatchm
+3. Right-click netwachmInstall\install.ps1 → Properties → Unblock → OK
+4. powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1
+```
+
+---
+
 ## Pending — Next Session
 
 ### Must Do
 - [ ] **README.md** — outdated, still describes v0.1.0 (Feb 2026); needs full rewrite to reflect current state
-- [ ] **Commit `scripts/fix-admin-token.sh`** — not yet pushed to GitHub
 
 ### Improvements / Nice to Have
 - [ ] **Events retention setting** — 72h is hardcoded in `event_store.py`; expose as config option
 - [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
 - [ ] **Events portal paging** — currently loads up to 500 events; add pagination for large datasets
 - [ ] **Inventory.html link from Grafana** — no link from dashboard to `/inventory.html`
-- [ ] **Windows support** — ntfy, events portal, GeoIP all untested on Windows
+- [ ] **Windows testing** — ntfy, events portal, GeoIP untested on Windows
 - [ ] **Dark/Light theme** — events portal is dark-only; connection report has toggle but events portal doesn't
 - [ ] **Alert suppression** — no way to silence a recurring low-value alert type (e.g. NEW_IP flood)
 - [ ] **Role-based access** — single admin token; no read-only vs admin distinction
 - [ ] **Mobile-friendly** — events portal not tested on phone browser (ntfy app covers this partially)
+- [ ] **Code signing** — skipped (cert costs ~$300-500/yr); revisit if project grows
 
 ## Grafana Setup — ✅ COMPLETE (2026-03-02)
 

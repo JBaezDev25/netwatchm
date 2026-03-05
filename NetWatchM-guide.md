@@ -156,13 +156,19 @@ netwatchm/
 │       ├── linux.py            ← writes /etc/systemd/system/netwatchm.service
 │       └── windows.py          ← Windows service via pywin32
 │
-├── tests/                      ← 57 pytest tests (all passing)
+├── tests/                      ← 163 pytest tests (all passing)
 ├── assets/
 │   └── alert.wav               ← 880 Hz beep generated at install time
 ├── netwatchm.yaml.example      ← annotated config template
-├── report.html                 ← browser dashboard (reads inventory.json)
-├── install.sh                  ← Linux one-shot installer
-├── install.bat                 ← Windows installer
+├── netwatchm_server.py         ← HTTPS web server (port 8765) + Grafana HTTP server (port 8766)
+├── netwachmInstall/            ← all installers and build scripts
+│   ├── install.sh              ← Linux / macOS installer
+│   ├── install.ps1             ← Windows 10/11 installer (GUI + version detection)
+│   ├── install.bat             ← Windows legacy CMD fallback
+│   ├── build-linux.sh          ← build standalone Linux binaries (PyInstaller)
+│   ├── build-windows.ps1       ← build standalone Windows .exe files
+│   ├── netwatchm.spec          ← PyInstaller spec file
+│   └── INSTALL.md              ← full installation guide
 └── pyproject.toml              ← project metadata & dependencies
 ```
 
@@ -201,29 +207,74 @@ export PATH="$HOME/.local/bin:$PATH"   # add to ~/.bashrc for permanence
 
 ## 5. Installation
 
-### Option A — Automated (Linux, recommended)
+### Option A — Linux (recommended)
 
 ```bash
-git clone https://github.com/yourrepo/netwatchm.git
+git clone https://github.com/al4nbr3/netwatchm.git
 cd netwatchm
-sudo bash install.sh
+bash netwachmInstall/install.sh
 ```
 
 The installer does all of this for you:
 
-1. Verifies Python 3.12+ and tshark
-2. Installs `uv` to `/root/.local/bin` if missing
-3. Runs `uv sync` to install Python dependencies into `.venv/`
+1. Verifies Python 3.12+, tshark, arp-scan, and network connectivity
+2. Installs `uv` if missing
+3. Runs `uv sync` to install Python dependencies
 4. Copies `netwatchm.yaml.example` → `/etc/netwatchm/netwatchm.yaml`
-5. Creates log directory `/var/log/netwatchm/` and data directory `/var/lib/netwatchm/`
+5. Generates a self-signed TLS certificate in `/var/lib/netwatchm/`
 6. Prompts for a Gmail App Password (optional, for email alerts)
-7. Installs and enables the systemd service
+7. Installs and enables the `netwatchm` and `netwatchm-web` systemd services
 
-### Option B — Manual (development mode)
+**Non-interactive (CI/scripted):**
+```bash
+bash netwachmInstall/install.sh --yes
+```
+
+**Uninstall:**
+```bash
+bash netwachmInstall/install.sh --uninstall
+```
+
+### Option B — Windows (PowerShell — recommended)
+
+```powershell
+git clone https://github.com/al4nbr3/netwatchm.git
+cd netwatchm
+# Right-click install.ps1 → Properties → check Unblock → OK  (first time only)
+powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1
+```
+
+The Windows installer shows a **GUI progress window** and:
+
+1. Auto-detects an existing installation — offers **Upgrade / Reinstall / Uninstall / Cancel**
+2. Installs Python 3.12 and Wireshark via winget if missing
+3. Installs `uv` and all dependencies
+4. Copies config to `%PROGRAMDATA%\netwatchm\netwatchm.yaml`
+5. Generates a self-signed TLS certificate (openssl)
+6. Registers `netwatchm` and `netwatchm-web` as Windows services (NSSM or Scheduled Task)
+7. Adds a **Desktop shortcut** and **Start Menu entry** → opens dashboard in browser
+8. Adds a **Windows Defender exclusion** for the install directory
+9. Saves the installed version to `%PROGRAMDATA%\netwatchm\version.txt`
+
+> **Windows Defender / SmartScreen warning:** NetWatchM is open-source and not
+> code-signed (certificates cost ~$300–500/yr). See `netwachmInstall/INSTALL.md`
+> for the step-by-step workaround.
+
+**Non-interactive:**
+```powershell
+powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1 -Yes
+```
+
+**Uninstall:**
+```powershell
+powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1 -Uninstall
+```
+
+### Option C — Manual (development mode)
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/yourrepo/netwatchm.git
+git clone https://github.com/al4nbr3/netwatchm.git
 cd netwatchm
 
 # 2. Install dependencies
@@ -238,9 +289,18 @@ sudo uv run netwatchm --config netwatchm.yaml.example --interface eth0
 
 ### Verify the install
 
+**Linux:**
 ```bash
 systemctl status netwatchm       # should show active (running)
+systemctl status netwatchm-web
 journalctl -u netwatchm -f       # live log stream
+```
+
+**Windows:**
+```powershell
+sc query netwatchm
+sc query netwatchm-web
+# Or open: https://localhost:8765/events.html
 ```
 
 ---
@@ -728,8 +788,8 @@ in `services.msc`.
 
 ## 14. Testing
 
-NetWatchM has 57 automated tests covering all detectors, the config loader,
-the inventory store, exporters, and alert handlers.
+NetWatchM has 163 automated tests covering all detectors, the config loader,
+the inventory store, exporters, alert handlers, ntfy, and event store.
 
 ### Run all tests
 
@@ -1191,4 +1251,4 @@ The NetWatchM web server runs on two ports:
 
 ---
 
-*Guide written for NetWatchM v0.1.0 — February 2026*
+*Guide written for NetWatchM v0.1.0 — updated March 2026 (session 4)*
