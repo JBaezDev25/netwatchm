@@ -1,7 +1,9 @@
 """SQLite event store for persisting threat alerts with 72-hour retention."""
 from __future__ import annotations
 
+import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,8 +11,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..models import Alert
 
-DEFAULT_DB = "/var/lib/netwatchm/events.db"
-RETENTION_HOURS = 72
+
+def _default_db() -> str:
+    if sys.platform == "win32":
+        return str(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "netwatchm" / "events.db")
+    return "/var/lib/netwatchm/events.db"
+
+
+DEFAULT_DB = _default_db()
+RETENTION_HOURS = 72  # backward-compat alias
 
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS events (
@@ -31,8 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_events_level ON events (level);
 class EventStore:
     """Thread-safe SQLite-backed alert event store."""
 
-    def __init__(self, db_path: str = DEFAULT_DB) -> None:
+    def __init__(self, db_path: str = DEFAULT_DB, retention_hours: int = RETENTION_HOURS) -> None:
         self.db_path = db_path
+        self._retention_hours = retention_hours
         self._conn: sqlite3.Connection | None = None
 
     def open(self) -> "EventStore":
@@ -57,7 +67,7 @@ class EventStore:
     def insert(self, alert: "Alert") -> None:
         """Insert alert and prune events older than retention window."""
         assert self._conn, "EventStore not open"
-        cutoff = time.time() - RETENTION_HOURS * 3600
+        cutoff = time.time() - self._retention_hours * 3600
         self._conn.execute(
             "INSERT INTO events (timestamp, alert_type, level, src_ip, dst_ip, description) "
             "VALUES (?, ?, ?, ?, ?, ?)",

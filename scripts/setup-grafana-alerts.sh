@@ -5,6 +5,7 @@
 #   • Email contact point   → jbaez120@gmail.com
 #   • Alert rule: High Threats   (HIGH device count > 0)
 #   • Alert rule: Data Hog       (DATA_HOG events in last 24 h > 0)
+#   • Alert rule: Exfiltration   (EXFILTRATION events in last 24 h > 0)
 set -euo pipefail
 
 GRAFANA_URL="http://localhost:3000"
@@ -22,21 +23,23 @@ echo "========================================"
 echo ""
 
 # ── 1. Verify Grafana is reachable ─────────────────────────────────────────
-echo "[1/6] Checking Grafana..."
+echo "[1/7] Checking Grafana..."
 G "${GRAFANA_URL}/api/health" | grep -qi '"database"' || {
   echo "ERROR: Grafana not reachable at ${GRAFANA_URL}"; exit 1; }
 echo "      Grafana 12.4 OK"
 
 # ── 2. Verify NetWatchM alert endpoints ────────────────────────────────────
-echo "[2/6] Checking alert metric endpoints..."
+echo "[2/7] Checking alert metric endpoints..."
 curl -s "${GRAFANA_API_BASE}/api/inventory/high" | grep -q '"value"' || {
   echo "ERROR: /api/inventory/high not working. Deploy server first."; exit 1; }
 curl -s "${GRAFANA_API_BASE}/api/alerts/data-hog" | grep -q '"value"' || {
   echo "ERROR: /api/alerts/data-hog not working. Deploy server first."; exit 1; }
-echo "      Both endpoints OK"
+curl -s "${GRAFANA_API_BASE}/api/alerts/exfiltration" | grep -q '"value"' || {
+  echo "ERROR: /api/alerts/exfiltration not working. Deploy server first."; exit 1; }
+echo "      All endpoints OK"
 
 # ── 3. Configure SMTP via systemd drop-in ──────────────────────────────────
-echo "[3/6] Configuring Grafana SMTP..."
+echo "[3/7] Configuring Grafana SMTP..."
 echo ""
 echo "  You need a Gmail App Password (NOT your regular password)."
 echo "  Create one at: https://myaccount.google.com/apppasswords"
@@ -75,7 +78,7 @@ G "${GRAFANA_URL}/api/health" | grep -qi '"database"' || {
 echo "      Grafana restarted OK"
 
 # ── 4. Create alert folder ─────────────────────────────────────────────────
-echo "[4/6] Creating alert folder..."
+echo "[4/7] Creating alert folder..."
 FOLDER_RESP=$(G -X POST "${GRAFANA_URL}/api/folders" \
   -H "Content-Type: application/json" \
   -d '{"title":"NetWatchM Alerts"}' 2>/dev/null || true)
@@ -95,7 +98,7 @@ fi
 echo "      Folder UID: ${FOLDER_UID}"
 
 # ── 5. Create email contact point ─────────────────────────────────────────
-echo "[5/6] Creating email contact point..."
+echo "[5/7] Creating email contact point..."
 CP_RESP=$(G -s -X POST "${GRAFANA_URL}/api/v1/provisioning/contact-points" \
   -H "Content-Type: application/json" \
   -d "{
@@ -138,7 +141,7 @@ G -s -X PUT "${GRAFANA_URL}/api/v1/provisioning/policies" \
   }' > /dev/null 2>&1 || true
 
 # ── 6. Create alert rules ──────────────────────────────────────────────────
-echo "[6/6] Creating alert rules..."
+echo "[6/7] Creating alert rules..."
 
 # Helper: build an Infinity+Reduce+Threshold rule JSON
 make_rule() {
@@ -263,6 +266,31 @@ else:
     msg = d.get('message', str(d))
     print(f'      Data Hog rule: {msg}')
 " 2>/dev/null || echo "      Rule 2 submitted"
+
+# Rule 3: Exfiltration (CRITICAL)
+RULE3=$(make_rule \
+  "NetWatchM — Exfiltration Detected (CRITICAL)" \
+  "netwatchm-exfiltration" \
+  "${GRAFANA_API_BASE}/api/alerts/exfiltration" \
+  "0" \
+  "CRITICAL: Data exfiltration detected in the last 24 hours. Investigate immediately.")
+
+RESP3=$(G -s -X POST "${GRAFANA_URL}/api/v1/provisioning/alert-rules" \
+  -H "Content-Type: application/json" \
+  -d "${RULE3}" 2>/dev/null || true)
+echo "${RESP3}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+uid = d.get('uid','')
+if uid:
+    print(f'      Rule created: Exfiltration ({uid})')
+else:
+    msg = d.get('message', str(d))
+    print(f'      Exfiltration rule: {msg}')
+" 2>/dev/null || echo "      Rule 3 submitted"
+
+# ── 7. Done ────────────────────────────────────────────────────────────────
+echo "[7/7] Done."
 
 echo ""
 echo "========================================"

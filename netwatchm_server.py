@@ -24,7 +24,7 @@ def _send_test_ntfy() -> tuple[bool, str]:
     from urllib.error import URLError
     import yaml
 
-    cfg_path = Path(os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml"))
+    cfg_path = Path(os.environ.get("NETWATCHM_CONFIG", _config_file()))
     try:
         raw = yaml.safe_load(cfg_path.read_text()) or {} if cfg_path.exists() else {}
     except Exception as exc:
@@ -67,7 +67,7 @@ def _forward_grafana_ntfy(payload: dict) -> tuple[bool, str]:
     from urllib.error import URLError
     import yaml
 
-    cfg_path = Path(os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml"))
+    cfg_path = Path(os.environ.get("NETWATCHM_CONFIG", _config_file()))
     try:
         raw = yaml.safe_load(cfg_path.read_text()) or {} if cfg_path.exists() else {}
     except Exception as exc:
@@ -139,6 +139,36 @@ def _save_aliases(aliases: dict[str, str]) -> None:
     tmp.replace(ALIASES_FILE)
 
 
+SUPPRESSED_FILE = Path(os.environ.get("NETWATCHM_SUPPRESSED_FILE", str(Path(_DD) / "suppressed.json")))
+
+
+def _load_suppressed() -> dict:
+    """Return {types: [...], updated_at: str|None}."""
+    if not SUPPRESSED_FILE.exists():
+        return {"types": [], "updated_at": None}
+    try:
+        return json.loads(SUPPRESSED_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {"types": [], "updated_at": None}
+
+
+def _save_suppressed(data: dict) -> None:
+    SUPPRESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SUPPRESSED_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(SUPPRESSED_FILE)
+
+
+def _check_read_auth(headers: object) -> bool:
+    """Return True if the request may read events. Public if READ_TOKEN not set."""
+    if not READ_TOKEN:
+        return True
+    provided = getattr(headers, "get", lambda *a: "")(  # type: ignore[call-arg]
+        "X-Read-Token", ""
+    )
+    return provided in (READ_TOKEN, ADMIN_TOKEN)
+
+
 def _classify_ip(ip_str: str) -> str:
     """Return 'Local(IP)' for RFC-1918/loopback/multicast, 'External(IP)' otherwise."""
     try:
@@ -149,16 +179,28 @@ def _classify_ip(ip_str: str) -> str:
     except ValueError:
         return "External(IP)"
 
-SERVE_DIR = Path(os.environ.get("NETWATCHM_SERVE_DIR", "/var/lib/netwatchm"))
+import sys as _sys
+def _data_dir() -> str:
+    if _sys.platform == "win32":
+        return os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "netwatchm")
+    return "/var/lib/netwatchm"
+def _config_file() -> str:
+    if _sys.platform == "win32":
+        return os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "netwatchm", "netwatchm.yaml")
+    return "/etc/netwatchm/netwatchm.yaml"
+_DD = _data_dir()
+
+SERVE_DIR = Path(os.environ.get("NETWATCHM_SERVE_DIR", _DD))
 PORT = int(os.environ.get("NETWATCHM_PORT", "8765"))
 NETWATCHM_CMD = os.environ.get("NETWATCHM_CMD", "netwatchm")
-NETWATCHM_CONFIG = os.environ.get("NETWATCHM_CONFIG", "/etc/netwatchm/netwatchm.yaml")
+NETWATCHM_CONFIG = os.environ.get("NETWATCHM_CONFIG", _config_file())
 DEFAULT_NETWORK = os.environ.get("NETWATCHM_NETWORK", "192.168.1.0/24")
-GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB", "/var/lib/netwatchm/GeoLite2-City.mmdb")
-FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",    "/var/lib/netwatchm/flows.db")
-EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",   "/var/lib/netwatchm/events.db")
+GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB",      str(Path(_DD) / "GeoLite2-City.mmdb"))
+FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",        str(Path(_DD) / "flows.db"))
+EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",       str(Path(_DD) / "events.db"))
 ADMIN_TOKEN = os.environ.get("NETWATCHM_ADMIN_TOKEN", "netwatchm-admin")
-ALIASES_FILE = Path(os.environ.get("NETWATCHM_ALIASES_FILE", "/var/lib/netwatchm/aliases.json"))
+READ_TOKEN  = os.environ.get("NETWATCHM_READ_TOKEN", "")  # empty = public reads allowed
+ALIASES_FILE = Path(os.environ.get("NETWATCHM_ALIASES_FILE", str(Path(_DD) / "aliases.json")))
 REPORTS_DIR = SERVE_DIR / "reports"
 REPORTS_MAX = 50  # keep this many archived reports
 
@@ -564,6 +606,44 @@ def _query_events(
         con.close()
 
 
+def _query_events_paged(
+    limit: int = 50,
+    offset: int = 0,
+    alert_type: str | None = None,
+    level: str | None = None,
+    ip: str | None = None,
+) -> dict:
+    """Paginated query — returns {events, total, offset, limit}."""
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return {"events": [], "total": 0, "offset": offset, "limit": limit}
+    con = sqlite3.connect(str(db))
+    con.row_factory = sqlite3.Row
+    try:
+        clauses: list[str] = []
+        params: list = []
+        if alert_type:
+            clauses.append("alert_type = ?")
+            params.append(alert_type)
+        if level:
+            clauses.append("level = ?")
+            params.append(level.upper())
+        if ip:
+            clauses.append("(src_ip = ? OR dst_ip = ?)")
+            params.extend([ip, ip])
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        total = con.execute(f"SELECT COUNT(*) FROM events {where}", params).fetchone()[0]
+        cur = con.execute(
+            f"SELECT id, timestamp, alert_type, level, src_ip, dst_ip, description "
+            f"FROM events {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        )
+        return {"events": [dict(r) for r in cur.fetchall()], "total": total,
+                "offset": offset, "limit": limit}
+    finally:
+        con.close()
+
+
 def _query_event_types() -> list[str]:
     db = Path(EVENT_DB)
     if not db.exists():
@@ -675,6 +755,17 @@ def _render_events_html() -> bytes:
     --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
     --low:#3fb950; --medium:#d29922; --high:#f85149; --critical:#ff7b72;
   }
+  [data-theme="light"] {
+    --bg:#ffffff; --surface:#f6f8fa; --surface2:#eaeef2; --border:#d0d7de;
+    --text:#1f2328; --muted:#6e7781; --accent:#0969da;
+    --low:#1a7f37; --medium:#9a6700; --high:#cf222e; --critical:#a40e26;
+  }
+  [data-theme="light"] .badge-LOW      { background:#dcfce7; color:var(--low); }
+  [data-theme="light"] .badge-MEDIUM   { background:#fef9c3; color:var(--medium); }
+  [data-theme="light"] .badge-HIGH     { background:#fee2e2; color:var(--high); }
+  [data-theme="light"] .badge-CRITICAL { background:#ffe4e6; color:var(--critical); }
+  [data-theme="light"] .modal-box      { background:#ffffff; border-color:#d0d7de; }
+  [data-theme="light"] .modal-box input { background:#f6f8fa; border-color:#d0d7de; color:#1f2328; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--bg); color:var(--text); font-family:monospace; font-size:13px; }
   /* ── Top bar ── */
@@ -710,6 +801,15 @@ def _render_events_html() -> bytes:
   .result-count { color:var(--muted); font-size:12px; margin-left:auto; }
   /* ── Table ── */
   .table-wrap { overflow-x:auto; }
+  .pagination { display:flex; align-items:center; gap:8px; padding:10px 20px;
+    background:var(--surface); border-top:1px solid var(--border); flex-wrap:wrap; }
+  .page-btn { background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    padding:4px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px; }
+  .page-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .page-btn:disabled { opacity:0.4; cursor:default; pointer-events:none; }
+  .page-info { color:var(--muted); font-size:12px; }
+  .page-size { background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    padding:4px 8px; border-radius:4px; font-size:12px; }
   table { width:100%; border-collapse:collapse; }
   thead th {
     background:var(--surface); color:var(--muted); text-transform:uppercase;
@@ -767,6 +867,33 @@ def _render_events_html() -> bytes:
     padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
   }
   .clear-btn:hover { background:#f85149; color:#fff; }
+  .theme-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .theme-btn:hover { color:var(--accent); border-color:var(--accent); }
+  .suppress-toggle {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .suppress-toggle:hover { color:#d29922; border-color:#d29922; }
+  .suppress-toggle.active { color:#f85149; border-color:#f85149; }
+  #suppressPanel {
+    background:var(--surface); border-bottom:1px solid var(--border);
+    padding:10px 20px; display:none; flex-wrap:wrap; gap:8px; align-items:center;
+  }
+  #suppressPanel span { color:var(--muted); font-size:12px; }
+  .sup-tag {
+    display:inline-flex; align-items:center; gap:5px;
+    background:var(--surface2); border:1px solid #f85149;
+    padding:2px 8px; border-radius:20px; font-size:11px; color:#f85149;
+  }
+  .sup-tag button { background:none; border:none; color:#f85149; cursor:pointer; font-size:13px; padding:0 2px; }
+  .sup-btn {
+    background:none; border:1px solid var(--border); color:var(--muted);
+    padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:monospace;
+  }
+  .sup-btn:hover { border-color:#d29922; color:#d29922; }
   /* ── Clear modal ── */
   #clearModal {
     display:none; position:fixed; top:0; left:0; width:100%; height:100%;
@@ -801,6 +928,24 @@ def _render_events_html() -> bytes:
     color:var(--muted); font-size:12px; user-select:none;
   }
   .auto-toggle input { accent-color:var(--accent); }
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .topbar { flex-wrap:wrap; padding:8px 12px; gap:6px; }
+    .topbar h1 { font-size:13px; width:100%; }
+    .filterbar { flex-direction:column; align-items:flex-start; padding:8px 12px; gap:6px; }
+    .filterbar input, .filterbar select { width:100%; }
+    .result-count { margin-left:0; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    td, th { padding:5px 6px; font-size:11px; }
+    thead th:nth-child(5), tbody td:nth-child(5) { display:none; }
+    .pagination { flex-wrap:wrap; padding:8px 12px; }
+    .refresh-btn, .export-btn, .notify-btn, .clear-btn,
+    .theme-btn, .suppress-toggle, .page-btn {
+      padding:7px 12px; min-height:38px;
+    }
+    .detail-grid { flex-direction:column; }
+    #suppressPanel { flex-direction:column; align-items:flex-start; }
+  }
 </style>
 </head>
 <body>
@@ -818,6 +963,8 @@ def _render_events_html() -> bytes:
   <button class="export-btn" onclick="exportCSV()">&#11123; CSV</button>
   <button class="notify-btn" id="testNtfyBtn" onclick="testNtfy()">&#128276; Test Notify</button>
   <button class="clear-btn" onclick="clearAlerts()">&#128465; Clear Alerts</button>
+  <button class="suppress-toggle" id="suppressToggle" onclick="toggleSuppressPanel()">&#128274; Suppressions</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">&#9788; Light</button>
 </div>
 <div id="toast"></div>
 <div id="clearModal">
@@ -832,11 +979,15 @@ def _render_events_html() -> bytes:
   </div>
 </div>
 
+<div id="suppressPanel">
+  <span>&#128274; Suppressed types (new alerts of these types will be silenced):</span>
+  <div id="suppressTags"></div>
+</div>
 <div class="filterbar">
   <label>Search:</label>
   <input type="text" id="search" placeholder="IP, type, description…" oninput="applyFilters()">
   <label>Level:</label>
-  <select id="levelFilter" onchange="applyFilters()">
+  <select id="levelFilter" onchange="_pageOffset=0;loadEvents()">
     <option value="">All</option>
     <option value="LOW">LOW</option>
     <option value="MEDIUM">MEDIUM</option>
@@ -844,7 +995,7 @@ def _render_events_html() -> bytes:
     <option value="CRITICAL">CRITICAL</option>
   </select>
   <label>Type:</label>
-  <select id="typeFilter" onchange="applyFilters()">
+  <select id="typeFilter" onchange="_pageOffset=0;loadEvents()">
     <option value="">All</option>
   </select>
   <span class="result-count" id="resultCount"></span>
@@ -865,9 +1016,88 @@ def _render_events_html() -> bytes:
   <tbody id="tbody"></tbody>
 </table>
 </div>
+<div class="pagination" id="pagination" style="display:none">
+  <button class="page-btn" id="prevBtn" onclick="changePage(-1)">&#8592; Prev</button>
+  <span class="page-info" id="pageInfo"></span>
+  <button class="page-btn" id="nextBtn" onclick="changePage(1)">Next &#8594;</button>
+  <select class="page-size" id="pageSizeSelect" onchange="changePageSize()">
+    <option value="50">50 / page</option>
+    <option value="100">100 / page</option>
+    <option value="200">200 / page</option>
+  </select>
+</div>
 
 <script>
+function _applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'light' ? '\\u2600 Dark' : '\\u2600 Light';
+  try { localStorage.setItem('nwm-theme', theme); } catch(_) {}
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  _applyTheme(cur === 'light' ? 'dark' : 'light');
+}
+(function(){ try { const t = localStorage.getItem('nwm-theme'); if(t) _applyTheme(t); } catch(_){} })();
+
+let _suppressed = [];
+let _suppressToken = '';
+
+async function loadSuppressed() {
+  try {
+    const d = await fetch('/api/suppressed').then(r => r.json());
+    _suppressed = d.types || [];
+    _renderSuppressPanel();
+  } catch(_) {}
+}
+function _renderSuppressPanel() {
+  const btn = document.getElementById('suppressToggle');
+  btn.classList.toggle('active', _suppressed.length > 0);
+  const tags = document.getElementById('suppressTags');
+  tags.innerHTML = _suppressed.length === 0
+    ? '<em style="color:var(--muted);font-size:11px">None</em>'
+    : _suppressed.map(t =>
+        `<span class="sup-tag">${esc(t)}<button title="Unsuppress" onclick="unsuppress('${esc(t)}')">&#215;</button></span>`
+      ).join('');
+}
+function toggleSuppressPanel() {
+  const p = document.getElementById('suppressPanel');
+  p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+}
+async function _getAdminToken() {
+  if (_suppressToken) return _suppressToken;
+  _suppressToken = prompt('Enter admin token:') || '';
+  return _suppressToken;
+}
+async function suppress(alertType) {
+  const token = await _getAdminToken(); if (!token) return;
+  try {
+    const r = await fetch('/api/suppressed', {
+      method:'POST', headers:{'Content-Type':'application/json','X-Admin-Token':token},
+      body: JSON.stringify({type: alertType})
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) { showToast('Suppressed: ' + alertType, true); await loadSuppressed(); }
+    else { _suppressToken=''; showToast(d.error || 'Failed', false); }
+  } catch(e) { showToast('Request failed', false); }
+}
+async function unsuppress(alertType) {
+  const token = await _getAdminToken(); if (!token) return;
+  try {
+    const r = await fetch('/api/suppressed', {
+      method:'DELETE', headers:{'Content-Type':'application/json','X-Admin-Token':token},
+      body: JSON.stringify({type: alertType})
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) { showToast('Unsuppressed: ' + alertType, true); await loadSuppressed(); }
+    else { _suppressToken=''; showToast(d.error || 'Failed', false); }
+  } catch(e) { showToast('Request failed', false); }
+}
+
 let _allEvents = [];
+let _pageOffset = 0;
+let _pageLimit = 50;
+let _totalEvents = 0;
 let _expandedId = null;
 let _autoTimer = null;
 let _countdown = 15;
@@ -943,21 +1173,56 @@ function esc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function _buildFilterParams() {
+  const level = document.getElementById('levelFilter').value;
+  const type  = document.getElementById('typeFilter').value;
+  const ip    = new URLSearchParams(window.location.search).get('ip') || '';
+  let p = '';
+  if (level) p += '&level=' + encodeURIComponent(level);
+  if (type)  p += '&type='  + encodeURIComponent(type);
+  if (ip)    p += '&ip='    + encodeURIComponent(ip);
+  return p;
+}
+
 async function loadEvents() {
   resetCountdown();
   try {
-    const [evts, types] = await Promise.all([
-      fetch('/api/events?limit=500').then(r => r.json()),
+    const url = '/api/events?offset=' + _pageOffset + '&limit=' + _pageLimit + _buildFilterParams();
+    const [paged, types] = await Promise.all([
+      fetch(url).then(r => r.json()),
       fetch('/api/events/types').then(r => r.json()),
     ]);
-    _allEvents = evts;
+    _allEvents = paged.events;
+    _totalEvents = paged.total;
     _expandedId = null;
     populateTypeFilter(types);
     applyFilters();
+    _updatePagination();
   } catch(e) {
     document.getElementById('tbody').innerHTML =
       '<tr><td colspan="6" style="color:var(--high);padding:20px">Failed to load events: '+esc(String(e))+'</td></tr>';
   }
+}
+
+function _updatePagination() {
+  const totalPages = Math.ceil(_totalEvents / _pageLimit) || 1;
+  const currentPage = Math.floor(_pageOffset / _pageLimit) + 1;
+  document.getElementById('pageInfo').textContent =
+    'Page ' + currentPage + ' of ' + totalPages + ' (' + _totalEvents + ' total)';
+  document.getElementById('prevBtn').disabled = _pageOffset === 0;
+  document.getElementById('nextBtn').disabled = (_pageOffset + _pageLimit) >= _totalEvents;
+  document.getElementById('pagination').style.display = _totalEvents > 0 ? 'flex' : 'none';
+}
+
+function changePage(dir) {
+  _pageOffset = Math.max(0, _pageOffset + dir * _pageLimit);
+  loadEvents();
+}
+
+function changePageSize() {
+  _pageLimit = parseInt(document.getElementById('pageSizeSelect').value);
+  _pageOffset = 0;
+  loadEvents();
 }
 
 function populateTypeFilter(types) {
@@ -1037,6 +1302,7 @@ function buildDetailRow(e) {
       </div>
       <div class="detail-desc">${esc(e.description)}</div>
       ${deepLink}
+      <button class="sup-btn" onclick="event.stopPropagation();suppress('${esc(e.alert_type)}')" style="margin-top:8px">&#128274; Suppress ${esc(e.alert_type)}</button>
     </td>
   </tr>`;
 }
@@ -1046,30 +1312,25 @@ function toggleDetail(id) {
   applyFilters();
 }
 
-function exportCSV() {
-  const search = document.getElementById('search').value.toLowerCase();
-  const level  = document.getElementById('levelFilter').value;
-  const type   = document.getElementById('typeFilter').value;
-  const filtered = _allEvents.filter(e => {
-    if (level && e.level !== level) return false;
-    if (type  && e.alert_type !== type) return false;
-    if (search) {
-      const hay = [e.alert_type, e.level, e.src_ip, e.dst_ip, e.description].join(' ').toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
-  const cols = ['id','timestamp','alert_type','level','src_ip','dst_ip','description'];
-  const csv  = [cols.join(',')].concat(
-    filtered.map(e => cols.map(c => {
-      const v = c === 'timestamp' ? fmtTime(e[c]) : (e[c] ?? '');
-      return '"' + String(v).replace(/"/g,'""') + '"';
-    }).join(','))
-  ).join('\\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = 'netwatchm-events.csv';
-  a.click();
+async function exportCSV() {
+  try {
+    const allEvts = await fetch('/api/events?limit=1000' + _buildFilterParams()).then(r => r.json());
+    const search = document.getElementById('search').value.toLowerCase();
+    const filtered = search
+      ? allEvts.filter(e => [e.alert_type,e.level,e.src_ip,e.dst_ip,e.description].join(' ').toLowerCase().includes(search))
+      : allEvts;
+    const cols = ['id','timestamp','alert_type','level','src_ip','dst_ip','description'];
+    const csv  = [cols.join(',')].concat(
+      filtered.map(e => cols.map(c => {
+        const v = c === 'timestamp' ? fmtTime(e[c]) : (e[c] ?? '');
+        return '"' + String(v).replace(/"/g,'""') + '"';
+      }).join(','))
+    ).join('\\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'netwatchm-events.csv';
+    a.click();
+  } catch(e) { showToast('CSV export failed: ' + e, false); }
 }
 
 function resetCountdown() {
@@ -1104,6 +1365,7 @@ document.getElementById('autoRefresh').addEventListener('change', function() {
 
 setInterval(tickCountdown, 1000);
 loadEvents();
+loadSuppressed();
 </script>
 </body>
 </html>"""
@@ -1440,20 +1702,36 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/events":
+            if not _check_read_auth(self.headers):
+                self._send_json({"error": "unauthorized — set X-Read-Token header"}, 401)
+                return
             qs = parse_qs(parsed.query)
             try:
-                events = _query_events(
-                    limit=min(int(qs.get("limit", ["500"])[0]), 1000),
-                    alert_type=qs.get("type", [None])[0] or None,
-                    level=qs.get("level", [None])[0] or None,
-                    ip=qs.get("ip", [None])[0] or None,
-                )
-                self._send_json(events)
+                if "offset" in qs:
+                    result = _query_events_paged(
+                        limit=min(int(qs.get("limit", ["50"])[0]), 500),
+                        offset=max(int(qs.get("offset", ["0"])[0]), 0),
+                        alert_type=qs.get("type", [None])[0] or None,
+                        level=qs.get("level", [None])[0] or None,
+                        ip=qs.get("ip", [None])[0] or None,
+                    )
+                    self._send_json(result)
+                else:
+                    events = _query_events(
+                        limit=min(int(qs.get("limit", ["500"])[0]), 1000),
+                        alert_type=qs.get("type", [None])[0] or None,
+                        level=qs.get("level", [None])[0] or None,
+                        ip=qs.get("ip", [None])[0] or None,
+                    )
+                    self._send_json(events)
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return
 
         if path == "/api/events/types":
+            if not _check_read_auth(self.headers):
+                self._send_json({"error": "unauthorized — set X-Read-Token header"}, 401)
+                return
             try:
                 self._send_json(_query_event_types())
             except Exception as exc:
@@ -1462,6 +1740,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/aliases":
             self._send_json(_load_aliases())
+            return
+
+        if path == "/api/suppressed":
+            self._send_json(_load_suppressed())
             return
 
         if path.startswith("/inspect/"):
@@ -1538,6 +1820,29 @@ class Handler(BaseHTTPRequestHandler):
                 aliases.pop(ip, None)
             _save_aliases(aliases)
             self._send_json({"ok": True, "aliases": aliases})
+            return
+
+        if parsed.path == "/api/suppressed":
+            token = self.headers.get("X-Admin-Token", "")
+            if token != ADMIN_TOKEN:
+                self._send_json({"error": "unauthorized"}, 401)
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length))
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            alert_type = (body.get("type") or "").strip().upper()
+            if not alert_type:
+                self._send_json({"error": "type required"}, 400)
+                return
+            data = _load_suppressed()
+            if alert_type not in data["types"]:
+                data["types"].append(alert_type)
+            data["updated_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+            _save_suppressed(data)
+            self._send_json({"ok": True, "suppressed": data})
             return
 
         if parsed.path == "/api/report":
@@ -1641,6 +1946,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return
+
+        if parsed.path == "/api/suppressed":
+            token = self.headers.get("X-Admin-Token", "")
+            if token != ADMIN_TOKEN:
+                self._send_json({"error": "unauthorized"}, 401)
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            alert_type = (body.get("type") or "").strip().upper()
+            if not alert_type:
+                self._send_json({"error": "type required"}, 400)
+                return
+            data = _load_suppressed()
+            data["types"] = [t for t in data["types"] if t != alert_type]
+            data["updated_at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+            _save_suppressed(data)
+            self._send_json({"ok": True, "suppressed": data})
+            return
+
         self.send_error(404, "Not Found")
 
     def do_OPTIONS(self) -> None:
@@ -1651,7 +1979,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
-CERT_DIR = Path(os.environ.get("NETWATCHM_CERT_DIR", "/var/lib/netwatchm"))
+CERT_DIR = Path(os.environ.get("NETWATCHM_CERT_DIR", _DD))
 CERT_FILE = CERT_DIR / "server.crt"
 KEY_FILE  = CERT_DIR / "server.key"
 
@@ -1788,6 +2116,24 @@ def _count_events_by_level(level: str) -> list[dict]:
     return [{"time": int(_time.time() * 1000), "value": count}]
 
 
+def _query_events_stats() -> list[dict]:
+    """Return CRITICAL/HIGH/MEDIUM alert counts as a single row for the donut chart."""
+    db = Path(EVENT_DB)
+    now_ms = int(_time.time() * 1000)
+    if not db.exists():
+        return [{"time": now_ms, "critical": 0, "high": 0, "medium": 0}]
+    con = sqlite3.connect(str(db))
+    try:
+        counts = {"critical": 0, "high": 0, "medium": 0}
+        for row in con.execute(
+            "SELECT level, COUNT(*) FROM events WHERE level IN ('CRITICAL','HIGH','MEDIUM') GROUP BY level"
+        ):
+            counts[row[0].lower()] = row[1]
+    finally:
+        con.close()
+    return [{"time": now_ms, **counts}]
+
+
 def _query_browsing() -> list[dict]:
     """Return local-device browsing activity: src → site, grouped by device + site."""
     db = Path(FLOW_DB)
@@ -1914,6 +2260,13 @@ class GrafanaHandler(BaseHTTPRequestHandler):
             level = path.split("/")[-1]
             try:
                 self._send_json(_count_events_by_level(level))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/events/stats":
+            try:
+                self._send_json(_query_events_stats())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return

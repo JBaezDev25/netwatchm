@@ -42,6 +42,8 @@ alerts:
     # token: ""              # set via NETWATCHM_NTFY_TOKEN for private topics
     min_level: HIGH
     cooldown_seconds: 300    # min gap between notifications for same alert type
+  event_store:
+    retention_hours: 72      # hours to keep alert events in database (default: 72)
 
 inventory:
   enabled: true

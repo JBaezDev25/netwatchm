@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -56,6 +58,13 @@ def _setup_logging(level: str) -> None:
     )
 
 
+def _get_suppressed_types() -> None:
+    """Namespace for suppression cache state (populated in alert_dispatch_loop)."""
+
+_get_suppressed_types.__cache: set = set()  # type: ignore[attr-defined]
+_get_suppressed_types.__cache_ts: float = 0.0  # type: ignore[attr-defined]
+
+
 async def run_monitor(config: Config, no_ui: bool = False) -> None:
     """Main monitoring coroutine."""
     interface = detect_interface(config.interface)
@@ -104,7 +113,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
         handlers.append(EmailAlert(config.alerts.email))
     if config.alerts.ntfy.enabled:
         handlers.append(NtfyAlert(config.alerts.ntfy))
-    handlers.append(EventStoreHandler())
+    handlers.append(EventStoreHandler(retention_hours=config.alerts.event_store.retention_hours))
 
     # --- UI ---
     dashboard = None
@@ -165,6 +174,21 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
                 continue
 
             if _whitelist and _whitelist.is_whitelisted(alert):
+                alert_queue.task_done()
+                continue
+
+            # Suppression check (5s cached file read)
+            if _get_suppressed_types.__cache_ts + 5 < time.time():
+                _get_suppressed_types.__cache_ts = time.time()
+                try:
+                    _dd = (Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "netwatchm") \
+                        if sys.platform == "win32" else Path("/var/lib/netwatchm")
+                    _sf = Path(os.environ.get("NETWATCHM_SUPPRESSED_FILE", str(_dd / "suppressed.json")))
+                    _get_suppressed_types.__cache = set(json.loads(_sf.read_text()).get("types", [])) \
+                        if _sf.exists() else set()
+                except Exception:  # noqa: BLE001
+                    _get_suppressed_types.__cache = set()
+            if alert.alert_type in _get_suppressed_types.__cache:
                 alert_queue.task_done()
                 continue
 

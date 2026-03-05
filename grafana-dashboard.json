@@ -55,7 +55,32 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Inventory Portal",
+      "tooltip": "Device inventory with labels",
+      "type": "link",
+      "url": "https://localhost:8765/inventory.html"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Events Portal",
+      "tooltip": "Threat alert events",
+      "type": "link",
+      "url": "https://localhost:8765/events.html"
+    }
+  ],
   "panels": [
     {
       "id": 1,
@@ -63,7 +88,7 @@
       "title": "Total Devices",
       "gridPos": {
         "h": 4,
-        "w": 4,
+        "w": 6,
         "x": 0,
         "y": 0
       },
@@ -78,7 +103,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "auto",
+        "text": {
+          "titleSize": 20,
+          "valueSize": 80
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -146,382 +175,6 @@
       ]
     },
     {
-      "id": 2,
-      "type": "stat",
-      "title": "HIGH Threat",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 0
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "#ff9900",
-            "mode": "fixed"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#ff9900",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "${DS_NETWATCHM}"
-          },
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/inventory/high",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "time",
-              "text": "Time",
-              "type": "timestamp_epoch_ms"
-            },
-            {
-              "selector": "value",
-              "text": "Value",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "Value"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "MEDIUM Threat",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 0
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "#cc8800",
-            "mode": "fixed"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#cc8800",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "${DS_NETWATCHM}"
-          },
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/inventory/medium",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "time",
-              "text": "Time",
-              "type": "timestamp_epoch_ms"
-            },
-            {
-              "selector": "value",
-              "text": "Value",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "Value"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "LOW Threat",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 12,
-        "y": 0
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "green",
-            "mode": "fixed"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "${DS_NETWATCHM}"
-          },
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/inventory/low",
-          "parser": "backend",
-          "columns": [
-            {
-              "selector": "time",
-              "text": "Time",
-              "type": "timestamp_epoch_ms"
-            },
-            {
-              "selector": "value",
-              "text": "Value",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "Value"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "type": "piechart",
-      "title": "Threat Distribution",
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 0
-      },
-      "options": {
-        "displayLabels": [
-          "name",
-          "value"
-        ],
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "values": [
-            "value",
-            "percent"
-          ]
-        },
-        "pieType": "donut",
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "HIGH"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#ff9900",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "MEDIUM"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#cc8800",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "LOW"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#3fb950",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "${DS_NETWATCHM}"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "type": "json",
-          "source": "url",
-          "url": "http://127.0.0.1:8766/api/inventory/stats",
-          "parser": "backend",
-          "root_selector": "",
-          "columns": [
-            {
-              "selector": "high",
-              "text": "HIGH",
-              "type": "number"
-            },
-            {
-              "selector": "medium",
-              "text": "MEDIUM",
-              "type": "number"
-            },
-            {
-              "selector": "low",
-              "text": "LOW",
-              "type": "number"
-            }
-          ],
-          "filters": [],
-          "url_options": {
-            "method": "GET",
-            "data": ""
-          }
-        }
-      ]
-    },
-    {
       "id": 6,
       "type": "table",
       "title": "Device Inventory",
@@ -529,7 +182,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 4
       },
       "options": {
         "cellHeight": "sm",
@@ -2195,9 +1848,9 @@
       "title": "CRITICAL Alerts",
       "gridPos": {
         "h": 4,
-        "w": 5,
-        "x": 0,
-        "y": 4
+        "w": 6,
+        "x": 6,
+        "y": 0
       },
       "options": {
         "reduceOptions": {
@@ -2210,7 +1863,12 @@
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
-        "graphMode": "none"
+        "graphMode": "none",
+        "text": {
+          "titleSize": 20,
+          "valueSize": 80
+        },
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
@@ -2234,7 +1892,7 @@
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
-        "uid": "netwatchm"
+        "uid": "${DS_NETWATCHM}"
       },
       "targets": [
         {
@@ -2250,12 +1908,12 @@
           "columns": [
             {
               "selector": "time",
-              "text": "time",
+              "text": "Time",
               "type": "timestamp_epoch_ms"
             },
             {
               "selector": "value",
-              "text": "value",
+              "text": "Value",
               "type": "number"
             }
           ],
@@ -2268,7 +1926,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "Value"
               ]
             }
           }
@@ -2281,9 +1939,9 @@
       "title": "HIGH Alerts",
       "gridPos": {
         "h": 4,
-        "w": 5,
-        "x": 5,
-        "y": 4
+        "w": 6,
+        "x": 12,
+        "y": 0
       },
       "options": {
         "reduceOptions": {
@@ -2296,7 +1954,12 @@
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
-        "graphMode": "none"
+        "graphMode": "none",
+        "text": {
+          "titleSize": 20,
+          "valueSize": 80
+        },
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
@@ -2320,7 +1983,7 @@
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
-        "uid": "netwatchm"
+        "uid": "${DS_NETWATCHM}"
       },
       "targets": [
         {
@@ -2336,12 +1999,12 @@
           "columns": [
             {
               "selector": "time",
-              "text": "time",
+              "text": "Time",
               "type": "timestamp_epoch_ms"
             },
             {
               "selector": "value",
-              "text": "value",
+              "text": "Value",
               "type": "number"
             }
           ],
@@ -2354,7 +2017,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "Value"
               ]
             }
           }
@@ -2367,9 +2030,9 @@
       "title": "MEDIUM Alerts",
       "gridPos": {
         "h": 4,
-        "w": 5,
-        "x": 10,
-        "y": 4
+        "w": 6,
+        "x": 18,
+        "y": 0
       },
       "options": {
         "reduceOptions": {
@@ -2382,7 +2045,12 @@
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
-        "graphMode": "none"
+        "graphMode": "none",
+        "text": {
+          "titleSize": 20,
+          "valueSize": 80
+        },
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
@@ -2406,7 +2074,7 @@
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
-        "uid": "netwatchm"
+        "uid": "${DS_NETWATCHM}"
       },
       "targets": [
         {
@@ -2422,12 +2090,12 @@
           "columns": [
             {
               "selector": "time",
-              "text": "time",
+              "text": "Time",
               "type": "timestamp_epoch_ms"
             },
             {
               "selector": "value",
-              "text": "value",
+              "text": "Value",
               "type": "number"
             }
           ],
@@ -2440,7 +2108,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "Value"
               ]
             }
           }

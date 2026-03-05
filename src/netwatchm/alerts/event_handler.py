@@ -13,8 +13,8 @@ log = logging.getLogger("netwatchm.event_handler")
 class EventStoreHandler(AlertHandler):
     """Persist each alert to the SQLite event store for the events portal."""
 
-    def __init__(self, db_path: str = DEFAULT_DB) -> None:
-        self._store = EventStore(db_path).open()
+    def __init__(self, db_path: str = DEFAULT_DB, retention_hours: int = 72) -> None:
+        self._store = EventStore(db_path, retention_hours=retention_hours).open()
 
     async def send(self, alert: Alert) -> None:
         try:

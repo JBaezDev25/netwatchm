@@ -107,12 +107,18 @@ class NtfyAlertConfig:
 
 
 @dataclass
+class EventStoreConfig:
+    retention_hours: int = 72
+
+
+@dataclass
 class AlertsConfig:
     terminal: bool = True
     log: LogAlertConfig = field(default_factory=LogAlertConfig)
     sound: SoundAlertConfig = field(default_factory=SoundAlertConfig)
     email: EmailAlertConfig = field(default_factory=EmailAlertConfig)
     ntfy: NtfyAlertConfig = field(default_factory=NtfyAlertConfig)
+    event_store: EventStoreConfig = field(default_factory=EventStoreConfig)
 
 
 @dataclass
@@ -198,6 +204,7 @@ def load_config(path: str | Path | None = None) -> Config:
     sound_raw = alerts_raw.get("sound", {})
     email_raw = alerts_raw.get("email", {})
     ntfy_raw = alerts_raw.get("ntfy", {})
+    es_raw = alerts_raw.get("event_store", {})
 
     inv_raw = raw.get("inventory", {})
 
@@ -265,6 +272,9 @@ def load_config(path: str | Path | None = None) -> Config:
                 token=ntfy_raw.get("token", ""),
                 min_level=ntfy_raw.get("min_level", "HIGH"),
                 cooldown_seconds=ntfy_raw.get("cooldown_seconds", 300),
+            ),
+            event_store=EventStoreConfig(
+                retention_hours=es_raw.get("retention_hours", 72),
             ),
         ),
         inventory=InventoryConfig(

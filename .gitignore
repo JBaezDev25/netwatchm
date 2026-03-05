@@ -15,6 +15,9 @@ build/
 *.env
 .env
 
+# GeoIP binary data (large, downloaded separately)
+geolite2-city-gzip/
+
 # Logs & data (runtime, not source)
 *.log
 /var/log/
