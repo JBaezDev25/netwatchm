@@ -44,4 +44,5 @@ exe = EXE(
     onefile=True,
     icon=None,
     uac_admin=True,  # request admin via UAC manifest
+    version=os.path.join(SPECPATH, 'installer_version.txt'),
 )

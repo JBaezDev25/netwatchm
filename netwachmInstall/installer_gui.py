@@ -65,7 +65,7 @@ class InstallerApp(tk.Tk):
         tk.Label(self, text=f"NetWatchM  {APP_VERSION}",
                  font=("Segoe UI", 14, "bold"), bg=BG, fg=FG_WHITE
                  ).place(x=20, y=14)
-        tk.Label(self, text="Network Monitoring and Threat Detection",
+        tk.Label(self, text="Network Monitoring and Threat Detection  —  by al4nbr3",
                  font=("Segoe UI", 9), bg=BG, fg=FG_SILVER
                  ).place(x=22, y=46)
 
