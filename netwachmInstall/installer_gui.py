@@ -19,18 +19,12 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-APP_VERSION = "0.1.0"
-PROGRAMDATA = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
-DATA_DIR    = PROGRAMDATA / "netwatchm"
+APP_VERSION  = "0.1.0"
+GITHUB_ZIP   = "https://github.com/al4nbr3/netwatchm/archive/refs/heads/master.zip"
+PROGRAMDATA  = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+DATA_DIR     = PROGRAMDATA / "netwatchm"
 VERSION_FILE = DATA_DIR / "version.txt"
 CONFIG_FILE  = DATA_DIR / "netwatchm.yaml"
-
-# Resolve repo root — installer lives in netwachmInstall/ one level below root
-if getattr(sys, "frozen", False):
-    INSTALLER_DIR = Path(sys.executable).parent
-else:
-    INSTALLER_DIR = Path(__file__).resolve().parent
-REPO_ROOT = INSTALLER_DIR.parent
 
 # ── Auto-elevate to Administrator ─────────────────────────────────────────────
 def _is_admin():
@@ -188,8 +182,36 @@ class InstallerApp(tk.Tk):
             self.after(0, self._finish, False)
 
     def _do_install(self):
+        import urllib.request, zipfile, tempfile
+
+        # ── Download source ───────────────────────────────────────────────────
+        self.after(0, self._set_step, "Downloading NetWatchM source...", 5)
+        tmp_dir  = Path(tempfile.mkdtemp(prefix="netwatchm_install_"))
+        zip_path = tmp_dir / "netwatchm.zip"
+
+        self.after(0, self._log_msg, f"Downloading {GITHUB_ZIP} ...")
+        try:
+            urllib.request.urlretrieve(GITHUB_ZIP, zip_path)
+        except Exception as e:
+            raise RuntimeError(f"Download failed: {e}\nCheck your internet connection.")
+        self.after(0, self._log_msg, "Download complete")
+
+        self.after(0, self._log_msg, "Extracting...")
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(tmp_dir)
+        # GitHub zips extract to <repo>-<branch>/ subfolder
+        extracted = next(p for p in tmp_dir.iterdir()
+                         if p.is_dir() and p.name.startswith("netwatchm"))
+        repo_root = extracted
+        self.after(0, self._log_msg, f"Source ready: {repo_root}")
+
+        self._install_from(repo_root, tmp_dir)
+
+    def _install_from(self, repo_root: Path, tmp_dir: Path):
+        import shutil as _shutil
+
         # ── Preflight ─────────────────────────────────────────────────────────
-        self.after(0, self._set_step, "Running preflight checks...", 5)
+        self.after(0, self._set_step, "Running preflight checks...", 15)
 
         if not shutil.which("python"):
             self._winget("Python.Python.3.12", "Python 3.12")
@@ -206,7 +228,7 @@ class InstallerApp(tk.Tk):
                        "tshark not in PATH — add Wireshark bin dir manually", "warn")
 
         # ── uv ────────────────────────────────────────────────────────────────
-        self.after(0, self._set_step, "Installing uv package manager...", 20)
+        self.after(0, self._set_step, "Installing uv package manager...", 25)
         if not shutil.which("uv"):
             self.after(0, self._log_msg, "Installing uv via pip...")
             rc = self._run_cmd("pip", "install", "uv", "--quiet")
@@ -216,32 +238,32 @@ class InstallerApp(tk.Tk):
 
         # ── Python package ────────────────────────────────────────────────────
         self.after(0, self._set_step,
-                   "Installing NetWatchM and dependencies (may take a few minutes)...", 35)
+                   "Installing NetWatchM and dependencies (may take a few minutes)...", 40)
         self.after(0, self._log_msg, "Window may pause briefly during download...")
 
-        rc = self._run_cmd("uv", "sync", "--extra", "windows", cwd=str(REPO_ROOT))
+        rc = self._run_cmd("uv", "sync", "--extra", "windows", cwd=str(repo_root))
         if rc != 0:
             raise RuntimeError("uv sync failed.")
         rc = self._run_cmd("uv", "tool", "install", "--no-cache", ".", "--force",
-                           cwd=str(REPO_ROOT))
+                           cwd=str(repo_root))
         if rc != 0:
             raise RuntimeError("uv tool install failed.")
         self.after(0, self._log_msg, "netwatchm CLI installed")
 
         # ── Config ────────────────────────────────────────────────────────────
-        self.after(0, self._set_step, "Setting up configuration...", 55)
+        self.after(0, self._set_step, "Setting up configuration...", 58)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         if not CONFIG_FILE.exists():
-            shutil.copy(REPO_ROOT / "netwatchm.yaml.example", CONFIG_FILE)
+            shutil.copy(repo_root / "netwatchm.yaml.example", CONFIG_FILE)
             self.after(0, self._log_msg, f"Config created: {CONFIG_FILE}")
         else:
             self.after(0, self._log_msg, "Config already exists — not overwriting")
 
         # ── Monitor service ───────────────────────────────────────────────────
-        self.after(0, self._set_step, "Installing monitor service...", 65)
+        self.after(0, self._set_step, "Installing monitor service...", 67)
         rc = self._run_cmd("uv", "run", "python", "-m", "netwatchm",
                            "--config", str(CONFIG_FILE), "--install-service",
-                           cwd=str(REPO_ROOT))
+                           cwd=str(repo_root))
         if rc != 0:
             self.after(0, self._log_msg,
                        "Service install warning (may already exist)", "warn")
@@ -249,9 +271,9 @@ class InstallerApp(tk.Tk):
             self.after(0, self._log_msg, "Monitor service installed")
 
         # ── Web server ────────────────────────────────────────────────────────
-        self.after(0, self._set_step, "Installing web server...", 75)
+        self.after(0, self._set_step, "Installing web server...", 76)
         server_dst = DATA_DIR / "netwatchm-server.py"
-        shutil.copy(REPO_ROOT / "netwatchm_server.py", server_dst)
+        shutil.copy(repo_root / "netwatchm_server.py", server_dst)
         self.after(0, self._log_msg, f"Server script: {server_dst}")
 
         # TLS certificate
@@ -329,6 +351,14 @@ class InstallerApp(tk.Tk):
         # ── Save version ──────────────────────────────────────────────────────
         VERSION_FILE.write_text(APP_VERSION)
         self.after(0, self._log_msg, f"Version recorded: {APP_VERSION}")
+
+        # ── Cleanup temp files ────────────────────────────────────────────────
+        try:
+            _shutil.rmtree(tmp_dir, ignore_errors=True)
+            self.after(0, self._log_msg, "Temp files cleaned up")
+        except Exception:
+            pass
+
         self.after(0, self._set_step, "Installation complete!", 100)
 
     # ── Uninstall ─────────────────────────────────────────────────────────────

@@ -123,49 +123,41 @@ them manually if desired.
 
 ## Option B — Windows install (GUI installer — recommended)
 
-> **Easiest option.** Double-click to install — no PowerShell knowledge needed.
+> **Easiest option.** Download one file and double-click — no git, no PowerShell needed.
 
-### 1. Clone or download the repo
-```powershell
-git clone https://github.com/al4nbr3/netwatchm.git
-cd netwatchm
-```
+### 1. Download the installer
+Download **`netwatchm-setup.exe`** from the
+[Releases page](https://github.com/al4nbr3/netwatchm/releases).
 
-### 2. Run the GUI installer
-Double-click:
-```
-netwachmInstall\netwatchm-setup.exe
-```
-Or from PowerShell:
-```powershell
-.\netwachmInstall\netwatchm-setup.exe
-```
+### 2. Run it
+Double-click `netwatchm-setup.exe`.
 
-Windows will prompt for Administrator access (UAC) — click **Yes**.
+- **UAC prompt** ("Do you want to allow…") → click **Yes**
+- **SmartScreen** ("Windows protected your PC") → click **More info** → **Run anyway**
 
-If SmartScreen appears: click **More info** → **Run anyway**.
+The installer automatically downloads the latest source from GitHub,
+then shows a progress window and:
+- Detects any existing installation — offers Upgrade / Uninstall / Cancel
+- Installs Python 3.12 and Wireshark if missing (via winget)
+- Installs all dependencies and the netwatchm CLI
+- Registers `netwatchm` and `netwatchm-web` as Windows services
+- Generates a self-signed TLS certificate
+- Adds a **Desktop shortcut** and **Start Menu entry**
+- Adds a Windows Defender exclusion for the data directory
+- Cleans up all temporary files when done
 
-The installer shows a progress window and will:
-- Detect any existing installation and offer Upgrade / Uninstall / Cancel
-- Install Python 3.12 and Wireshark automatically if missing
-- Install all dependencies and the netwatchm CLI
-- Register `netwatchm` and `netwatchm-web` as Windows services
-- Generate a self-signed TLS certificate
-- Add a Desktop shortcut and Start Menu entry
-- Add a Windows Defender exclusion for the data directory
-
-### 3. Verify
-```powershell
-sc query netwatchm
-sc query netwatchm-web
-```
-
-### 4. Open the dashboard
-Click the **NetWatchM Dashboard** shortcut on your Desktop, or:
+### 3. Open the dashboard
+Click the **NetWatchM Dashboard** shortcut on your Desktop, or go to:
 ```
 https://localhost:8765/events.html
 ```
 > Browser will warn about the self-signed cert — click **Advanced → Proceed**.
+
+### 4. Verify services
+```powershell
+sc query netwatchm
+sc query netwatchm-web
+```
 
 ---
 
