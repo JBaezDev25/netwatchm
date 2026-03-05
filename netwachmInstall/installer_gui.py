@@ -227,28 +227,16 @@ class InstallerApp(tk.Tk):
             self.after(0, self._log_msg,
                        "tshark not in PATH — add Wireshark bin dir manually", "warn")
 
-        # ── uv ────────────────────────────────────────────────────────────────
-        self.after(0, self._set_step, "Installing uv package manager...", 25)
-        if not shutil.which("uv"):
-            self.after(0, self._log_msg, "Installing uv via pip...")
-            rc = self._run_cmd("pip", "install", "uv", "--quiet")
-            if rc != 0:
-                raise RuntimeError("pip install uv failed.")
-        self.after(0, self._log_msg, "uv ready")
-
         # ── Python package ────────────────────────────────────────────────────
         self.after(0, self._set_step,
-                   "Installing NetWatchM and dependencies (may take a few minutes)...", 40)
+                   "Installing NetWatchM and dependencies (may take a few minutes)...", 30)
         self.after(0, self._log_msg, "Window may pause briefly during download...")
 
-        rc = self._run_cmd("uv", "sync", "--extra", "windows", cwd=str(repo_root))
-        if rc != 0:
-            raise RuntimeError("uv sync failed.")
-        rc = self._run_cmd("uv", "tool", "install", "--no-cache", ".", "--force",
+        rc = self._run_cmd("pip", "install", ".[windows]", "--quiet",
                            cwd=str(repo_root))
         if rc != 0:
-            raise RuntimeError("uv tool install failed.")
-        self.after(0, self._log_msg, "netwatchm CLI installed")
+            raise RuntimeError("pip install failed.")
+        self.after(0, self._log_msg, "netwatchm installed")
 
         # ── Config ────────────────────────────────────────────────────────────
         self.after(0, self._set_step, "Setting up configuration...", 58)
@@ -261,7 +249,7 @@ class InstallerApp(tk.Tk):
 
         # ── Monitor service ───────────────────────────────────────────────────
         self.after(0, self._set_step, "Installing monitor service...", 67)
-        rc = self._run_cmd("uv", "run", "python", "-m", "netwatchm",
+        rc = self._run_cmd("python", "-m", "netwatchm",
                            "--config", str(CONFIG_FILE), "--install-service",
                            cwd=str(repo_root))
         if rc != 0:
