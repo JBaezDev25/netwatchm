@@ -291,3 +291,30 @@ bash netwachmInstall/install.sh
 | Web dashboard blank | Check `systemctl status netwatchm-web`; ensure port 8765 is not blocked by firewall |
 | Windows: service won't start | Check Event Viewer > Windows Logs > Application for Python errors |
 | No email alerts | Confirm `NETWATCHM_EMAIL_PASSWORD` is set; use a Gmail App Password, not your account password |
+| Windows Defender flags the installer or files | See note below |
+
+### Windows Defender / SmartScreen
+
+NetWatchM is not code-signed (certificates cost ~$300–500/year). This means Windows
+SmartScreen and Defender may warn or block the installer. **This is a false positive** —
+NetWatchM is open-source and you can review every line at
+[github.com/al4nbr3/netwatchm](https://github.com/al4nbr3/netwatchm).
+
+**To run the PowerShell installer despite the SmartScreen warning:**
+1. Right-click `install.ps1` → **Properties**
+2. At the bottom, check **Unblock** → **OK**
+3. Then run normally:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1
+   ```
+
+**If SmartScreen blocks a `.exe` from Releases:**
+1. Click **More info** on the SmartScreen dialog
+2. Click **Run anyway**
+
+**If Defender quarantines files after install:**
+The installer automatically adds `%PROGRAMDATA%\netwatchm` to Defender exclusions.
+If you ran the installer before this fix, add the exclusion manually:
+```powershell
+Add-MpPreference -ExclusionPath "$env:PROGRAMDATA\netwatchm"
+```
