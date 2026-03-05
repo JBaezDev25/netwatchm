@@ -25,11 +25,7 @@ jobs:
       - name: Install build dependencies
         run: |
           pip install --upgrade pip
-          pip install pyinstaller uv
-
-      - name: Install project dependencies
-        run: uv sync --extra windows
-        shell: pwsh
+          pip install pyinstaller
 
       - name: Build netwatchm-setup.exe
         run: pyinstaller netwachmInstall/installer.spec --clean --noconfirm
