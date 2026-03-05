@@ -148,6 +148,15 @@ https://localhost:8765/inventory.html
 4. powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1
 ```
 
+### GitHub Actions Release (v0.1.0 tag pushed)
+- [x] `.github/workflows/release.yml` — builds `netwatchm-setup.exe` on Windows runner and publishes to GitHub Releases
+- [x] `al4nbr3` added as publisher in exe Properties → Details tab and installer window subtitle
+- [x] `installer_version.txt` — PyInstaller version metadata (CompanyName, LegalCopyright, ProductName)
+
+### Pending — Windows Installer (carry to next session)
+- [ ] **pip install `.[windows]` failing** in `netwatchm-setup.exe` — `pywin32` or dependency issue on fresh Windows; need to debug exact error and fix `installer_gui.py`
+- [ ] Once installer works end-to-end, verify Desktop shortcut, services, and dashboard open correctly on a clean Windows machine
+
 ---
 
 ## Pending — Next Session
