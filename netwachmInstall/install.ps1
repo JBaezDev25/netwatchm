@@ -314,6 +314,47 @@ if (-not $NoWeb) {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  WINDOWS DEFENDER EXCLUSION
+# ══════════════════════════════════════════════════════════════════════════════
+Write-Step "Adding Windows Defender exclusion for NetWatchM data directory..."
+try {
+    Add-MpPreference -ExclusionPath "$env:PROGRAMDATA\netwatchm" -ErrorAction Stop
+    Write-Info "Defender exclusion added: $env:PROGRAMDATA\netwatchm"
+} catch {
+    Write-Warn "Could not add Defender exclusion (may already exist or Defender is disabled): $_"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SHORTCUTS
+# ══════════════════════════════════════════════════════════════════════════════
+Write-Step "Creating shortcuts..."
+
+$dashboardUrl = "https://localhost:8765/events.html"
+$shortcutContent = "[InternetShortcut]`r`nURL=$dashboardUrl`r`nIconIndex=0`r`n"
+
+# Desktop shortcut (all users)
+$desktopShortcut = "$env:PUBLIC\Desktop\NetWatchM Dashboard.url"
+try {
+    Set-Content -Path $desktopShortcut -Value $shortcutContent -Force
+    Write-Info "Desktop shortcut created: $desktopShortcut"
+} catch {
+    Write-Warn "Could not create desktop shortcut: $_"
+}
+
+# Start Menu shortcut (all users)
+$startMenuDir = "$env:PROGRAMDATA\Microsoft\Windows\Start Menu\Programs\NetWatchM"
+if (-not (Test-Path $startMenuDir)) {
+    New-Item -ItemType Directory -Path $startMenuDir -Force | Out-Null
+}
+$startMenuShortcut = "$startMenuDir\NetWatchM Dashboard.url"
+try {
+    Set-Content -Path $startMenuShortcut -Value $shortcutContent -Force
+    Write-Info "Start Menu shortcut created: $startMenuShortcut"
+} catch {
+    Write-Warn "Could not create Start Menu shortcut: $_"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  SUMMARY
 # ══════════════════════════════════════════════════════════════════════════════
 Write-Host ""
@@ -325,4 +366,5 @@ Write-Info "  Web dashboard:    https://localhost:8765/events.html"
 Write-Info "  Web service:      sc query netwatchm-web  (or Get-ScheduledTask netwatchm-web)"
 Write-Info "  Config:           $Config"
 Write-Info "  Start monitor:    sc start netwatchm"
+Write-Info "  Shortcut:         Desktop > NetWatchM Dashboard  (opens dashboard in browser)"
 Write-Info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
