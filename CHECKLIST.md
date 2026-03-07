@@ -153,9 +153,16 @@ https://localhost:8765/inventory.html
 - [x] `al4nbr3` added as publisher in exe Properties → Details tab and installer window subtitle
 - [x] `installer_version.txt` — PyInstaller version metadata (CompanyName, LegalCopyright, ProductName)
 
-### Pending — Windows Installer (carry to next session)
-- [ ] **pip install `.[windows]` failing** in `netwatchm-setup.exe` — `pywin32` or dependency issue on fresh Windows; need to debug exact error and fix `installer_gui.py`
-- [ ] Once installer works end-to-end, verify Desktop shortcut, services, and dashboard open correctly on a clean Windows machine
+### Session 5 — Windows Installer Fix + Auto Release  ✅ COMPLETE (2026-03-06)
+- [x] **Root cause found**: `impacket` flagged by Windows Defender during pip install — blocked download and caused `pip install failed` error
+- [x] `impacket` moved from base deps to optional `[forensics]` extra in `pyproject.toml` — Windows installer no longer installs it
+- [x] SMB check in `deep_inspect.py` already catches `ImportError` gracefully — no code change needed
+- [x] Pre-install Defender exclusions added for pip/uv cache + TEMP dirs in both `installer_gui.py` and `install.ps1`
+- [x] **Auto version bump on every push to master** — `release.yml` now auto-increments patch version, builds exe, commits version bump, tags, and publishes GitHub Release automatically
+- [x] Version bumped to `v0.2.0` across all files (`pyproject.toml`, `installer_gui.py`, `install.ps1`, `installer_version.txt`)
+
+### Pending — Windows Installer
+- [ ] Verify end-to-end install on a clean Windows machine (Desktop shortcut, services, dashboard)
 
 ---
 
