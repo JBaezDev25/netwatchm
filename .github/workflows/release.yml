@@ -1,22 +1,54 @@
-name: Build and Release
+name: Auto Version and Release
 
 on:
   push:
-    tags:
-      - "v*.*.*"   # triggers on tags like v0.1.0, v1.2.3
+    branches: [master]
 
-permissions:
-  contents: write  # needed to create releases and upload assets
-
+# Skip if this is itself a version bump commit (prevents infinite loop)
+# GITHUB_TOKEN pushes don't trigger workflows by default, but guard anyway.
 jobs:
-  build-windows:
-    name: Build netwatchm-setup.exe
+  release:
+    name: Bump version, build exe, publish release
+    if: "!startsWith(github.event.head_commit.message, 'Bump version to v')"
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # ── Compute new patch version ────────────────────────────────────────────
+      - name: Compute next version
+        id: version
+        shell: bash
+        run: |
+          OLD=$(grep '^version = ' pyproject.toml | sed 's/version = "//;s/"//')
+          IFS='.' read -r MAJ MIN PAT <<< "$OLD"
+          NEW="$MAJ.$MIN.$((PAT + 1))"
+          echo "old=$OLD" >> $GITHUB_OUTPUT
+          echo "new=$NEW" >> $GITHUB_OUTPUT
+          echo "Bumping $OLD → $NEW"
+
+      # ── Update version in all files ──────────────────────────────────────────
+      - name: Update version files
+        shell: bash
+        run: |
+          OLD="${{ steps.version.outputs.old }}"
+          NEW="${{ steps.version.outputs.new }}"
+
+          sed -i "s/version = \"$OLD\"/version = \"$NEW\"/" pyproject.toml
+          sed -i "s/APP_VERSION  = \"$OLD\"/APP_VERSION  = \"$NEW\"/" netwachmInstall/installer_gui.py
+          sed -i "s/\$AppVersion  = \"$OLD\"/\$AppVersion  = \"$NEW\"/" netwachmInstall/install.ps1
+          # installer_version.txt: update x.y.z strings and (x, y, z, 0) tuples
+          sed -i "s/$OLD/$NEW/g" netwachmInstall/installer_version.txt
+          OLD_T=$(echo "$OLD" | sed 's/\./,\ /g')
+          NEW_T=$(echo "$NEW" | sed 's/\./,\ /g')
+          sed -i "s/(${OLD_T}, 0)/(${NEW_T}, 0)/g" netwachmInstall/installer_version.txt
+
+      # ── Build exe ────────────────────────────────────────────────────────────
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -28,10 +60,11 @@ jobs:
           pip install pyinstaller
 
       - name: Build netwatchm-setup.exe
-        run: pyinstaller netwachmInstall/installer.spec --clean --noconfirm
         shell: pwsh
+        run: pyinstaller netwachmInstall/installer.spec --clean --noconfirm
 
       - name: Verify output
+        shell: pwsh
         run: |
           if (Test-Path "dist\netwatchm-setup.exe") {
             $size = [math]::Round((Get-Item "dist\netwatchm-setup.exe").Length / 1MB, 1)
@@ -40,14 +73,28 @@ jobs:
             Write-Error "netwatchm-setup.exe not found — build failed"
             exit 1
           }
-        shell: pwsh
 
+      # ── Commit version bump + tag ────────────────────────────────────────────
+      - name: Commit and tag new version
+        shell: bash
+        run: |
+          NEW="${{ steps.version.outputs.new }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml netwachmInstall/installer_gui.py netwachmInstall/install.ps1 netwachmInstall/installer_version.txt
+          git commit -m "Bump version to v$NEW [skip ci]"
+          git tag "v$NEW"
+          git push origin master
+          git push origin "v$NEW"
+
+      # ── Publish GitHub Release ───────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "NetWatchM ${{ github.ref_name }}"
+          tag_name: "v${{ steps.version.outputs.new }}"
+          name: "NetWatchM v${{ steps.version.outputs.new }}"
           body: |
-            ## NetWatchM ${{ github.ref_name }}
+            ## NetWatchM v${{ steps.version.outputs.new }}
 
             ### Windows Installation
             1. Download **netwatchm-setup.exe** below
