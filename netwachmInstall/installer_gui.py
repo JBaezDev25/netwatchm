@@ -19,7 +19,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-APP_VERSION  = "0.1.0"
+APP_VERSION  = "0.2.0"
 GITHUB_ZIP   = "https://github.com/al4nbr3/netwatchm/archive/refs/heads/master.zip"
 PROGRAMDATA  = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
 DATA_DIR     = PROGRAMDATA / "netwatchm"
@@ -232,6 +232,17 @@ class InstallerApp(tk.Tk):
                    "Installing NetWatchM and dependencies (may take a few minutes)...", 30)
         self.after(0, self._log_msg, "Window may pause briefly during download...")
 
+        # Add Defender exclusion for pip cache to prevent AV blocking downloads
+        pip_cache = Path(os.environ.get("LOCALAPPDATA", "")) / "pip" / "cache"
+        tmp_path = Path(os.environ.get("TEMP", "C:\\Windows\\Temp"))
+        for excl in [str(pip_cache), str(tmp_path)]:
+            subprocess.run(
+                ["powershell", "-Command", f'Add-MpPreference -ExclusionPath "{excl}"'],
+                capture_output=True
+            )
+
+        # impacket is excluded from Windows install — flagged by Windows Defender.
+        # It is only used for SMB forensics (Linux feature). Install as forensics extra if needed.
         rc = self._run_cmd("pip", "install", ".[windows]", "--quiet",
                            cwd=str(repo_root))
         if rc != 0:

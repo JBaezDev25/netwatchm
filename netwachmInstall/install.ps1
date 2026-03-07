@@ -40,7 +40,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$AppVersion  = "0.1.0"
+$AppVersion  = "0.2.0"
 $DataDir     = "$env:PROGRAMDATA\netwatchm"
 $VersionFile = "$DataDir\version.txt"
 $ConfigDir   = Split-Path -Parent $Config
@@ -340,6 +340,14 @@ Log-Info "uv ready"
 # ══════════════════════════════════════════════════════════════════════════════
 Log-Step "Installing NetWatchM and dependencies (this may take a few minutes)..." 35
 if ($UseGui) { Log-Info "Window may pause briefly during package download..." }
+
+# Pre-add Defender exclusions for pip/uv cache dirs to prevent AV blocking package downloads
+$pipCache = "$env:LOCALAPPDATA\pip\cache"
+$uvCache  = "$env:LOCALAPPDATA\uv\cache"
+foreach ($excl in @($pipCache, $uvCache, $env:TEMP)) {
+    try { Add-MpPreference -ExclusionPath $excl -ErrorAction SilentlyContinue } catch {}
+}
+Log-Info "Defender exclusions added for package cache dirs"
 
 Push-Location $RepoRoot
 try {
