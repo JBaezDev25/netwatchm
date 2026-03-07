@@ -35,11 +35,12 @@ echo "    3. Check for system update"
 echo "================================================================"
 echo ""
 
-# Remove stale output file if it exists
-if [ -f "$OUT_FILE" ]; then
-    echo "[*] Removing previous capture: $OUT_FILE"
-    rm -f "$OUT_FILE"
-fi
+# Remove stale output file (may be root-owned from a previous run)
+sudo rm -f "$OUT_FILE" 2>/dev/null || rm -f "$OUT_FILE" 2>/dev/null || true
+
+# Pre-create the file as the current user so tshark (root) can write to it
+touch "$OUT_FILE"
+chmod 644 "$OUT_FILE"
 
 echo "[*] Starting capture -- waiting for Switch traffic on $IFACE ..."
 echo ""
