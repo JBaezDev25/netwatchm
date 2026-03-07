@@ -139,7 +139,22 @@ def _save_aliases(aliases: dict[str, str]) -> None:
     tmp.replace(ALIASES_FILE)
 
 
-SUPPRESSED_FILE = Path(os.environ.get("NETWATCHM_SUPPRESSED_FILE", str(Path(_DD) / "suppressed.json")))
+def _load_verified() -> dict[str, bool]:
+    """Return {ip: True} for verified devices; empty dict if missing or corrupt."""
+    if not VERIFIED_FILE.exists():
+        return {}
+    try:
+        return json.loads(VERIFIED_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_verified(verified: dict[str, bool]) -> None:
+    """Persist verified dict atomically to verified.json."""
+    VERIFIED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = VERIFIED_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(verified, indent=2))
+    tmp.replace(VERIFIED_FILE)
 
 
 def _load_suppressed() -> dict:
@@ -200,7 +215,9 @@ FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",        str(Path(_DD) / "flows.
 EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",       str(Path(_DD) / "events.db"))
 ADMIN_TOKEN = os.environ.get("NETWATCHM_ADMIN_TOKEN", "netwatchm-admin")
 READ_TOKEN  = os.environ.get("NETWATCHM_READ_TOKEN", "")  # empty = public reads allowed
-ALIASES_FILE = Path(os.environ.get("NETWATCHM_ALIASES_FILE", str(Path(_DD) / "aliases.json")))
+ALIASES_FILE   = Path(os.environ.get("NETWATCHM_ALIASES_FILE",   str(Path(_DD) / "aliases.json")))
+VERIFIED_FILE  = Path(os.environ.get("NETWATCHM_VERIFIED_FILE",  str(Path(_DD) / "verified.json")))
+SUPPRESSED_FILE = Path(os.environ.get("NETWATCHM_SUPPRESSED_FILE", str(Path(_DD) / "suppressed.json")))
 REPORTS_DIR = SERVE_DIR / "reports"
 REPORTS_MAX = 50  # keep this many archived reports
 
@@ -220,6 +237,14 @@ _inv_state: dict[str, dict] = {}   # {ip: {status, error}}
 # Deep inspect state keyed by target IP
 _deep_lock = threading.Lock()
 _deep_state: dict[str, dict] = {}  # {ip: {status, error}}
+
+# nmap scan state keyed by target IP
+_nmap_lock = threading.Lock()
+_nmap_state: dict[str, dict] = {}  # {ip: {status, output, error}}
+
+# pcap analysis state keyed by job_id
+_pcap_lock = threading.Lock()
+_pcap_state: dict[str, dict] = {}  # {job_id: {status, result, error}}
 
 # Analytics state
 _anal_lock = threading.Lock()
@@ -304,6 +329,297 @@ def _run_investigate(target_ip: str, ports: str) -> None:
     except Exception as exc:
         with _inv_lock:
             _inv_state[target_ip] = {"status": "error", "error": str(exc)}
+
+
+def _run_nmap_scan(target_ip: str, ports: str) -> None:
+    """Run nmap against target_ip in a background thread; store output in _nmap_state."""
+    import shutil
+    with _nmap_lock:
+        _nmap_state[target_ip] = {"status": "running", "output": "", "error": None}
+    try:
+        if not shutil.which("nmap"):
+            with _nmap_lock:
+                _nmap_state[target_ip] = {
+                    "status": "error",
+                    "output": "",
+                    "error": "nmap not found — install it with: sudo apt install nmap",
+                }
+            return
+        port_arg = ports or "1-1024"
+        cmd = ["nmap", "-sV", "--open", "-T4", "-p", port_arg, target_ip]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        output = result.stdout + (result.stderr if result.returncode != 0 else "")
+        with _nmap_lock:
+            _nmap_state[target_ip] = {
+                "status": "ready",
+                "output": output.strip(),
+                "error": None,
+            }
+    except subprocess.TimeoutExpired:
+        with _nmap_lock:
+            _nmap_state[target_ip] = {
+                "status": "error",
+                "output": "",
+                "error": "nmap timed out after 120 s",
+            }
+    except Exception as exc:
+        with _nmap_lock:
+            _nmap_state[target_ip] = {"status": "error", "output": "", "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# pcap analysis
+# ---------------------------------------------------------------------------
+
+_NINTENDO_KEYWORDS = ("nintendo", "nintend", "wup-", "lp1.", "nasc.", "ctest.")
+
+_PORT_SERVICE = {
+    20: "FTP-data", 21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP",
+    53: "DNS", 80: "HTTP", 110: "POP3", 111: "RPCbind", 135: "MSRPC",
+    139: "NetBIOS", 143: "IMAP", 443: "HTTPS", 445: "SMB", 554: "RTSP",
+    587: "SMTP/TLS", 993: "IMAPS", 995: "POP3S", 1720: "H.323",
+    1723: "PPTP", 3306: "MySQL", 3389: "RDP", 5900: "VNC",
+    8080: "HTTP-alt", 8443: "HTTPS-alt",
+}
+
+
+def _oui_lookup(mac: str) -> str:
+    """Return vendor string for a MAC address using the Wireshark manuf file."""
+    if not mac:
+        return ""
+    prefix6  = mac[:8].upper()   # e.g. "98:E2:55"
+    prefix8  = mac[:11].upper()  # e.g. "98:E2:55:D4"
+    manuf_paths = [
+        "/usr/share/wireshark/manuf",
+        "/usr/share/wireshark/manuf.gz",
+    ]
+    for mp in manuf_paths:
+        p = Path(mp)
+        if not p.exists():
+            continue
+        try:
+            if mp.endswith(".gz"):
+                import gzip
+                text = gzip.open(mp, "rt", errors="ignore").read()
+            else:
+                text = p.read_text(errors="ignore")
+            for line in text.splitlines():
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split("\t", 2)
+                if len(parts) < 2:
+                    continue
+                if parts[0].upper() in (prefix8, prefix6):
+                    return parts[-1].strip()
+        except Exception:
+            continue
+    return ""
+
+
+def _tshark(pcap_path: str, *args: str, timeout: int = 90) -> str:
+    """Run tshark on pcap_path with extra args; return stdout."""
+    try:
+        r = subprocess.run(
+            ["tshark", "-r", pcap_path] + list(args),
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return r.stdout
+    except subprocess.TimeoutExpired:
+        return ""
+    except FileNotFoundError:
+        raise RuntimeError("tshark not found — install wireshark-cli")
+
+
+def _analyze_pcap(pcap_path: str) -> dict:
+    """Full tshark-based pcap analysis. Returns structured result dict."""
+    import collections
+
+    # ── 1. Frame timestamps (summary) ────────────────────────────────────────
+    ts_out = _tshark(pcap_path, "-T", "fields", "-e", "frame.time_epoch")
+    times = []
+    for line in ts_out.splitlines():
+        try:
+            times.append(float(line.strip()))
+        except ValueError:
+            pass
+    total_packets = len(times)
+    duration_s = round(max(times) - min(times), 2) if len(times) > 1 else 0.0
+
+    # ── 2. IP → MAC mapping + packet counts ──────────────────────────────────
+    ipmac_out = _tshark(
+        pcap_path, "-T", "fields", "-e", "ip.src", "-e", "eth.src",
+        "-E", "separator=\t",
+    )
+    ip_to_mac: dict[str, str] = {}
+    ip_pkt_count: dict[str, int] = collections.Counter()
+    for line in ipmac_out.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2 and parts[0]:
+            ip_pkt_count[parts[0]] += 1
+            if parts[0] not in ip_to_mac and parts[1]:
+                ip_to_mac[parts[0]] = parts[1]
+
+    # ── 3. Open ports (SYN-ACK responses) ────────────────────────────────────
+    synack_out = _tshark(
+        pcap_path,
+        "-Y", "tcp.flags.syn==1 and tcp.flags.ack==1",
+        "-T", "fields", "-e", "ip.src", "-e", "tcp.srcport",
+        "-E", "separator=\t",
+    )
+    open_ports_by_ip: dict[str, list[int]] = collections.defaultdict(list)
+    for line in synack_out.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2 and parts[1]:
+            try:
+                open_ports_by_ip[parts[0]].append(int(parts[1]))
+            except ValueError:
+                pass
+
+    # ── 4. DNS latency ────────────────────────────────────────────────────────
+    dns_out = _tshark(
+        pcap_path,
+        "-Y", "dns",
+        "-T", "fields",
+        "-e", "frame.time_epoch",
+        "-e", "ip.src", "-e", "ip.dst",
+        "-e", "dns.id",
+        "-e", "dns.flags.response",
+        "-e", "dns.qry.name",
+        "-e", "dns.a",
+        "-E", "separator=\t",
+    )
+    # key: (src_ip, dst_ip, dns_id) → query record
+    dns_pending: dict[tuple, dict] = {}
+    dns_results: list[dict] = []
+    for line in dns_out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 6:
+            continue
+        try:
+            ts        = float(parts[0])
+            src, dst  = parts[1], parts[2]
+            dns_id    = parts[3].strip()
+            is_resp   = parts[4].strip() == "1"
+            qname     = parts[5].strip()
+            a_records = parts[6].strip() if len(parts) > 6 else ""
+        except (ValueError, IndexError):
+            continue
+
+        if not is_resp:
+            # query: key by (client, server, id)
+            dns_pending[(src, dst, dns_id)] = {
+                "ts": ts, "src": src, "server": dst, "qname": qname,
+            }
+        else:
+            # response: client was dst of query, server was src
+            key = (dst, src, dns_id)
+            q = dns_pending.pop(key, None)
+            if q:
+                latency_ms = round((ts - q["ts"]) * 1000, 2)
+                nintendo   = any(k in q["qname"].lower() for k in _NINTENDO_KEYWORDS)
+                resolved   = a_records.split(",")[0].strip() if a_records else ""
+                dns_results.append({
+                    "query":       q["qname"],
+                    "src_ip":      q["src"],
+                    "server_ip":   q["server"],
+                    "resolved_ip": resolved,
+                    "latency_ms":  latency_ms,
+                    "nintendo":    nintendo,
+                })
+
+    dns_results.sort(key=lambda x: x["latency_ms"])
+
+    # ── 5. TLS handshake latency ──────────────────────────────────────────────
+    tls_out = _tshark(
+        pcap_path,
+        "-Y", "tls.handshake.type == 1 or tls.handshake.type == 2",
+        "-T", "fields",
+        "-e", "frame.time_epoch",
+        "-e", "ip.src", "-e", "ip.dst",
+        "-e", "tcp.stream",
+        "-e", "tls.handshake.type",
+        "-e", "tls.handshake.extensions_server_name",
+        "-E", "separator=\t",
+    )
+    tls_pending: dict[str, dict] = {}  # tcp.stream → ClientHello info
+    tls_results: list[dict] = []
+    for line in tls_out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 5:
+            continue
+        try:
+            ts     = float(parts[0])
+            src, dst = parts[1], parts[2]
+            stream = parts[3].strip()
+            htype  = int(parts[4].strip())
+            sni    = parts[5].strip() if len(parts) > 5 else ""
+        except (ValueError, IndexError):
+            continue
+
+        if htype == 1:  # ClientHello
+            tls_pending[stream] = {"ts": ts, "src": src, "dst": dst, "sni": sni}
+        elif htype == 2:  # ServerHello
+            ch = tls_pending.pop(stream, None)
+            if ch:
+                latency_ms = round((ts - ch["ts"]) * 1000, 2)
+                name       = ch["sni"] or ch["dst"]
+                nintendo   = any(k in name.lower() for k in _NINTENDO_KEYWORDS)
+                tls_results.append({
+                    "server_name": name,
+                    "src_ip":      ch["src"],
+                    "dst_ip":      ch["dst"],
+                    "latency_ms":  latency_ms,
+                    "nintendo":    nintendo,
+                })
+
+    tls_results.sort(key=lambda x: x["latency_ms"])
+
+    # ── 6. Build device list ──────────────────────────────────────────────────
+    all_ips = set(ip_to_mac) | set(ip_pkt_count)
+    devices = []
+    for ip in all_ips:
+        mac    = ip_to_mac.get(ip, "")
+        vendor = _oui_lookup(mac)
+        ports  = sorted(set(open_ports_by_ip.get(ip, [])))
+        port_labels = [
+            f"{p}/{_PORT_SERVICE.get(p, 'unknown')}" for p in ports
+        ]
+        devices.append({
+            "ip":          ip,
+            "mac":         mac,
+            "vendor":      vendor,
+            "packet_count": ip_pkt_count.get(ip, 0),
+            "open_ports":  port_labels,
+            "nintendo":    "nintendo" in vendor.lower(),
+        })
+    devices.sort(key=lambda d: d["packet_count"], reverse=True)
+
+    return {
+        "summary": {
+            "filename":      Path(pcap_path).name,
+            "total_packets": total_packets,
+            "duration_s":    duration_s,
+        },
+        "devices": devices,
+        "dns":     dns_results,
+        "tls":     tls_results,
+    }
+
+
+def _run_pcap_job(job_id: str, pcap_path: str) -> None:
+    """Background thread: run pcap analysis and store result."""
+    try:
+        result = _analyze_pcap(pcap_path)
+        with _pcap_lock:
+            _pcap_state[job_id] = {"status": "ready", "result": result, "error": None}
+    except Exception as exc:
+        with _pcap_lock:
+            _pcap_state[job_id] = {"status": "error", "result": None, "error": str(exc)}
+    finally:
+        try:
+            Path(pcap_path).unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def _run_report(duration: int, network: str) -> None:
@@ -1286,9 +1602,19 @@ function renderTable(events) {
   tbody.innerHTML = rows.join('');
 }
 
+function _isPrivate(ip) {
+  if (!ip || ip === '—') return true;
+  return ip.startsWith('10.') || ip.startsWith('192.168.') ||
+    ip.startsWith('127.') || ip.startsWith('169.254.') ||
+    /^172\\.(1[6-9]|2\\d|3[01])\\./.test(ip);
+}
 function buildDetailRow(e) {
-  const deepLink = e.src_ip && !e.src_ip.startsWith('192.168') && !e.src_ip.startsWith('10.')
-    ? `<a class="deep-btn" href="/inspect/${esc(e.src_ip)}" target="_blank">&#128269; Deep Inspect ${esc(e.src_ip)}</a>`
+  const srcExt = e.src_ip && !_isPrivate(e.src_ip);
+  const dstExt = e.dst_ip && !_isPrivate(e.dst_ip);
+  const inspectIp = srcExt ? e.src_ip : (dstExt ? e.dst_ip : (e.src_ip && e.src_ip !== '—' ? e.src_ip : e.dst_ip || ''));
+  const inspectLabel = srcExt ? e.src_ip : (dstExt ? `dst: ${e.dst_ip}` : e.src_ip || e.dst_ip || '');
+  const deepLink = inspectIp
+    ? `<a class="deep-btn" href="/inspect/${esc(inspectIp)}" target="_blank">&#128269; Deep Inspect ${esc(inspectLabel)}</a>`
     : '';
   return `<tr class="detail-row" onclick="event.stopPropagation()">
     <td colspan="6">
@@ -1410,6 +1736,22 @@ def _render_inventory_html() -> bytes:
   .MEDIUM{background:rgba(210,153,34,.15);color:var(--yellow)}
   .LOW{background:rgba(63,185,80,.15);color:var(--green)}
   .CRITICAL{background:rgba(248,81,73,.3);color:var(--red)}
+  .verified-btn{background:none;border:none;cursor:pointer;font-size:15px;padding:2px 4px;border-radius:4px;line-height:1;color:var(--muted)}
+  .verified-btn:hover{background:rgba(255,255,255,.08)}
+  .verified-btn.is-verified{color:var(--green)}
+  .scan-btn{background:none;border:1px solid var(--border);cursor:pointer;font-size:11px;padding:2px 7px;border-radius:4px;color:var(--muted);white-space:nowrap}
+  .scan-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .scan-btn.scanning{color:var(--yellow);border-color:var(--yellow)}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:min(860px,95vw);max-height:80vh;display:flex;flex-direction:column}
+  .modal-header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .modal-header h2{font-size:14px;font-weight:600;color:var(--blue);flex:1}
+  .modal-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px;line-height:1}
+  .modal-close:hover{color:var(--text)}
+  .modal-body{flex:1;overflow-y:auto;padding:14px 16px}
+  pre.nmap-out{font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text);line-height:1.55;margin:0}
+  .nmap-status{color:var(--muted);font-size:12px;padding:20px 0;text-align:center}
   .ip{font-family:monospace;font-size:12px}
   .scroll{overflow-x:auto}
   .empty-state{text-align:center;padding:60px;color:var(--muted)}
@@ -1429,6 +1771,7 @@ def _render_inventory_html() -> bytes:
     <a href="/connection-report.html">&#8592; Report</a>
     <a href="/events.html">Events</a>
     <a href="/analytics.html">Analytics</a>
+    <a href="/pcap.html">&#128202; Pcap</a>
   </nav>
   <div class="toolbar">
     <input type="search" id="searchBox" placeholder="Search IP, label, hostname, vendor…">
@@ -1440,6 +1783,7 @@ def _render_inventory_html() -> bytes:
 <table id="devTable">
   <thead>
     <tr>
+      <th data-col="verified" title="Verified device">&#10003;</th>
       <th data-col="label" class="sorted">Label &#9660;</th>
       <th data-col="ip">IP</th>
       <th data-col="hostname">Hostname</th>
@@ -1449,6 +1793,7 @@ def _render_inventory_html() -> bytes:
       <th data-col="bytes_sent">&#8593; Sent</th>
       <th data-col="bytes_received">&#8595; Recv</th>
       <th data-col="last_seen">Last Seen</th>
+      <th></th>
     </tr>
   </thead>
   <tbody id="tbody"></tbody>
@@ -1456,8 +1801,22 @@ def _render_inventory_html() -> bytes:
 </div>
 <div class="empty-state" id="emptyState" style="display:none">No devices match your search.</div>
 <div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="nmapModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="nmapModalTitle">&#128270; nmap scan</h2>
+      <button class="modal-close" id="nmapModalClose">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div id="nmapStatusMsg" class="nmap-status">Starting scan…</div>
+      <pre class="nmap-out" id="nmapOutput" style="display:none"></pre>
+    </div>
+  </div>
+</div>
+
 <script>
-let _devices = [], _aliases = {}, _sortCol = 'label', _sortAsc = true;
+let _devices = [], _aliases = {}, _verified = {}, _sortCol = 'label', _sortAsc = true;
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -1484,12 +1843,14 @@ function toast(msg, ok=true){
 }
 
 async function loadData(){
-  const [devResp, aliasResp] = await Promise.all([
+  const [devResp, aliasResp, verResp] = await Promise.all([
     fetch('/inventory.json'),
-    fetch('/api/aliases')
+    fetch('/api/aliases'),
+    fetch('/api/verified')
   ]);
-  _devices = await devResp.json();
+  _devices  = await devResp.json();
   _aliases  = await aliasResp.json();
+  _verified = await verResp.json();
   render();
 }
 
@@ -1504,6 +1865,9 @@ function sortDevices(devices){
       // unlabelled items always last
       if(!av && bv) return 1;
       if(av && !bv) return -1;
+    } else if(_sortCol==='verified'){
+      av=!!_verified[a.ip]?1:0;
+      bv=!!_verified[b.ip]?1:0;
     } else if(_sortCol==='bytes_sent'||_sortCol==='bytes_received'){
       av=parseInt(a[_sortCol])||0;
       bv=parseInt(b[_sortCol])||0;
@@ -1522,6 +1886,8 @@ function render(){
   let rows = _devices.filter(d=>{
     if(!q) return true;
     const label = getLabel(d.ip).toLowerCase();
+    if(q==='verified') return !!_verified[d.ip];
+    if(q==='unverified') return !_verified[d.ip];
     return (d.ip||'').includes(q) || label.includes(q) ||
            (d.hostname||'').toLowerCase().includes(q) ||
            (d.vendor||'').toLowerCase().includes(q) ||
@@ -1534,7 +1900,9 @@ function render(){
   tbody.innerHTML = rows.map(d=>{
     const label = getLabel(d.ip);
     const lvl = d.threat_level||'LOW';
+    const isVer = !!_verified[d.ip];
     return `<tr>
+      <td style="text-align:center"><button class="verified-btn ${isVer?'is-verified':''}" data-ip="${esc(d.ip)}" data-verified="${isVer}" title="${isVer?'Verified — click to unverify':'Unverified — click to verify'}">${isVer?'&#10003;':'&#9711;'}</button></td>
       <td class="label-cell"><span class="label-display ${label?'':'empty'}" data-ip="${esc(d.ip)}">${label?esc(label):'Add label…'}</span></td>
       <td class="ip">${esc(d.ip)}</td>
       <td>${esc(d.hostname)||'—'}</td>
@@ -1544,14 +1912,36 @@ function render(){
       <td>${fmtBytes(d.bytes_sent)}</td>
       <td>${fmtBytes(d.bytes_received)}</td>
       <td>${fmtTime(d.last_seen)}</td>
+      <td><button class="scan-btn" data-ip="${esc(d.ip)}" title="Run nmap scan">&#128270; Scan</button></td>
     </tr>`;
   }).join('');
   attachLabelEditors();
+  attachVerifyToggles();
+  attachScanButtons();
 }
 
 function attachLabelEditors(){
   document.querySelectorAll('.label-display').forEach(el=>{
     el.addEventListener('click', startEdit);
+  });
+}
+
+function attachVerifyToggles(){
+  document.querySelectorAll('.verified-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const ip = btn.dataset.ip;
+      const nowVerified = btn.dataset.verified === 'true';
+      const next = !nowVerified;
+      try{
+        const r = await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip,verified:next})});
+        const j = await r.json();
+        if(j.ok){
+          if(next) _verified[ip]=true; else delete _verified[ip];
+          toast(next ? `Verified: ${ip}` : `Unverified: ${ip}`);
+          render();
+        } else { toast('Save failed',false); }
+      } catch(_){ toast('Save failed',false); }
+    });
   });
 }
 
@@ -1582,6 +1972,65 @@ function startEdit(e){
   input.addEventListener('keydown', ev=>{
     if(ev.key==='Enter'){ ev.preventDefault(); input.blur(); }
     if(ev.key==='Escape'){ input.removeEventListener('blur',commit); render(); }
+  });
+}
+
+// ── nmap scan modal ──────────────────────────────────────────────────────────
+let _nmapPollTimer = null;
+
+function openNmapModal(ip){
+  document.getElementById('nmapModalTitle').textContent = '\\u{1F50E} nmap scan — ' + ip;
+  document.getElementById('nmapStatusMsg').textContent = 'Starting scan…';
+  document.getElementById('nmapStatusMsg').style.display = 'block';
+  document.getElementById('nmapOutput').style.display = 'none';
+  document.getElementById('nmapOutput').textContent = '';
+  document.getElementById('nmapModal').classList.add('open');
+}
+
+function closeNmapModal(){
+  document.getElementById('nmapModal').classList.remove('open');
+  if(_nmapPollTimer){ clearInterval(_nmapPollTimer); _nmapPollTimer=null; }
+}
+
+document.getElementById('nmapModalClose').addEventListener('click', closeNmapModal);
+document.getElementById('nmapModal').addEventListener('click', e=>{
+  if(e.target===document.getElementById('nmapModal')) closeNmapModal();
+});
+
+async function startNmapScan(ip, btn){
+  btn.classList.add('scanning');
+  btn.textContent = '⏳ Scanning…';
+  openNmapModal(ip);
+  try{
+    await fetch('/api/nmap?target='+encodeURIComponent(ip), {method:'POST'});
+  } catch(_){}
+  if(_nmapPollTimer) clearInterval(_nmapPollTimer);
+  _nmapPollTimer = setInterval(async ()=>{
+    try{
+      const s = await fetch('/api/nmap/status?target='+encodeURIComponent(ip)).then(r=>r.json());
+      if(s.status === 'running'){
+        document.getElementById('nmapStatusMsg').textContent = '⏳ Scanning '+ip+'… (may take up to 60 s)';
+      } else if(s.status === 'ready'){
+        clearInterval(_nmapPollTimer); _nmapPollTimer = null;
+        btn.classList.remove('scanning');
+        btn.innerHTML = '\\u{1F50E} Scan';
+        document.getElementById('nmapStatusMsg').style.display = 'none';
+        const pre = document.getElementById('nmapOutput');
+        pre.textContent = s.output || '(no output)';
+        pre.style.display = 'block';
+      } else if(s.status === 'error'){
+        clearInterval(_nmapPollTimer); _nmapPollTimer = null;
+        btn.classList.remove('scanning');
+        btn.innerHTML = '\\u{1F50E} Scan';
+        document.getElementById('nmapStatusMsg').textContent = '\\u274C Error: ' + (s.error||'unknown');
+      }
+    } catch(_){}
+  }, 1500);
+}
+
+function attachScanButtons(){
+  document.querySelectorAll('.scan-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>startNmapScan(btn.dataset.ip, btn));
   });
 }
 
@@ -1629,6 +2078,302 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
 });
 
 loadData();
+</script>
+</body>
+</html>"""
+    return page.encode()
+
+
+def _render_pcap_html() -> bytes:
+    """Self-contained pcap analysis SPA."""
+    page = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Pcap Analyzer</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb;--purple:#bc8cff;--nintendored:#e4000f}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;color:var(--blue)}
+  nav{display:flex;gap:16px;align-items:center;margin-left:auto}
+  nav a{color:var(--muted);font-size:13px;text-decoration:none}
+  nav a:hover{color:var(--text)}
+  .main{max-width:1200px;margin:0 auto;padding:24px 20px}
+  /* drop zone */
+  .dropzone{border:2px dashed var(--border);border-radius:10px;padding:50px 30px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:28px}
+  .dropzone.over{border-color:var(--blue);background:rgba(88,166,255,.06)}
+  .dropzone h2{font-size:16px;font-weight:500;color:var(--muted);margin-bottom:8px}
+  .dropzone p{color:var(--muted);font-size:12px}
+  .dropzone input{display:none}
+  .btn{background:var(--accent);color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:13px}
+  .btn:hover{opacity:.85}
+  .btn.sec{background:var(--surface);border:1px solid var(--border);color:var(--text)}
+  /* progress */
+  .progress{display:none;text-align:center;padding:30px;color:var(--muted)}
+  .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* sections */
+  section{margin-bottom:32px}
+  section h2{font-size:14px;font-weight:600;color:var(--blue);border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:14px}
+  /* summary cards */
+  .cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:0}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 20px;min-width:150px;flex:1}
+  .card .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+  .card .value{font-size:22px;font-weight:700;color:var(--text)}
+  .card .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  /* tables */
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  tbody tr{border-bottom:1px solid rgba(48,54,61,.6)}
+  tbody tr:hover{background:rgba(255,255,255,.02)}
+  td{padding:7px 10px;vertical-align:middle}
+  .mono{font-family:monospace;font-size:11px}
+  .tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;display:inline-block;white-space:nowrap}
+  .tag.nintendo{background:rgba(228,0,15,.15);color:var(--nintendored)}
+  .tag.open{background:rgba(63,185,80,.15);color:var(--green)}
+  .tag.vendor{background:rgba(88,166,255,.12);color:var(--blue)}
+  .lat-good{color:var(--green)}
+  .lat-ok{color:var(--yellow)}
+  .lat-bad{color:var(--red)}
+  .dim{color:var(--muted)}
+  .error-box{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);border-radius:6px;padding:14px 18px;color:var(--red);margin-bottom:20px}
+  #results{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128202; Pcap Analyzer</h1>
+  <nav>
+    <a href="/inventory.html">&#8592; Inventory</a>
+    <a href="/events.html">Events</a>
+    <a href="/connection-report.html">Report</a>
+  </nav>
+</header>
+<div class="main">
+
+  <!-- Upload area -->
+  <div class="dropzone" id="dropzone">
+    <h2>&#128229; Drop a .pcap or .pcapng file here</h2>
+    <p>or click to browse &mdash; max 200 MB</p>
+    <p style="margin-top:10px"><button class="btn" onclick="document.getElementById('fileInput').click()">Choose File</button></p>
+    <input type="file" id="fileInput" accept=".pcap,.pcapng,.cap">
+  </div>
+
+  <!-- Progress -->
+  <div class="progress" id="progress">
+    <div class="spinner"></div>
+    <div id="progressMsg">Uploading…</div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-box" id="errorBox" style="display:none"></div>
+
+  <!-- Results -->
+  <div id="results">
+
+    <section>
+      <h2>&#128203; Summary</h2>
+      <div class="cards" id="summaryCards"></div>
+    </section>
+
+    <section>
+      <h2>&#128241; Devices Detected</h2>
+      <div class="tbl-wrap">
+      <table id="devTable">
+        <thead><tr>
+          <th>IP</th><th>MAC</th><th>Vendor</th>
+          <th style="text-align:right">Packets</th>
+          <th>Open Ports</th>
+        </tr></thead>
+        <tbody id="devBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="dnsSection">
+      <h2>&#127758; DNS Resolution Latency</h2>
+      <div class="tbl-wrap">
+      <table id="dnsTable">
+        <thead><tr>
+          <th>Query</th><th>Client IP</th><th>DNS Server</th>
+          <th>Resolved IP</th><th style="text-align:right">Latency</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="dnsBody"></tbody>
+      </table>
+      </div>
+      <p id="dnsEmpty" class="dim" style="display:none;padding:12px 0;font-size:12px">No DNS traffic found in this capture.</p>
+    </section>
+
+    <section id="tlsSection">
+      <h2>&#128274; TLS Handshake Latency</h2>
+      <div class="tbl-wrap">
+      <table id="tlsTable">
+        <thead><tr>
+          <th>Server / SNI</th><th>Client IP</th><th>Server IP</th>
+          <th style="text-align:right">Handshake Time</th><th></th>
+        </tr></thead>
+        <tbody id="tlsBody"></tbody>
+      </table>
+      </div>
+      <p id="tlsEmpty" class="dim" style="display:none;padding:12px 0;font-size:12px">No TLS handshakes found in this capture.</p>
+    </section>
+
+  </div><!-- /results -->
+</div><!-- /main -->
+<script>
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmtLat(ms){
+  const s=parseFloat(ms);
+  const cls=s<50?'lat-good':s<200?'lat-ok':'lat-bad';
+  return `<span class="${cls}">${s.toFixed(1)} ms</span>`;
+}
+function fmtPkts(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n);}
+
+// ── drag and drop ────────────────────────────────────────────────────────────
+const dz=document.getElementById('dropzone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');handleFile(e.dataTransfer.files[0]);});
+document.getElementById('fileInput').addEventListener('change',e=>handleFile(e.target.files[0]));
+
+// ── upload + poll ────────────────────────────────────────────────────────────
+async function handleFile(file){
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(!['pcap','pcapng','cap'].includes(ext)){showError('Please upload a .pcap or .pcapng file.');return;}
+  if(file.size>200*1024*1024){showError('File exceeds 200 MB limit.');return;}
+
+  showProgress('Uploading '+file.name+' ('+fmtMB(file.size)+')…');
+  hideResults();
+
+  let jobId;
+  try{
+    const r=await fetch('/api/pcap/upload?filename='+encodeURIComponent(file.name),{
+      method:'POST',
+      headers:{'Content-Type':'application/octet-stream'},
+      body:file
+    });
+    const j=await r.json();
+    if(!j.job_id){showError(j.error||'Upload failed');return;}
+    jobId=j.job_id;
+  }catch(e){showError('Upload error: '+e);return;}
+
+  setProgress('Analysing with tshark — this may take a moment…');
+  pollStatus(jobId);
+}
+
+function fmtMB(b){return (b/1048576).toFixed(1)+' MB';}
+
+async function pollStatus(jobId){
+  for(let i=0;i<120;i++){
+    await new Promise(r=>setTimeout(r,1500));
+    try{
+      const s=await fetch('/api/pcap/status?id='+jobId).then(r=>r.json());
+      if(s.status==='ready'){hideProgress();renderResults(s.result);return;}
+      if(s.status==='error'){showError(s.error||'Analysis failed');return;}
+    }catch(_){}
+  }
+  showError('Analysis timed out.');
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+function renderResults(r){
+  hideError();
+
+  // Summary
+  const sum=r.summary;
+  document.getElementById('summaryCards').innerHTML=`
+    <div class="card"><div class="label">File</div><div class="value" style="font-size:14px">${esc(sum.filename)}</div></div>
+    <div class="card"><div class="label">Total Packets</div><div class="value">${sum.total_packets.toLocaleString()}</div></div>
+    <div class="card"><div class="label">Duration</div><div class="value">${sum.duration_s}s</div></div>
+    <div class="card"><div class="label">Devices</div><div class="value">${r.devices.length}</div></div>
+    <div class="card"><div class="label">DNS queries</div><div class="value">${r.dns.length}</div></div>
+    <div class="card"><div class="label">TLS handshakes</div><div class="value">${r.tls.length}</div></div>
+  `;
+
+  // Devices
+  const db=document.getElementById('devBody');
+  db.innerHTML=r.devices.map(d=>{
+    const nTag=d.nintendo?`<span class="tag nintendo">Nintendo</span> `:'';
+    const vTag=d.vendor?`<span class="tag vendor">${esc(d.vendor)}</span>`:'<span class="dim">—</span>';
+    const ports=d.open_ports.length
+      ? d.open_ports.map(p=>`<span class="tag open">${esc(p)}</span>`).join(' ')
+      : '<span class="dim">none (all RST)</span>';
+    return `<tr>
+      <td class="mono">${esc(d.ip)}</td>
+      <td class="mono">${esc(d.mac)||'—'}</td>
+      <td>${nTag}${vTag}</td>
+      <td style="text-align:right">${fmtPkts(d.packet_count)}</td>
+      <td>${ports}</td>
+    </tr>`;
+  }).join('');
+
+  // DNS
+  const dnsB=document.getElementById('dnsBody');
+  if(r.dns.length===0){
+    document.getElementById('dnsEmpty').style.display='block';
+    document.getElementById('dnsTable').style.display='none';
+  } else {
+    document.getElementById('dnsEmpty').style.display='none';
+    document.getElementById('dnsTable').style.display='';
+    dnsB.innerHTML=r.dns.map(d=>{
+      const tag=d.nintendo?`<span class="tag nintendo">Nintendo</span>`:'';
+      return `<tr>
+        <td class="mono">${esc(d.query)}</td>
+        <td class="mono">${esc(d.src_ip)}</td>
+        <td class="mono">${esc(d.server_ip)}</td>
+        <td class="mono">${esc(d.resolved_ip)||'—'}</td>
+        <td style="text-align:right">${fmtLat(d.latency_ms)}</td>
+        <td>${tag}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // TLS
+  const tlsB=document.getElementById('tlsBody');
+  if(r.tls.length===0){
+    document.getElementById('tlsEmpty').style.display='block';
+    document.getElementById('tlsTable').style.display='none';
+  } else {
+    document.getElementById('tlsEmpty').style.display='none';
+    document.getElementById('tlsTable').style.display='';
+    tlsB.innerHTML=r.tls.map(t=>{
+      const tag=t.nintendo?`<span class="tag nintendo">Nintendo</span>`:'';
+      return `<tr>
+        <td class="mono">${esc(t.server_name)}</td>
+        <td class="mono">${esc(t.src_ip)}</td>
+        <td class="mono">${esc(t.dst_ip)}</td>
+        <td style="text-align:right">${fmtLat(t.latency_ms)}</td>
+        <td>${tag}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('results').style.display='block';
+}
+
+function showProgress(msg){
+  document.getElementById('dropzone').style.display='none';
+  document.getElementById('progress').style.display='block';
+  document.getElementById('progressMsg').textContent=msg;
+}
+function setProgress(msg){document.getElementById('progressMsg').textContent=msg;}
+function hideProgress(){
+  document.getElementById('progress').style.display='none';
+  document.getElementById('dropzone').style.display='block';
+}
+function showError(msg){
+  document.getElementById('errorBox').textContent=msg;
+  document.getElementById('errorBox').style.display='block';
+  hideProgress();
+}
+function hideError(){document.getElementById('errorBox').style.display='none';}
+function hideResults(){document.getElementById('results').style.display='none';}
 </script>
 </body>
 </html>"""
@@ -1742,6 +2487,40 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(_load_aliases())
             return
 
+        if path == "/api/verified":
+            self._send_json(_load_verified())
+            return
+
+        if path == "/api/nmap/status":
+            target = parse_qs(parsed.query).get("target", [""])[0].strip()
+            if not target:
+                self._send_json({"error": "target required"}, 400)
+                return
+            with _nmap_lock:
+                state = _nmap_state.get(target, {"status": "unknown", "output": "", "error": None})
+            self._send_json(state)
+            return
+
+        if path == "/api/pcap/status":
+            job_id = parse_qs(parsed.query).get("id", [""])[0].strip()
+            if not job_id:
+                self._send_json({"error": "id required"}, 400)
+                return
+            with _pcap_lock:
+                state = _pcap_state.get(job_id, {"status": "unknown", "result": None, "error": None})
+            self._send_json(state)
+            return
+
+        if path == "/pcap.html":
+            body = _render_pcap_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/api/suppressed":
             self._send_json(_load_suppressed())
             return
@@ -1820,6 +2599,75 @@ class Handler(BaseHTTPRequestHandler):
                 aliases.pop(ip, None)
             _save_aliases(aliases)
             self._send_json({"ok": True, "aliases": aliases})
+            return
+
+        if parsed.path == "/api/verify":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length))
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            ip = (body.get("ip") or "").strip()
+            if not ip:
+                self._send_json({"error": "ip required"}, 400)
+                return
+            verified_val = bool(body.get("verified", True))
+            verified = _load_verified()
+            if verified_val:
+                verified[ip] = True
+            else:
+                verified.pop(ip, None)
+            _save_verified(verified)
+            self._send_json({"ok": True, "ip": ip, "verified": verified_val})
+            return
+
+        if parsed.path == "/api/nmap":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0].strip()
+            ports  = qs.get("ports",  [""])[0].strip()
+            if not target:
+                self._send_json({"error": "target required"}, 400)
+                return
+            with _nmap_lock:
+                if _nmap_state.get(target, {}).get("status") == "running":
+                    self._send_json({"status": "running", "target": target})
+                    return
+            threading.Thread(
+                target=_run_nmap_scan, args=(target, ports), daemon=True
+            ).start()
+            self._send_json({"status": "running", "target": target})
+            return
+
+        if parsed.path == "/api/pcap/upload":
+            import tempfile, uuid as _uuid
+            qs = parse_qs(parsed.query)
+            filename = qs.get("filename", ["upload.pcap"])[0]
+            # sanitise filename
+            safe_name = Path(filename).name.replace("..", "_")
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 200 * 1024 * 1024:
+                self._send_json({"error": "File too large (max 200 MB)"}, 413)
+                return
+            if length == 0:
+                self._send_json({"error": "Empty upload"}, 400)
+                return
+            tmp_dir = Path(tempfile.gettempdir()) / "netwatchm-pcap"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            job_id  = str(_uuid.uuid4())
+            tmp_path = tmp_dir / f"{job_id}_{safe_name}"
+            try:
+                data = self.rfile.read(length)
+                tmp_path.write_bytes(data)
+            except Exception as exc:
+                self._send_json({"error": f"Write failed: {exc}"}, 500)
+                return
+            with _pcap_lock:
+                _pcap_state[job_id] = {"status": "running", "result": None, "error": None}
+            threading.Thread(
+                target=_run_pcap_job, args=(job_id, str(tmp_path)), daemon=True
+            ).start()
+            self._send_json({"job_id": job_id, "status": "running"})
             return
 
         if parsed.path == "/api/suppressed":
@@ -2206,10 +3054,12 @@ class GrafanaHandler(BaseHTTPRequestHandler):
             inv = SERVE_DIR / "inventory.json"
             if inv.exists():
                 devices = json.loads(inv.read_text())
-                aliases = _load_aliases()
+                aliases  = _load_aliases()
+                verified = _load_verified()
                 for d in devices:
                     d["ip_category"] = _classify_ip(d.get("ip", ""))
-                    d["label"] = aliases.get(d.get("ip", ""), "")
+                    d["label"]    = aliases.get(d.get("ip", ""), "")
+                    d["verified"] = verified.get(d.get("ip", ""), False)
                 self._send_json(devices)
             else:
                 self._send_json([])
