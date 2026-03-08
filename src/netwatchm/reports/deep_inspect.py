@@ -537,9 +537,19 @@ def render_deep_inspect_html(result: InspectionResult, output_path: str) -> None
   pre {{ background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
     padding: 12px; font-size: 11px; color: #7ee787; overflow-x: auto;
     white-space: pre-wrap; word-break: break-word; margin-top: 8px; }}
+  .navbar {{ display: flex; align-items: center; gap: 12px; padding: 10px 0 18px 0;
+    border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }}
+  .navbar a {{ color: var(--muted); font-size: 12px; text-decoration: none;
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; }}
+  .navbar a:hover {{ color: var(--accent); border-color: var(--accent); }}
 </style>
 </head>
 <body>
+<div class="navbar">
+  <a href="/inventory.html">&#8592; Inventory</a>
+  <a href="/events.html?q={result.target}">&#9888; Events</a>
+  <a href="http://localhost:3000/d/netwatchm-inventory/" target="_blank">&#128202; Dashboard</a>
+</div>
 <h1>Deep Inspect: {result.target}</h1>
 <div class="subtitle">
   {result.timestamp} &nbsp;|&nbsp; Risk: {risk_badge}

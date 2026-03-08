@@ -1391,7 +1391,9 @@ def _render_events_html() -> bytes:
 <div class="topbar">
   <h1>&#9888; NetWatchM &mdash; Threat Events</h1>
   <a href="/connection-report.html">&#8592; Report</a>
+  <a href="/inventory.html">Inventory</a>
   <a href="/analytics.html">Analytics</a>
+  <a href="http://localhost:3000/d/netwatchm-inventory/" target="_blank">&#128202; Dashboard</a>
   <div class="spacer"></div>
   <label class="auto-toggle">
     <input type="checkbox" id="autoRefresh" checked> Auto-refresh
