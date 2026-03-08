@@ -2867,6 +2867,96 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(result)
             return
 
+        if path.startswith("/api/deep-inspect/analyze/"):
+            target = path.removeprefix("/api/deep-inspect/analyze/").strip()
+            try:
+                # Flow stats from flows.db
+                packet_count = 0
+                byte_count = 0
+                bandwidth_mbps = 0.0
+                protocols: list[dict] = []
+                db = Path(FLOW_DB)
+                if db.exists():
+                    con = sqlite3.connect(str(db))
+                    con.row_factory = sqlite3.Row
+                    try:
+                        cur = con.cursor()
+                        row = cur.execute(
+                            "SELECT COALESCE(SUM(packets),0) AS p, COALESCE(SUM(bytes),0) AS b "
+                            "FROM flows WHERE src_ip=? OR dst_ip=?", (target, target)
+                        ).fetchone()
+                        packet_count = row["p"]
+                        byte_count   = row["b"]
+                        if byte_count > 0:
+                            bandwidth_mbps = round(byte_count * 8 / 1_000_000, 2)
+                        proto_rows = cur.execute(
+                            "SELECT COALESCE(protocol,'Other') AS protocol, "
+                            "COUNT(*) AS cnt FROM flows "
+                            "WHERE src_ip=? OR dst_ip=? GROUP BY protocol ORDER BY cnt DESC",
+                            (target, target)
+                        ).fetchall()
+                        total_flows = sum(r["cnt"] for r in proto_rows) or 1
+                        protocols = [{"protocol": r["protocol"],
+                                      "count": r["cnt"],
+                                      "percentage": round(r["cnt"] * 100 / total_flows, 1)}
+                                     for r in proto_rows]
+                    finally:
+                        con.close()
+
+                # Recent alerts from events.db
+                alerts: list[str] = []
+                findings: list[str] = []
+                edb = Path(EVENT_DB)
+                if edb.exists():
+                    econ = sqlite3.connect(str(edb))
+                    econ.row_factory = sqlite3.Row
+                    try:
+                        for er in econ.execute(
+                            "SELECT alert_type, level, description FROM events "
+                            "WHERE src_ip=? ORDER BY created_at DESC LIMIT 10", (target,)
+                        ).fetchall():
+                            alerts.append(f"[{er['level']}] {er['alert_type']}")
+                            if er["description"]:
+                                findings.append(er["description"])
+                    finally:
+                        econ.close()
+
+                # Latency via ping
+                latency_ms = None
+                hop_count  = None
+                pr = subprocess.run(
+                    ["ping", "-c", "3", "-W", "2", target],
+                    capture_output=True, text=True, timeout=10
+                )
+                if pr.returncode == 0:
+                    for line in pr.stdout.splitlines():
+                        if "rtt" in line and "/" in line:
+                            parts = line.split("=")[-1].strip().split("/")
+                            try:
+                                latency_ms = float(parts[1])
+                            except (ValueError, IndexError):
+                                pass
+
+                if not findings:
+                    findings = ["No threat events recorded for this device"]
+
+                self._send_json({
+                    "target": target,
+                    "packet_count": packet_count,
+                    "byte_count": byte_count,
+                    "bandwidth_mbps": bandwidth_mbps,
+                    "hop_count": hop_count,
+                    "latency_ms": latency_ms,
+                    "alerts": alerts or ["No alerts for this device"],
+                    "findings": findings,
+                    "protocols": protocols,
+                    "report_url": f"/deep-inspect-{target}.html"
+                        if (SERVE_DIR / f"deep-inspect-{target}.html").exists() else None,
+                })
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         if path == "/api/flow-history":
             try:
                 with _fh_conn() as hc:
