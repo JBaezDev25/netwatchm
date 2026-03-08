@@ -31,3 +31,6 @@ Thumbs.db
 netwatchm-test.yaml
 /reports/
 
+# Production config (has private IPs, Twingate relays — keep local only)
+netwatchm.yaml.production
+

@@ -17,7 +17,7 @@ Last updated: 2026-03-07 (session 6)
 - [x] arp-scan integration (cap_net_raw, no sudo needed)
 - [x] Grafana Infinity dashboard
 - [x] install.sh + install.bat (HTTPS cert setup via mkcert or openssl fallback)
-- [x] 143 tests, all passing
+- [x] 163 tests, all passing
 
 ## Phase 1 — Deep Inspection + GeoIP  ✅ COMPLETE (2026-02-24)
 - [x] `src/netwatchm/reports/deep_inspect.py` — inspection engine (GeoIP, port scan, SSH, SMB, HTTP, RDP)
@@ -37,8 +37,7 @@ Last updated: 2026-03-07 (session 6)
 ### Production deploy command (run once after session)
 ```bash
 sudo cp geolite2-city-gzip/GeoLite2-City.mmdb /var/lib/netwatchm/GeoLite2-City.mmdb
-sudo cp netwatchm_server.py /usr/local/bin/netwatchm-server
-sudo systemctl daemon-reload && sudo systemctl restart netwatchm-web
+bash scripts/hotdeploy.sh   # copies netwatchm_server.py to /usr/local/lib/netwatchm/ + restart
 ```
 
 ---
@@ -55,8 +54,7 @@ sudo systemctl daemon-reload && sudo systemctl restart netwatchm-web
 
 ### Production deploy command (run once after session)
 ```bash
-sudo cp netwatchm_server.py /usr/local/bin/netwatchm-server
-sudo systemctl daemon-reload && sudo systemctl restart netwatchm-web
+bash scripts/hotdeploy.sh   # copies netwatchm_server.py to /usr/local/lib/netwatchm/ + restart
 ```
 
 ## Phase 3 — Behavioral Threat Detectors  ✅ COMPLETE (2026-03-02)
@@ -101,15 +99,13 @@ https://localhost:8765/inventory.html
 
 ---
 
-## In Progress / Next Up
+## Completed — Misc (pre-session 4)
 - [x] Demo report script with synthetic high/medium/low risk flows (`sudo bash scripts/run-demo.sh`)
 - [x] gen-report.sh uses PYTHONPATH to guarantee local source (fixes modal disappearing)
 - [x] Auto-refresh the HTML report (↻ Refresh button + Auto interval + countdown, localStorage persist)
 - [x] Persist connection report history (📁 History → `/reports`, last 50 kept, dark-theme index)
 - [x] Alert on new/unknown devices detected by arp-scan (NEW_DEVICE MEDIUM alert → all handlers)
 - [x] Grafana dashboard panels for connection report data (flows, devices, destinations, protocols, hourly)
-
----
 
 ---
 
@@ -226,7 +222,7 @@ https://localhost:8765/inventory.html
 #### Navigation Buttons Added
 - [x] `events.html` topbar: added "Inventory" → `/inventory.html` and "📊 Dashboard" → `http://localhost:3000/d/netwatchm-inventory/` (new tab)
 - [x] `deep-inspect-{ip}.html`: navbar injected at top of every generated report — "← Inventory" → `/inventory.html`, "⚠ Events" → `/events.html?q={ip}` (pre-filtered to that device), "📊 Dashboard" → Grafana (new tab)
-- [x] Both changes in `netwatchm_server.py` (events.html) and `src/netwatchm/reports/deep_inspect.py`
+- [x] Changes in `netwatchm_server.py` (events.html) and `src/netwatchm/reports/deep_inspect.py`
 
 #### Grafana Panel Investigation + Fix
 - [x] Confirmed all flow endpoints return valid data via direct curl tests:
@@ -247,21 +243,33 @@ bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168
 
 ## Pending — Next Session
 
-### Must Do
-- [ ] **README.md** — outdated, still describes v0.1.0 (Feb 2026); needs full rewrite to reflect current state
-- [ ] **Run `bash scripts/hotdeploy.sh`** — deploys history.html, pcap.html, nav buttons to live server
-- [ ] **Run `bash scripts/apply-config-fix.sh`** — fixes adult domain alerts on live service
+### Must Do (sudo required — run manually)
+- [ ] **`bash scripts/hotdeploy.sh`** — deploys history.html, pcap.html, nav buttons, verified devices, nmap to live server
+- [ ] **`bash scripts/apply-config-fix.sh`** — fixes adult domain alerts (removes user machine from whitelist)
+- [ ] **Windows install test** — verify end-to-end on a clean Windows machine (overdue since session 4)
+
+### Completed This Session
+- [x] GitHub repo moved from **public → private** (`al4nbr3/netwatchm`)
+- [x] Grafana credentials removed from CHECKLIST.md (were exposed in public repo)
+- [x] Test count corrected: 143 → 163
+- [x] Duplicate Session 6c removed from CHECKLIST
+- [x] Deploy path corrected (Phase 1/2 commands pointed to wrong binary location)
+- [x] Orphaned "In Progress" section given proper label
+- [x] `netwatchm.yaml.production` saved to repo root (no longer lost on reboot)
+- [x] `apply-config-fix.sh` updated to read from repo file instead of `/tmp/`
+- [x] `netwatchm.yaml.production` added to `.gitignore` (contains private IPs)
 
 ### Improvements / Nice to Have
+- [ ] **README.md** — outdated, still describes v0.1.0 (Feb 2026); needs full rewrite
 - [ ] **Events retention setting** — 72h is hardcoded in `event_store.py`; expose as config option
 - [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
 - [ ] **Events portal paging** — currently loads up to 500 events; add pagination for large datasets
-- [ ] **Windows testing** — ntfy, events portal, GeoIP untested on Windows
-- [ ] **Dark/Light theme** — events portal is dark-only; connection report has toggle but events portal doesn't
+- [ ] **Dark/Light theme** — events portal dark-only; connection report has toggle but events portal doesn't
 - [ ] **Alert suppression** — no way to silence a recurring low-value alert type (e.g. NEW_IP flood)
 - [ ] **Role-based access** — single admin token; no read-only vs admin distinction
 - [ ] **Mobile-friendly** — events portal not tested on phone browser (ntfy app covers this partially)
 - [ ] **Code signing** — skipped (cert costs ~$300-500/yr); revisit if project grows
+- [ ] **SQLite schema migrations** — 3 databases (events, flows, flow-history) have no migration system
 
 ## Grafana Setup — ✅ COMPLETE (2026-03-02)
 
@@ -275,7 +283,7 @@ bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168
   - `/api/flows/browsing` — local device → site activity
   - `/api/events/adult-domains` — ADULT_DOMAIN events grouped by src_ip + domain
 - Dashboard imported via `scripts/import-dashboard.sh`
-- Grafana credentials: `admin` / `BioIluvleeloo@5858`
+- Grafana credentials: stored locally — do NOT commit to repo
 - `scripts/seed-events.sh` — seed live events.db with 6 synthetic test alerts
 
 ### Dashboard panels (v5):
