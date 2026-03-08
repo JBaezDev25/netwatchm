@@ -2820,7 +2820,42 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/connections/status":
-            self._send_json({"connected": True, "status": "ok"})
+            # Return all inventory devices with live ping status
+            inv_file = SERVE_DIR / "inventory.json"
+            devices = json.loads(inv_file.read_text()) if inv_file.exists() else []
+            def _ping(ip: str) -> tuple[bool, float | None]:
+                try:
+                    r = subprocess.run(
+                        ["ping", "-c", "1", "-W", "1", ip],
+                        capture_output=True, text=True, timeout=3
+                    )
+                    if r.returncode != 0:
+                        return False, None
+                    for line in r.stdout.splitlines():
+                        if "time=" in line:
+                            try:
+                                ms = float(line.split("time=")[1].split()[0])
+                                return True, ms
+                            except (ValueError, IndexError):
+                                pass
+                    return True, None
+                except Exception:
+                    return False, None
+            import concurrent.futures
+            result = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+                futures = {ex.submit(_ping, d.get("ip", "")): d for d in devices}
+                for fut, dev in futures.items():
+                    connected, latency_ms = fut.result()
+                    result.append({
+                        "ip": dev.get("ip", ""),
+                        "hostname": dev.get("hostname") or dev.get("ip", ""),
+                        "connected": connected,
+                        "latency_ms": latency_ms,
+                        "last_seen": dev.get("last_seen", ""),
+                    })
+            result.sort(key=lambda x: (not x["connected"], x["ip"]))
+            self._send_json(result)
             return
 
         if path.startswith("/api/connections/status/"):
