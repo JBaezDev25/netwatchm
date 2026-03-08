@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetWatchM — Deep Inspect</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --border: #30363d;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .navbar {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        .navbar a {
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .navbar a:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .card h3 {
+            margin-top: 0;
+            color: var(--text-primary);
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #0d1117;
+        }
+
+        .btn-primary:hover {
+            background: #79c0ff;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: #0d1117;
+        }
+
+        .btn-success:hover {
+            background: #56d364;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: #0d1117;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-running {
+            background: rgba(88, 166, 255, 0.2);
+            color: var(--accent);
+        }
+
+        .status-completed {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--success);
+        }
+
+        .status-error {
+            background: rgba(248, 81, 73, 0.2);
+            color: var(--danger);
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        td {
+            color: var(--text-primary);
+        }
+
+        tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .alert-warning {
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+
+        .alert-error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+        }
+
+        .alert-success {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid var(--bg-tertiary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .tab-btn.active {
+            background: var(--accent);
+            color: #0d1117;
+            border-color: var(--accent);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .device-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .device-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+        }
+
+        .device-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .device-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #0d1117;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .status-dot.disconnected {
+            background: var(--danger);
+        }
+
+        .latency-badge {
+            background: var(--bg-tertiary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">NetWatchM</div>
+        <a href="/events.html">Events</a>
+        <a href="/inventory.html">Inventory</a>
+        <a href="/connection-report.html">Connection Report</a>
+        <a href="/deep-inspect-web.html">🔍 Deep Inspect</a>
+    </nav>
+
+    <div class="container">
+        <h1 class="section-title">Deep Inspect</h1>
+
+        <!-- New Capture Section -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h3>Start New Capture</h3>
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <div class="form-group">
+                    <label>Target IP</label>
+                    <input type="text" id="targetIp" placeholder="e.g., 192.168.1.100">
+                </div>
+                <div class="form-group">
+                    <label>Local Device IP (optional)</label>
+                    <input type="text" id="deviceIp" placeholder="e.g., 192.168.1.50">
+                </div>
+                <div class="form-group">
+                    <label>Duration (seconds)</label>
+                    <input type="number" id="duration" value="60" min="10" max="180">
+                </div>
+                <div class="form-group">
+                    <label>Nmap Scan Type</label>
+                    <select id="scanType">
+                        <option value="full">Full Scan (-sV --open)</option>
+                        <option value="service">Service Detection Only</option>
+                        <option value="ports">Port Scan Only (1-1024)</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn btn-primary" id="startCaptureBtn" onclick="startCapture()">
+                🎯 Start Deep Inspect
+            </button>
+            <button class="btn btn-success" id="startScanBtn" onclick="startNmapScan()" style="margin-left: 1rem;">
+                🔍 Start Nmap Scan
+            </button>
+        </div>
+
+        <!-- Nmap Results -->
+        <div class="card" id="nmapResultsCard" style="margin-bottom: 2rem; display:none;">
+            <h3 id="nmapResultsTitle">🔍 Nmap Scan Results</h3>
+            <div id="nmapResultsBody" style="margin-top:1rem;">
+                <p style="color: var(--text-secondary);">Scanning…</p>
+            </div>
+        </div>
+
+        <!-- Active Captures -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h3>Active Captures</h3>
+            <div id="activeCapturesList">
+                <p style="color: var(--text-secondary);">No active captures</p>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h3>Device Connection Status</h3>
+            <button class="btn btn-primary" onclick="loadConnections()" style="margin-bottom: 1rem;">
+                📡 Refresh Status
+            </button>
+            <div id="connectionsList">
+                <p style="color: var(--text-secondary);">Click refresh to check device connections</p>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('history')">Capture History</button>
+            <button class="tab-btn" onclick="switchTab('analysis')">Analysis Results</button>
+            <button class="tab-btn" onclick="switchTab('traces')">Traceroute Analysis</button>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history" class="tab-content active">
+            <div class="card">
+                <h3>Capture History</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Target IP</th>
+                                <th>Timestamp</th>
+                                <th>Device IP</th>
+                                <th>Duration</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTable">
+                            <tr><td colspan="6" style="color: var(--text-secondary);">Loading history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Tab -->
+        <div id="analysis" class="tab-content">
+            <div class="card">
+                <h3>Analysis Results</h3>
+                <div id="analysisResults">
+                    <p style="color: var(--text-secondary);">Select a capture from history to analyze</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traces Tab -->
+        <div id="traces" class="tab-content">
+            <div class="card">
+                <h3>Traceroute Analysis</h3>
+                <div class="form-group">
+                    <label>Target IP</label>
+                    <input type="text" id="tracerouteIp" placeholder="e.g., 8.8.8.8">
+                </div>
+                <button class="btn btn-primary" onclick="runTraceroute()">
+                    📡 Run Traceroute
+                </button>
+                <div id="tracerouteResults"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load capture history
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/deep-inspect/history');
+                const captures = await response.json();
+
+                const table = document.getElementById('historyTable');
+                if (captures.length === 0) {
+                    table.innerHTML = '<tr><td colspan="6" style="color: var(--text-secondary);">No captures found</td></tr>';
+                    return;
+                }
+
+                table.innerHTML = captures.map(c => `
+                    <tr>
+                        <td>${c.id}</td>
+                        <td>${c.target_ip}</td>
+                        <td>${c.timestamp}</td>
+                        <td>${c.device_ip || '-'}</td>
+                        <td>60s</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="analyzeCapture('${c.id}')">📊 Analyze</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading history:', error);
+                document.getElementById('historyTable').innerHTML = `
+                    <tr><td colspan="6" style="color: var(--danger);">Error loading history</td></tr>
+                `;
+            }
+        }
+
+        // Start deep inspect capture
+        async function startCapture() {
+            const targetIp = document.getElementById('targetIp').value;
+            const deviceIp = document.getElementById('deviceIp').value;
+            const duration = document.getElementById('duration').value;
+
+            if (!targetIp) {
+                alert('Please enter a target IP');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/deep-inspect/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_ip: targetIp, device_ip: deviceIp, duration })
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert('Capture started: ' + data.capture_id);
+                    loadHistory();
+                }
+            } catch (error) {
+                alert('Error starting capture: ' + error.message);
+            }
+        }
+
+        // Start nmap scan
+        let _nmapPoll = null;
+        async function startNmapScan() {
+            const targetIp = document.getElementById('targetIp').value.trim();
+            const scanType = document.getElementById('scanType').value;
+
+            if (!targetIp) { alert('Please enter a target IP'); return; }
+
+            const card  = document.getElementById('nmapResultsCard');
+            const title = document.getElementById('nmapResultsTitle');
+            const body  = document.getElementById('nmapResultsBody');
+            const btn   = document.getElementById('startScanBtn');
+
+            card.style.display = 'block';
+            title.textContent = '🔍 Nmap Scan — ' + targetIp;
+            body.innerHTML = '<p style="color:var(--text-secondary)">⏳ Scan running… (up to 60s)</p>';
+            btn.disabled = true;
+            btn.textContent = '⏳ Scanning…';
+
+            if (_nmapPoll) { clearInterval(_nmapPoll); _nmapPoll = null; }
+
+            try {
+                const res = await fetch('/api/nmap/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_ip: targetIp, scan_type: scanType })
+                });
+                const data = await res.json();
+                if (data.error) {
+                    body.innerHTML = '<p style="color:#f85149">Error: ' + data.error + '</p>';
+                    btn.disabled = false; btn.textContent = '🔍 Start Nmap Scan'; return;
+                }
+            } catch (err) {
+                body.innerHTML = '<p style="color:#f85149">Error: ' + err.message + '</p>';
+                btn.disabled = false; btn.textContent = '🔍 Start Nmap Scan'; return;
+            }
+
+            _nmapPoll = setInterval(async () => {
+                try {
+                    const s = await fetch('/api/nmap/status?target=' + encodeURIComponent(targetIp)).then(r => r.json());
+                    if (s.status === 'running') return;
+                    clearInterval(_nmapPoll); _nmapPoll = null;
+                    btn.disabled = false; btn.textContent = '🔍 Start Nmap Scan';
+                    if (s.status === 'error') {
+                        body.innerHTML = '<p style="color:#f85149">❌ ' + (s.error || 'Scan failed') + '</p>';
+                    } else {
+                        body.innerHTML = '<pre style="font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;color:#7ee787;background:#0d1117;padding:12px;border-radius:4px;margin:0">'
+                            + (s.output || '(no output)') + '</pre>';
+                    }
+                } catch(_) {}
+            }, 2000);
+        }
+
+        // Analyze capture
+        async function analyzeCapture(captureId) {
+            try {
+                const response = await fetch(`/api/deep-inspect/analyze/${captureId}`);
+                const result = await response.json();
+
+                if (result.error) {
+                    alert(result.error);
+                    return;
+                }
+
+                const alertsHtml = result.alerts.map(alert => `
+                    <div class="alert alert-${result.alerts.length === 1 ? 'warning' : 'success'}">
+                        ${alert}
+                    </div>
+                `).join('');
+
+                const findingsHtml = result.findings.map(f => `<li>• ${f}</li>`).join('');
+
+                document.getElementById('analysisResults').innerHTML = `
+                    <div class="metrics">
+                        <div class="metric-card">
+                            <div class="metric-value">${result.packet_count}</div>
+                            <div class="metric-label">Packets</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${(result.byte_count / 1024 / 1024).toFixed(2)}</div>
+                            <div class="metric-label">MB Bytes</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${result.bandwidth_mbps.toFixed(2)}</div>
+                            <div class="metric-label">Mbps Bandwidth</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${result.hop_count || '-'}</div>
+                            <div class="metric-label">Hop Count</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${result.latency_ms ? result.latency_ms.toFixed(2) + 'ms' : '-'}</div>
+                            <div class="metric-label">Latency</div>
+                        </div>
+                    </div>
+
+                    ${alertsHtml}
+
+                    <div style="margin-top: 1rem;">
+                        <h4>Findings</h4>
+                        <ul>${findingsHtml}</ul>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <h4>Protocol Distribution</h4>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Protocol</th>
+                                        <th>Count</th>
+                                        <th>Percentage</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${Object.entries(result.protocols || {}).map(([proto, count]) => `
+                                        <tr>
+                                            <td>${proto}</td>
+                                            <td>${count}</td>
+                                            <td>${((count / result.packet_count) * 100).toFixed(1)}%</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <h4>Port Summary</h4>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Port</th>
+                                        <th>Count</th>
+                                        <th>Service</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${Object.entries(result.port_summary || {}).map(([port, info]) => `
+                                        <tr>
+                                            <td>${port}</td>
+                                            <td>${info.count}</td>
+                                            <td>${info.service}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                alert('Error analyzing capture: ' + error.message);
+            }
+        }
+
+        // Run traceroute
+        async function runTraceroute() {
+            const targetIp = document.getElementById('tracerouteIp').value;
+
+            if (!targetIp) {
+                alert('Please enter a target IP');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/connections/status/' + targetIp);
+                const status = await response.json();
+
+                if (status.connected) {
+                    document.getElementById('tracerouteResults').innerHTML = `
+                        <div class="alert alert-success">
+                            <strong>Connected:</strong> ${targetIp} is reachable
+                        </div>
+                        <div class="alert alert-success">
+                            <strong>Latency:</strong> ${status.latency_ms ? status.latency_ms.toFixed(2) + 'ms' : 'N/A'}
+                        </div>
+                        <div class="alert alert-success">
+                            <strong>Network Path:</strong> ${status.avg_latency_ms ? status.avg_latency_ms.toFixed(2) + 'ms average' : 'N/A'}
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('tracerouteResults').innerHTML = `
+                        <div class="alert alert-error">
+                            <strong>Not Connected:</strong> ${targetIp} is unreachable
+                        </div>
+                        <p style="color: var(--text-secondary);">Possible reasons:</p>
+                        <ul>
+                            <li>Device is powered off</li>
+                            <li>Network interface is down</li>
+                            <li>Firewall is blocking access</li>
+                            <li>IP address is incorrect</li>
+                        </ul>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('tracerouteResults').innerHTML = `
+                    <div class="alert alert-error">
+                        Error checking connection: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Load connections status
+        async function loadConnections() {
+            try {
+                const response = await fetch('/api/connections/status');
+                const connections = await response.json();
+
+                const list = document.getElementById('connectionsList');
+
+                if (connections.length === 0) {
+                    list.innerHTML = '<p style="color: var(--text-secondary);">No devices found in inventory</p>';
+                    return;
+                }
+
+                list.innerHTML = connections.map(c => `
+                    <div class="device-item">
+                        <div class="device-info">
+                            <div class="device-icon">${c.ip.split('.')[3]}</div>
+                            <div>
+                                <strong>${c.ip}</strong>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    Last seen: ${new Date(c.last_seen).toLocaleTimeString()}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="connection-status">
+                            <div class="status-dot ${c.connected ? 'connected' : 'disconnected'}"></div>
+                            <span class="latency-badge">
+                                ${c.connected ? (c.latency_ms ? c.latency_ms.toFixed(1) + 'ms' : 'N/A') : 'Disconnected'}
+                            </span>
+                            <span class="${c.connected ? 'status-badge status-completed' : 'status-badge status-error'}">
+                                ${c.connected ? 'Connected' : 'Disconnected'}
+                            </span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('connectionsList').innerHTML = `
+                    <div class="alert alert-error">
+                        Error loading connections: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadHistory();
+        });
+    </script>
+</body>
+</html>
