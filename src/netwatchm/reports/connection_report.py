@@ -559,6 +559,18 @@ def render_html(
     cursor: pointer;
   }}
   #refresh-countdown {{ color: var(--muted); font-size: 11px; white-space: nowrap; }}
+  .dash-group {{ display:flex; align-items:center; gap:6px; }}
+  #dash-btn {{ background:rgba(188,140,255,.15); color:#bc8cff; border:1px solid rgba(188,140,255,.35);
+    border-radius:4px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer;
+    text-decoration:none; white-space:nowrap; }}
+  #dash-btn:hover {{ opacity:.85; }}
+  .toggle-wrap {{ display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); white-space:nowrap; }}
+  .toggle-wrap input[type=checkbox] {{ appearance:none; width:30px; height:16px;
+    background:var(--border); border-radius:8px; cursor:pointer; position:relative; transition:background .2s; }}
+  .toggle-wrap input[type=checkbox]:checked {{ background:#bc8cff; }}
+  .toggle-wrap input[type=checkbox]::after {{ content:''; position:absolute; width:12px; height:12px;
+    background:#fff; border-radius:50%; top:2px; left:2px; transition:left .2s; }}
+  .toggle-wrap input[type=checkbox]:checked::after {{ left:16px; }}
   table {{ width: 100%; border-collapse: collapse; }}
   th {{
     background: var(--surface); color: var(--muted); text-transform: uppercase;
@@ -663,6 +675,13 @@ def render_html(
   <button id="analytics-btn" onclick="openAnalytics()" style="background:rgba(88,166,255,.15);color:#58a6ff;border-color:#58a6ff55">&#x1F4CA; Analytics</button>
   <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
   <a href="/inventory.html" style="background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4F1; Inventory</a>
+  <div class="dash-group">
+    <a id="dash-btn" href="http://localhost:3000" onclick="return openDash(event)">&#x1F4CA; Dashboard</a>
+    <label class="toggle-wrap" title="Toggle new tab / same page">
+      <input type="checkbox" id="dash-newtab" onchange="saveDashPref(this.checked)">
+      New tab
+    </label>
+  </div>
   <button id="refresh-btn" onclick="triggerRefresh()" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35)">&#x21BB; Refresh</button>
   <select id="auto-refresh" onchange="setAutoRefresh(this.value)">
     <option value="0">Auto: Off</option>
@@ -695,6 +714,33 @@ def render_html(
 <script>
 const REPORT_DURATION = {duration};
 const REPORT_NETWORK  = "{_esc(network)}";
+
+// ── Dashboard button: new-tab toggle (persisted in localStorage) ──────────
+(function() {{
+  const chk = document.getElementById('dash-newtab');
+  const saved = localStorage.getItem('netwatchm_dash_newtab');
+  chk.checked = saved === null ? true : saved === 'true';  // default: new tab
+  updateDashTarget(chk.checked);
+}})();
+
+function saveDashPref(val) {{
+  localStorage.setItem('netwatchm_dash_newtab', val);
+  updateDashTarget(val);
+}}
+
+function updateDashTarget(newTab) {{
+  document.getElementById('dash-btn').target = newTab ? '_blank' : '_self';
+}}
+
+function openDash(e) {{
+  const newTab = document.getElementById('dash-newtab').checked;
+  if (newTab) {{
+    window.open('http://localhost:3000', '_blank');
+    return false;
+  }}
+  window.location.href = 'http://localhost:3000';
+  return false;
+}}
 
 let sortCol = 8, sortAsc = false;
 
