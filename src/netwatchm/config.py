@@ -146,6 +146,19 @@ class WhitelistConfig:
 
 
 @dataclass
+class DetectorWhitelistConfig:
+    """Per-detector IP suppression: suppress a specific alert type from specific IPs only.
+    Keys are alert type names (PORT_SCAN, BRUTE_FORCE, etc.), values are IP lists."""
+    rules: dict[str, list[str]] = field(default_factory=dict)
+
+    def is_suppressed(self, alert_type: str, src_ip: str) -> bool:
+        if not self.rules or not src_ip:
+            return False
+        ips = self.rules.get(alert_type.upper(), [])
+        return src_ip in ips
+
+
+@dataclass
 class Config:
     interface: str = "auto"
     baseline_period: int = 300
@@ -153,6 +166,7 @@ class Config:
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     inventory: InventoryConfig = field(default_factory=InventoryConfig)
     whitelist: WhitelistConfig = field(default_factory=WhitelistConfig)
+    detector_whitelist: DetectorWhitelistConfig = field(default_factory=DetectorWhitelistConfig)
 
     def __post_init__(self) -> None:
         # Always load email password from env var
@@ -297,6 +311,13 @@ def load_config(path: str | Path | None = None) -> Config:
         config.whitelist = WhitelistConfig(
             enabled=wl_raw.get("enabled", False),
             ips=wl_raw.get("ips", []),
+        )
+
+    dwl_raw = raw.get("detector_whitelist", {})
+    if dwl_raw:
+        # Normalise keys to upper-case alert type names
+        config.detector_whitelist = DetectorWhitelistConfig(
+            rules={k.upper(): list(v) for k, v in dwl_raw.items() if isinstance(v, list)}
         )
 
     # Post-init to load env var password

@@ -66,3 +66,12 @@ whitelist:
     - 107.170.66.130       # Twingate relay (DigitalOcean NJ)
     - 162.243.34.191       # Twingate relay (DigitalOcean NJ)
     - 167.99.149.114       # Twingate relay (DigitalOcean NJ)
+
+detector_whitelist:
+  # Suppress specific alert types from specific IPs only.
+  # Does NOT suppress other alert types from these IPs.
+  # Key = alert type (PORT_SCAN, BRUTE_FORCE, EXFILTRATION, NEW_IP,
+  #                   TOR_EXIT, ADULT_DOMAIN, DATA_HOG)
+  # Value = list of src_ip addresses to suppress for that type
+  PORT_SCAN: []          # e.g. [192.168.1.180]  — suppress port scan from your own machine
+  BRUTE_FORCE: []        # e.g. [192.168.1.50]   — suppress brute force from a scanner

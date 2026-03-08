@@ -177,6 +177,13 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
                 alert_queue.task_done()
                 continue
 
+            # Per-detector whitelist: suppress specific alert type from specific IPs
+            if config.detector_whitelist.is_suppressed(
+                alert.alert_type or "", alert.src_ip or ""
+            ):
+                alert_queue.task_done()
+                continue
+
             # Suppression check (5s cached file read)
             if _get_suppressed_types.__cache_ts + 5 < time.time():
                 _get_suppressed_types.__cache_ts = time.time()
