@@ -40,7 +40,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$AppVersion  = "0.2.10"
+$AppVersion  = "0.2.11"
 $DataDir     = "$env:PROGRAMDATA\netwatchm"
 $VersionFile = "$DataDir\version.txt"
 $ConfigDir   = Split-Path -Parent $Config
