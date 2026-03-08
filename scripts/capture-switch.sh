@@ -9,23 +9,31 @@ echo "          NetWatchM -- Packet Capture"
 echo "================================================================"
 echo ""
 
-# ── Ask: target IP ──────────────────────────────────────────────────
-read -rp "  Target IP address [192.168.1.217]: " TARGET_IP
-TARGET_IP="${TARGET_IP:-192.168.1.217}"
+# ── Manual entry ─────────────────────────────────────────────────────
 
-# ── Ask: output file ────────────────────────────────────────────────
-DEFAULT_OUT="/home/jbaez120/wshark-scan/${TARGET_IP}-live.pcapng"
-read -rp "  Save file to [$DEFAULT_OUT]: " OUT_FILE
-OUT_FILE="${OUT_FILE:-$DEFAULT_OUT}"
+read -rp "  Target IP address: " TARGET_IP
+if [ -z "$TARGET_IP" ]; then
+    echo "Error: Target IP is required." >&2
+    exit 1
+fi
 
-# ── Ask: duration ───────────────────────────────────────────────────
-read -rp "  Capture duration in seconds [120]: " DURATION
-DURATION="${DURATION:-120}"
+read -rp "  Save file to (e.g. /home/jbaez120/wshark-scan/capture.pcapng): " OUT_FILE
+if [ -z "$OUT_FILE" ]; then
+    echo "Error: Output file path is required." >&2
+    exit 1
+fi
 
-# ── Ask: interface ──────────────────────────────────────────────────
-DEFAULT_IFACE="${CAPTURE_IFACE:-enp6s0}"
-read -rp "  Network interface [$DEFAULT_IFACE]: " IFACE
-IFACE="${IFACE:-$DEFAULT_IFACE}"
+read -rp "  Capture duration in seconds: " DURATION
+if [ -z "$DURATION" ] || ! [[ "$DURATION" =~ ^[0-9]+$ ]]; then
+    echo "Error: Duration must be a number." >&2
+    exit 1
+fi
+
+read -rp "  Network interface (e.g. enp6s0, eth0, wlan0): " IFACE
+if [ -z "$IFACE" ]; then
+    echo "Error: Network interface is required." >&2
+    exit 1
+fi
 
 echo ""
 echo "================================================================"
@@ -41,7 +49,8 @@ echo "    3. Check for updates"
 echo "================================================================"
 echo ""
 
-# ── Prepare output file ─────────────────────────────────────────────
+# ── Prepare output file ──────────────────────────────────────────────
+
 OUT_DIR="$(dirname "$OUT_FILE")"
 mkdir -p "$OUT_DIR"
 
