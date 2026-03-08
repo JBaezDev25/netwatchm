@@ -1,6 +1,6 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-04 (session 4)
+Last updated: 2026-03-07 (session 6)
 
 ## Completed
 - [x] Core capture engine (tshark + async)
@@ -166,16 +166,72 @@ https://localhost:8765/inventory.html
 
 ---
 
+## Session 6 — UI Polish + Network Tools  ✅ COMPLETE (2026-03-07)
+
+### Verified Devices
+- [x] `/var/lib/netwatchm/verified.json` — `{ip: bool}` store, same pattern as aliases.json
+- [x] `GET /api/verified` — returns full verified dict
+- [x] `POST /api/verify` — `{ip, verified}` toggle
+- [x] `inventory.html` — checkmark column (✓/○ toggle per device, persists immediately)
+
+### Pcap Analyzer (`/pcap.html`)
+- [x] Drag-and-drop upload + async analysis in background thread
+- [x] tshark analysis: device list (MAC + OUI vendor lookup from `/usr/share/wireshark/manuf`), DNS resolution latency (matched by client_ip + dns.id), TLS handshake latency (matched by tcp.stream)
+- [x] `GET /api/pcap/status`, `POST /api/pcap/upload`
+- [x] Nav link "📊 Pcap" added to inventory.html
+- [x] `scripts/capture-targetip.sh` — interactive prompts: target IP, save path, duration, interface; pre-creates output file to avoid tshark permission denied
+
+### Per-Device nmap Scan
+- [x] Scan button in inventory.html row — triggers `nmap -sV --open -T4 -p 1-1024` per device
+- [x] `POST /api/nmap`, `GET /api/nmap/status` — async background thread, results in modal overlay
+- [x] Modal shows open ports + services on completion
+
+### Flow History (`/history.html`)
+- [x] `flow-history.db` (SQLite) — `active_snapshot` + `flow_history` tables
+- [x] `_update_flow_history()` — compares current flows.db snapshot vs previous; inactive flows → history, 30-day retention (unpinned)
+- [x] Pin-to-keep: pinned entries excluded from 30-day purge
+- [x] `GET /api/flow-history`, `POST /api/flow-history/pin`, `DELETE /api/flow-history/{id}`
+- [x] SPA: search, pin/unpin, delete, date display
+- [x] `scripts/hotdeploy.sh` — fast two-command deploy (copy + restart netwatchm-web)
+
+### Connection Report Toolbar Updates
+- [x] "📱 Inventory" button → `/inventory.html`
+- [x] "⏱ History" button → `/history.html`
+- [x] External links group: Dashboard (Grafana), Inventory Dashboard (`/d/netwatchm-inventory/`), NetWatchM Home (`https://localhost:8765/`) with shared new-tab toggle
+- [x] `localStorage` persistence for new-tab preference
+
+### Navigation Buttons Added
+- [x] `events.html` topbar: "Inventory" → `/inventory.html` and "📊 Dashboard" → Grafana (new tab)
+- [x] `deep-inspect-{ip}.html`: navbar with "← Inventory", "⚠ Events" (filtered to IP), "📊 Dashboard"
+
+### Adult Domain Alert Fix
+- [x] Root cause: `192.168.1.180` (user's machine) was whitelisted — suppresses ALL alerts including ADULT_DOMAIN from that src_ip
+- [x] `scripts/apply-config-fix.sh` — backs up live config, applies fixed yaml (removes 192.168.1.180 from whitelist, explicit `interface: enp6s0`)
+- [x] `/tmp/netwatchm-fixed.yaml` — corrected config with explicit adult_domain section
+
+### Grafana Panels Clarification
+- [x] All flow endpoints working: `/api/flows/devices/enriched`, `/api/flows/devices`, `/api/flows/destinations`, `/api/flows/top-apps`, `/api/flows/browsing`
+- [x] "Top Devices by Data Sent" + "Top Destinations" are inside the collapsed "Connection Report" row — click row header to expand
+
+### Deploy
+```bash
+bash scripts/hotdeploy.sh              # deploy netwatchm_server.py + restart netwatchm-web
+bash scripts/apply-config-fix.sh       # fix adult domain alerts (removes 192.168.1.180 from whitelist)
+```
+
+---
+
 ## Pending — Next Session
 
 ### Must Do
 - [ ] **README.md** — outdated, still describes v0.1.0 (Feb 2026); needs full rewrite to reflect current state
+- [ ] **Run `bash scripts/hotdeploy.sh`** — deploys history.html, pcap.html, nav buttons to live server
+- [ ] **Run `bash scripts/apply-config-fix.sh`** — fixes adult domain alerts on live service
 
 ### Improvements / Nice to Have
 - [ ] **Events retention setting** — 72h is hardcoded in `event_store.py`; expose as config option
 - [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
 - [ ] **Events portal paging** — currently loads up to 500 events; add pagination for large datasets
-- [ ] **Inventory.html link from Grafana** — no link from dashboard to `/inventory.html`
 - [ ] **Windows testing** — ntfy, events portal, GeoIP untested on Windows
 - [ ] **Dark/Light theme** — events portal is dark-only; connection report has toggle but events portal doesn't
 - [ ] **Alert suppression** — no way to silence a recurring low-value alert type (e.g. NEW_IP flood)
