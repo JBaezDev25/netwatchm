@@ -2913,7 +2913,7 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         for er in econ.execute(
                             "SELECT alert_type, level, description FROM events "
-                            "WHERE src_ip=? ORDER BY created_at DESC LIMIT 10", (target,)
+                            "WHERE src_ip=? ORDER BY timestamp DESC LIMIT 10", (target,)
                         ).fetchall():
                             alerts.append(f"[{er['level']}] {er['alert_type']}")
                             if er["description"]:
