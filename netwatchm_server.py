@@ -1332,6 +1332,53 @@ def _render_events_html() -> bytes:
     padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:monospace;
   }
   .sup-btn:hover { border-color:#d29922; color:#d29922; }
+  .lookup-btn {
+    background:none; border:1px solid #58a6ff; color:#58a6ff;
+    padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:monospace;
+    margin-top:8px;
+  }
+  .lookup-btn:hover { background:#58a6ff22; }
+  /* ── IP Lookup modal ── */
+  #lookupModal {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+    z-index:1000; align-items:center; justify-content:center;
+  }
+  #lookupModal.open { display:flex; }
+  .lookup-box {
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    width:min(700px,96vw); max-height:85vh; display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .lookup-hdr {
+    display:flex; align-items:center; padding:12px 16px;
+    border-bottom:1px solid var(--border); gap:10px;
+  }
+  .lookup-hdr h2 { flex:1; font-size:14px; color:var(--accent); margin:0; }
+  .lookup-hdr button { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; }
+  .lookup-tabs {
+    display:flex; border-bottom:1px solid var(--border); padding:0 16px;
+  }
+  .lookup-tab {
+    padding:8px 14px; font-size:12px; cursor:pointer; border:none; background:none;
+    color:var(--muted); border-bottom:2px solid transparent; font-family:monospace;
+  }
+  .lookup-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .lookup-body { flex:1; overflow-y:auto; padding:16px; }
+  .lookup-panel { display:none; }
+  .lookup-panel.active { display:block; }
+  .lk-row { display:flex; gap:8px; margin-bottom:8px; font-size:13px; }
+  .lk-label { color:var(--muted); width:130px; flex-shrink:0; }
+  .lk-val { color:var(--text); word-break:break-all; }
+  .lk-pre { font-family:monospace; font-size:11px; white-space:pre-wrap; word-break:break-all;
+    color:#7ee787; background:var(--bg); padding:10px; border-radius:4px;
+    border:1px solid var(--border); margin-top:8px; max-height:300px; overflow-y:auto; }
+  .lk-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .lk-badge.CRITICAL { background:#f8514933; color:#f85149; }
+  .lk-badge.HIGH     { background:#ff990033; color:#ff9900; }
+  .lk-badge.MEDIUM   { background:#d2992233; color:#d29922; }
+  .lk-badge.LOW      { background:#3fb95033; color:#3fb950; }
+  .lk-badge.CLEAN    { background:#3fb95033; color:#3fb950; }
+  .lk-badge.UNKNOWN  { background:#8b949e33; color:#8b949e; }
   /* ── Clear modal ── */
   #clearModal {
     display:none; position:fixed; top:0; left:0; width:100%; height:100%;
@@ -1408,6 +1455,28 @@ def _render_events_html() -> bytes:
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">&#9788; Light</button>
 </div>
 <div id="toast"></div>
+
+<div id="lookupModal">
+  <div class="lookup-box">
+    <div class="lookup-hdr">
+      <h2 id="lookupTitle">&#127758; IP Lookup</h2>
+      <button onclick="closeLookup()">&#10005;</button>
+    </div>
+    <div class="lookup-tabs">
+      <button class="lookup-tab active" onclick="switchLkTab('geo')">&#127758; GeoIP</button>
+      <button class="lookup-tab" onclick="switchLkTab('dns')">&#128269; DNS</button>
+      <button class="lookup-tab" onclick="switchLkTab('security')">&#128737; Security</button>
+      <button class="lookup-tab" onclick="switchLkTab('whois')">&#128196; WHOIS</button>
+    </div>
+    <div class="lookup-body" id="lookupBody">
+      <div class="lookup-panel active" id="lk-geo"><p style="color:var(--muted)">Loading…</p></div>
+      <div class="lookup-panel" id="lk-dns"></div>
+      <div class="lookup-panel" id="lk-security"></div>
+      <div class="lookup-panel" id="lk-whois"></div>
+    </div>
+  </div>
+</div>
+
 <div id="clearModal">
   <div class="modal-box">
     <h3>&#9888; Clear All Alerts?</h3>
@@ -1754,6 +1823,7 @@ function buildDetailRow(e) {
       <div class="detail-desc">${esc(e.description)}</div>
       ${deepLink}
       <button class="sup-btn" onclick="event.stopPropagation();suppress('${esc(e.alert_type)}')" style="margin-top:8px">&#128274; Suppress ${esc(e.alert_type)}</button>
+      ${inspectIp ? `<button class="lookup-btn" onclick="event.stopPropagation();openLookup('${esc(inspectIp)}')">&#127758; IP Lookup ${esc(inspectIp)}</button>` : ''}
     </td>
   </tr>`;
 }
@@ -1761,6 +1831,81 @@ function buildDetailRow(e) {
 function toggleDetail(id) {
   _expandedId = (_expandedId === id) ? null : id;
   applyFilters();
+}
+
+// ── IP Lookup modal ───────────────────────────────────────────────────────
+function switchLkTab(name) {
+  document.querySelectorAll('.lookup-tab').forEach((t,i) => {
+    const names = ['geo','dns','security','whois'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.lookup-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('lk-' + name).classList.add('active');
+}
+
+function closeLookup() {
+  document.getElementById('lookupModal').classList.remove('open');
+}
+document.getElementById('lookupModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('lookupModal')) closeLookup();
+});
+
+function _lkRow(label, val) {
+  return `<div class="lk-row"><span class="lk-label">${label}</span><span class="lk-val">${val || '—'}</span></div>`;
+}
+
+async function openLookup(ip) {
+  document.getElementById('lookupTitle').textContent = '\\u{1F30E} IP Lookup — ' + ip;
+  ['geo','dns','security','whois'].forEach(t =>
+    document.getElementById('lk-' + t).innerHTML = '<p style="color:var(--muted)">Loading…</p>'
+  );
+  switchLkTab('geo');
+  document.getElementById('lookupModal').classList.add('open');
+  try {
+    const d = await fetch('/api/ip-lookup?ip=' + encodeURIComponent(ip)).then(r => r.json());
+    if (d.error) {
+      ['geo','dns','security','whois'].forEach(t =>
+        document.getElementById('lk-' + t).innerHTML = '<p style="color:#f85149">Error: ' + d.error + '</p>'
+      );
+      return;
+    }
+    // GeoIP
+    const g = d.geo || {};
+    document.getElementById('lk-geo').innerHTML =
+      _lkRow('Country', g.country_code ? g.country + ' (' + g.country_code + ')' : g.country) +
+      _lkRow('City', g.city) +
+      _lkRow('Region', g.region) +
+      _lkRow('Coordinates', g.lat && g.lon ? g.lat + ', ' + g.lon : '') +
+      _lkRow('Timezone', g.timezone) +
+      _lkRow('Org / ISP', g.org);
+    // DNS
+    const dns = d.dns || {};
+    document.getElementById('lk-dns').innerHTML =
+      _lkRow('Reverse DNS (PTR)', dns.ptr) +
+      _lkRow('Forward (A)', dns.forward);
+    // Security
+    const sec = d.security || {};
+    const lvl = sec.threat_level || 'UNKNOWN';
+    let secHtml = _lkRow('Private IP', sec.is_private ? 'Yes (LAN)' : 'No (Public)') +
+      _lkRow('Tor Exit Node', sec.is_tor_exit ? '⚠ YES' : 'No') +
+      _lkRow('Threat Level', '<span class="lk-badge ' + lvl + '">' + lvl + '</span>') +
+      _lkRow('Total Alerts', sec.alert_count);
+    if (sec.alert_types && sec.alert_types.length) {
+      secHtml += '<div style="margin-top:10px;font-size:12px;color:var(--muted)">Alert breakdown:</div>';
+      sec.alert_types.forEach(a => {
+        secHtml += _lkRow(a.type, '<span class="lk-badge ' + a.level + '">' + a.level + '</span> &times;' + a.count);
+      });
+    }
+    document.getElementById('lk-security').innerHTML = secHtml;
+    // WHOIS
+    const w = d.whois || {};
+    const parsed = w.parsed || {};
+    let whoisHtml = Object.entries(parsed).map(([k,v]) => _lkRow(k, v)).join('');
+    if (w.raw) whoisHtml += '<div class="lk-pre">' + w.raw.replace(/</g,'&lt;') + '</div>';
+    document.getElementById('lk-whois').innerHTML = whoisHtml || '<p style="color:var(--muted)">No data</p>';
+  } catch(err) {
+    document.getElementById('lk-geo').innerHTML = '<p style="color:#f85149">Error: ' + err.message + '</p>';
+  }
 }
 
 async function exportCSV() {
@@ -2809,6 +2954,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(_load_verified())
             return
 
+        if path == "/api/ip-lookup":
+            ip = parse_qs(parsed.query).get("ip", [""])[0].strip()
+            if not ip:
+                self._send_json({"error": "ip required"}, 400)
+                return
+            try:
+                self._send_json(_ip_lookup(ip))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         if path == "/api/nmap/status":
             target = parse_qs(parsed.query).get("target", [""])[0].strip()
             if not target:
@@ -3571,6 +3727,125 @@ def _count_events_by_level(level: str) -> list[dict]:
     finally:
         con.close()
     return [{"time": int(_time.time() * 1000), "value": count}]
+
+
+def _ip_lookup(ip: str) -> dict:
+    """Aggregate WHOIS, GeoIP, DNS, and security info for a given IP."""
+    result: dict = {"ip": ip, "whois": {}, "geo": {}, "dns": {}, "security": {}}
+
+    # ── DNS (reverse + forward) ──────────────────────────────────────────────
+    try:
+        ptr_r = subprocess.run(["dig", "+short", "-x", ip],
+                               capture_output=True, text=True, timeout=5)
+        ptr = ptr_r.stdout.strip().rstrip(".")
+        fwd = ""
+        if ptr:
+            fwd_r = subprocess.run(["dig", "+short", ptr],
+                                   capture_output=True, text=True, timeout=5)
+            fwd = fwd_r.stdout.strip()
+        result["dns"] = {"ptr": ptr or "(none)", "forward": fwd or "(none)"}
+    except Exception as exc:
+        result["dns"] = {"ptr": "(error)", "error": str(exc)}
+
+    # ── GeoIP (GeoLite2 + ipinfo.io enrichment) ──────────────────────────────
+    geo: dict = {}
+    try:
+        import geoip2.database
+        db_path = os.environ.get("NETWATCHM_GEOIP_DB",
+                                 "/var/lib/netwatchm/GeoLite2-City.mmdb")
+        if Path(db_path).exists():
+            with geoip2.database.Reader(db_path) as reader:
+                r = reader.city(ip)
+                geo = {
+                    "country": r.country.name or r.registered_country.name or "",
+                    "country_code": r.country.iso_code or "",
+                    "city": r.city.name or "",
+                    "lat": r.location.latitude,
+                    "lon": r.location.longitude,
+                    "timezone": r.location.time_zone or "",
+                }
+    except Exception:
+        pass
+    # ipinfo.io for org/ISP (free, no key)
+    try:
+        import urllib.request as _ur
+        req = _ur.Request(f"https://ipinfo.io/{ip}/json",
+                          headers={"User-Agent": "netwatchm/1.0"})
+        with _ur.urlopen(req, timeout=5) as resp:
+            ipinfo = json.loads(resp.read())
+        geo["org"] = ipinfo.get("org", "")
+        if not geo.get("country"):
+            geo["country"] = ipinfo.get("country", "")
+        if not geo.get("city"):
+            geo["city"] = ipinfo.get("city", "")
+        geo["region"] = ipinfo.get("region", "")
+    except Exception:
+        pass
+    result["geo"] = geo
+
+    # ── WHOIS ────────────────────────────────────────────────────────────────
+    try:
+        wo = subprocess.run(["whois", ip], capture_output=True, text=True, timeout=12)
+        raw = wo.stdout
+        parsed: dict[str, str] = {}
+        want = {"netname", "org-name", "orgname", "organization", "descr",
+                "country", "cidr", "inetnum", "netrange",
+                "abuse-mailbox", "aut-num", "registrant"}
+        for line in raw.splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                k2 = k.strip().lower()
+                v2 = v.strip()
+                if k2 in want and k2 not in parsed and v2 and not v2.startswith("%"):
+                    parsed[k2] = v2
+        result["whois"] = {"parsed": parsed, "raw": raw[:4000]}
+    except Exception as exc:
+        result["whois"] = {"parsed": {}, "raw": f"Error: {exc}"}
+
+    # ── Security ─────────────────────────────────────────────────────────────
+    sec: dict = {"is_tor_exit": False, "is_private": False,
+                 "alert_count": 0, "alert_types": [], "threat_level": "UNKNOWN"}
+    try:
+        import ipaddress
+        sec["is_private"] = ipaddress.ip_address(ip).is_private
+    except Exception:
+        pass
+    # Tor exit check
+    for tor_path in ("/var/lib/netwatchm/tor-exit-nodes.txt",
+                     "/tmp/tor-exit-nodes.txt"):
+        if Path(tor_path).exists():
+            sec["is_tor_exit"] = ip in Path(tor_path).read_text()
+            break
+    # Local alert history
+    edb = Path(EVENT_DB)
+    if edb.exists():
+        try:
+            econ = sqlite3.connect(str(edb))
+            econ.row_factory = sqlite3.Row
+            rows = econ.execute(
+                "SELECT alert_type, level, COUNT(*) AS cnt FROM events "
+                "WHERE src_ip=? OR dst_ip=? GROUP BY alert_type ORDER BY cnt DESC",
+                (ip, ip)
+            ).fetchall()
+            econ.close()
+            sec["alert_count"] = sum(r["cnt"] for r in rows)
+            sec["alert_types"] = [{"type": r["alert_type"], "level": r["level"],
+                                    "count": r["cnt"]} for r in rows]
+            levels = [r["level"] for r in rows]
+            if "CRITICAL" in levels:
+                sec["threat_level"] = "CRITICAL"
+            elif "HIGH" in levels:
+                sec["threat_level"] = "HIGH"
+            elif "MEDIUM" in levels:
+                sec["threat_level"] = "MEDIUM"
+            elif levels:
+                sec["threat_level"] = "LOW"
+            else:
+                sec["threat_level"] = "CLEAN"
+        except Exception:
+            pass
+    result["security"] = sec
+    return result
 
 
 def _query_events_stats() -> list[dict]:
