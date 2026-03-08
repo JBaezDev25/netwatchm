@@ -675,6 +675,7 @@ def render_html(
   <button id="analytics-btn" onclick="openAnalytics()" style="background:rgba(88,166,255,.15);color:#58a6ff;border-color:#58a6ff55">&#x1F4CA; Analytics</button>
   <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
   <a href="/inventory.html" style="background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4F1; Inventory</a>
+  <a href="/history.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x23F1; History</a>
   <div class="dash-group">
     <a id="dash-btn" href="http://localhost:3000" onclick="return openDash(event)">&#x1F4CA; Dashboard</a>
     <label class="toggle-wrap" title="Toggle new tab / same page">

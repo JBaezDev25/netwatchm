@@ -157,6 +157,123 @@ def _save_verified(verified: dict[str, bool]) -> None:
     tmp.replace(VERIFIED_FILE)
 
 
+_FLOW_HISTORY_SQL = """
+CREATE TABLE IF NOT EXISTS active_snapshot (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    dst_ip     TEXT NOT NULL,
+    dns        TEXT NOT NULL DEFAULT '',
+    port       INTEGER,
+    protocol   TEXT,
+    report_time TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS flow_history (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    dst_ip       TEXT NOT NULL,
+    dns          TEXT NOT NULL DEFAULT '',
+    port         INTEGER,
+    protocol     TEXT,
+    last_active  TEXT NOT NULL,
+    went_inactive TEXT NOT NULL,
+    expires_at   TEXT,
+    pinned       INTEGER NOT NULL DEFAULT 0,
+    note         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fh_expires ON flow_history (expires_at);
+CREATE INDEX IF NOT EXISTS idx_fh_dst     ON flow_history (dst_ip);
+"""
+_RETENTION_DAYS = 30
+
+
+def _fh_conn() -> sqlite3.Connection:
+    """Open (and initialise) the flow-history DB."""
+    Path(FLOW_HISTORY_DB).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(FLOW_HISTORY_DB)
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_FLOW_HISTORY_SQL)
+    conn.commit()
+    return conn
+
+
+def _update_flow_history(duration_s: int) -> None:
+    """Compare latest flows.db snapshot against previous active set.
+
+    Flows that disappeared → inserted into flow_history with a 30-day expiry.
+    Flows that reappeared  → removed from flow_history (back to active).
+    Unpinned entries older than RETENTION_DAYS are purged automatically.
+    """
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(days=_RETENTION_DAYS)).isoformat()
+
+    # ── 1. Query flows.db for current active (dst_ip, dns) pairs ─────────────
+    current: set[tuple[str, str]] = set()
+    current_meta: dict[tuple, dict] = {}
+    try:
+        cutoff = (now - timedelta(seconds=duration_s + 120)).isoformat()
+        with sqlite3.connect(FLOW_DB) as fc:
+            for row in fc.execute(
+                "SELECT dst_ip, domain, dst_port, protocol FROM flows "
+                "WHERE captured_at >= ? AND dst_ip IS NOT NULL",
+                (cutoff,),
+            ):
+                key = (row[0] or "", row[1] or "")
+                current.add(key)
+                current_meta[key] = {"port": row[2], "protocol": row[3]}
+    except Exception:
+        return  # flows.db may not exist yet
+
+    with _fh_conn() as hc:
+        # ── 2. Previous active snapshot ───────────────────────────────────────
+        prev: set[tuple[str, str]] = {
+            (r["dst_ip"], r["dns"])
+            for r in hc.execute("SELECT dst_ip, dns FROM active_snapshot")
+        }
+
+        # ── 3. Went inactive (in prev but not in current) ─────────────────────
+        for key in prev - current:
+            dst_ip, dns = key
+            exists = hc.execute(
+                "SELECT id FROM flow_history WHERE dst_ip=? AND dns=?",
+                (dst_ip, dns),
+            ).fetchone()
+            if not exists:
+                meta = current_meta.get(key, {})
+                hc.execute(
+                    "INSERT INTO flow_history "
+                    "(dst_ip, dns, port, protocol, last_active, went_inactive, expires_at, pinned) "
+                    "VALUES (?,?,?,?,?,?,?,0)",
+                    (dst_ip, dns, meta.get("port"), meta.get("protocol"),
+                     now.isoformat(), now.isoformat(), expires),
+                )
+
+        # ── 4. Reactivated (back in current) — remove unpinned history entry ──
+        for key in current & prev:
+            dst_ip, dns = key
+            hc.execute(
+                "DELETE FROM flow_history WHERE dst_ip=? AND dns=? AND pinned=0",
+                (dst_ip, dns),
+            )
+
+        # ── 5. Replace active snapshot ────────────────────────────────────────
+        hc.execute("DELETE FROM active_snapshot")
+        hc.executemany(
+            "INSERT INTO active_snapshot (dst_ip, dns, port, protocol, report_time) "
+            "VALUES (?,?,?,?,?)",
+            [
+                (k[0], k[1], current_meta[k].get("port"),
+                 current_meta[k].get("protocol"), now.isoformat())
+                for k in current
+            ],
+        )
+
+        # ── 6. Purge expired unpinned entries ─────────────────────────────────
+        hc.execute(
+            "DELETE FROM flow_history WHERE pinned=0 AND expires_at < ?",
+            (now.isoformat(),),
+        )
+        hc.commit()
+
+
 def _load_suppressed() -> dict:
     """Return {types: [...], updated_at: str|None}."""
     if not SUPPRESSED_FILE.exists():
@@ -211,7 +328,8 @@ NETWATCHM_CMD = os.environ.get("NETWATCHM_CMD", "netwatchm")
 NETWATCHM_CONFIG = os.environ.get("NETWATCHM_CONFIG", _config_file())
 DEFAULT_NETWORK = os.environ.get("NETWATCHM_NETWORK", "192.168.1.0/24")
 GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB",      str(Path(_DD) / "GeoLite2-City.mmdb"))
-FLOW_DB     = os.environ.get("NETWATCHM_FLOW_DB",        str(Path(_DD) / "flows.db"))
+FLOW_DB          = os.environ.get("NETWATCHM_FLOW_DB",         str(Path(_DD) / "flows.db"))
+FLOW_HISTORY_DB  = os.environ.get("NETWATCHM_FLOW_HISTORY_DB", str(Path(_DD) / "flow-history.db"))
 EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",       str(Path(_DD) / "events.db"))
 ADMIN_TOKEN = os.environ.get("NETWATCHM_ADMIN_TOKEN", "netwatchm-admin")
 READ_TOKEN  = os.environ.get("NETWATCHM_READ_TOKEN", "")  # empty = public reads allowed
@@ -643,6 +761,10 @@ def _run_report(duration: int, network: str) -> None:
             raise RuntimeError(result.stderr.strip() or "netwatchm report failed")
         now = datetime.now(timezone.utc)
         _archive_report(html_path, now)
+        try:
+            _update_flow_history(duration)
+        except Exception:
+            pass  # history update is best-effort
         with _lock:
             _state.update({
                 "status": "ready",
@@ -2084,6 +2206,197 @@ loadData();
     return page.encode()
 
 
+def _render_history_html() -> bytes:
+    """Self-contained flow history SPA."""
+    page = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Flow History</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb;--purple:#bc8cff}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;color:var(--blue)}
+  nav{display:flex;gap:16px;align-items:center;margin-left:auto}
+  nav a{color:var(--muted);font-size:13px;text-decoration:none}
+  nav a:hover{color:var(--text)}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--surface)}
+  input[type=search]{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;width:240px}
+  input[type=search]:focus{outline:none;border-color:var(--blue)}
+  .btn{background:var(--accent);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+  .btn:hover{opacity:.85}
+  .btn.danger{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.35)}
+  .btn.danger:hover{background:rgba(248,81,73,.25)}
+  .count{color:var(--muted);font-size:12px;margin-left:auto}
+  .tbl-wrap{overflow-x:auto;padding:0 20px 20px}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+  thead th:hover{color:var(--text)}
+  tbody tr{border-bottom:1px solid rgba(48,54,61,.5)}
+  tbody tr:hover{background:rgba(255,255,255,.02)}
+  tbody tr.pinned-row{background:rgba(188,140,255,.04)}
+  td{padding:7px 10px;vertical-align:middle}
+  .mono{font-family:monospace;font-size:11px}
+  .pin-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;color:var(--muted);white-space:nowrap}
+  .pin-btn:hover{border-color:var(--purple);color:var(--purple)}
+  .pin-btn.pinned{background:rgba(188,140,255,.15);border-color:var(--purple);color:var(--purple)}
+  .del-btn{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:2px 6px;border-radius:4px}
+  .del-btn:hover{color:var(--red);background:rgba(248,81,73,.1)}
+  .days{font-size:11px;white-space:nowrap}
+  .days.ok{color:var(--green)}
+  .days.warn{color:var(--yellow)}
+  .days.urgent{color:var(--red)}
+  .days.forever{color:var(--purple)}
+  .empty{text-align:center;padding:60px;color:var(--muted)}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:#000;padding:8px 16px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1}
+  .chk{width:14px;height:14px;cursor:pointer;accent-color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128337; Flow History</h1>
+  <nav>
+    <a href="/connection-report.html">&#8592; Report</a>
+    <a href="/inventory.html">Inventory</a>
+    <a href="/events.html">Events</a>
+  </nav>
+</header>
+<div class="toolbar">
+  <input type="search" id="searchBox" placeholder="Search IP, domain…">
+  <button class="btn danger" id="deleteSelBtn" style="display:none" onclick="deleteSelected()">&#128465; Delete selected</button>
+  <span class="count" id="countLabel">—</span>
+</div>
+<div class="tbl-wrap">
+  <table id="histTable">
+    <thead>
+      <tr>
+        <th style="width:28px"><input type="checkbox" class="chk" id="selectAll" title="Select all"></th>
+        <th data-col="dst_ip">Destination IP</th>
+        <th data-col="dns">Domain / DNS</th>
+        <th data-col="last_active">Last Active</th>
+        <th data-col="went_inactive">Inactive Since</th>
+        <th data-col="expires_at">Expires</th>
+        <th style="width:90px">Pin</th>
+        <th style="width:36px"></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="emptyState" style="display:none">No inactive flows yet.<br><span style="font-size:11px;margin-top:6px;display:block">Connections that disappear after a report run will appear here.</span></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let _rows = [];
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function toast(msg, ok=true){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.style.background=ok?'#3fb950':'#f85149';
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+function fmtDate(s){
+  if(!s) return '—';
+  const d=new Date(s); return isNaN(d)?s:d.toLocaleString();
+}
+
+function daysLeft(expires, pinned){
+  if(pinned) return {label:'&#x1F4CC; Pinned', cls:'forever'};
+  if(!expires) return {label:'—', cls:''};
+  const ms = new Date(expires) - Date.now();
+  const d = Math.ceil(ms / 86400000);
+  if(d < 0)  return {label:'Expired', cls:'urgent'};
+  if(d <= 3) return {label:d+'d left', cls:'urgent'};
+  if(d <= 7) return {label:d+'d left', cls:'warn'};
+  return {label:d+'d left', cls:'ok'};
+}
+
+async function load(){
+  const r = await fetch('/api/flow-history').then(r=>r.json()).catch(()=>[]);
+  _rows = Array.isArray(r) ? r : [];
+  render();
+}
+
+function render(){
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  const filtered = q ? _rows.filter(r=>
+    (r.dst_ip||'').includes(q)||(r.dns||'').toLowerCase().includes(q)
+  ) : _rows;
+  document.getElementById('countLabel').textContent = filtered.length + ' inactive flow' + (filtered.length!==1?'s':'');
+  document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
+  document.getElementById('histTable').style.display = filtered.length ? '' : 'none';
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = filtered.map(r=>{
+    const dl = daysLeft(r.expires_at, r.pinned);
+    const pinLabel = r.pinned ? '&#x1F4CC; Pinned' : '&#x1F513; Pin';
+    return `<tr class="${r.pinned?'pinned-row':''}" data-id="${r.id}">
+      <td><input type="checkbox" class="chk row-chk" data-id="${r.id}" onchange="updateDeleteBtn()"></td>
+      <td class="mono">${esc(r.dst_ip)}</td>
+      <td class="mono">${esc(r.dns)||'<span style="color:var(--muted)">—</span>'}</td>
+      <td style="font-size:11px">${fmtDate(r.last_active)}</td>
+      <td style="font-size:11px">${fmtDate(r.went_inactive)}</td>
+      <td><span class="days ${dl.cls}">${dl.label}</span></td>
+      <td><button class="pin-btn ${r.pinned?'pinned':''}" onclick="togglePin(${r.id},${r.pinned?0:1})">${pinLabel}</button></td>
+      <td><button class="del-btn" title="Delete" onclick="deleteOne(${r.id})">&#x2715;</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function togglePin(id, newVal){
+  const r = await fetch('/api/flow-history/pin',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id,pinned:newVal})
+  }).then(r=>r.json()).catch(()=>({}));
+  if(r.ok){
+    const row = _rows.find(x=>x.id===id);
+    if(row){ row.pinned=newVal; row.expires_at=r.expires_at; }
+    toast(newVal ? 'Pinned — will not be auto-deleted' : 'Unpinned — 30-day expiry restored');
+    render();
+  } else { toast('Failed',false); }
+}
+
+async function deleteOne(id){
+  const r = await fetch('/api/flow-history/'+id,{method:'DELETE'}).then(r=>r.json()).catch(()=>({}));
+  if(r.ok){ _rows = _rows.filter(x=>x.id!==id); toast('Deleted'); render(); }
+  else { toast('Failed',false); }
+}
+
+async function deleteSelected(){
+  const ids = [...document.querySelectorAll('.row-chk:checked')].map(c=>parseInt(c.dataset.id));
+  if(!ids.length) return;
+  for(const id of ids){
+    await fetch('/api/flow-history/'+id,{method:'DELETE'});
+  }
+  _rows = _rows.filter(r=>!ids.includes(r.id));
+  toast('Deleted '+ids.length+' entr'+(ids.length===1?'y':'ies'));
+  updateDeleteBtn(); render();
+}
+
+function updateDeleteBtn(){
+  const any = document.querySelectorAll('.row-chk:checked').length > 0;
+  document.getElementById('deleteSelBtn').style.display = any ? '' : 'none';
+}
+
+document.getElementById('selectAll').addEventListener('change', e=>{
+  document.querySelectorAll('.row-chk').forEach(c=>c.checked=e.target.checked);
+  updateDeleteBtn();
+});
+document.getElementById('searchBox').addEventListener('input', render);
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>"""
+    return page.encode()
+
+
 def _render_pcap_html() -> bytes:
     """Self-contained pcap analysis SPA."""
     page = r"""<!DOCTYPE html>
@@ -2501,6 +2814,29 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(state)
             return
 
+        if path == "/api/flow-history":
+            try:
+                with _fh_conn() as hc:
+                    rows = hc.execute(
+                        "SELECT id, dst_ip, dns, port, protocol, "
+                        "last_active, went_inactive, expires_at, pinned, note "
+                        "FROM flow_history ORDER BY went_inactive DESC"
+                    ).fetchall()
+                self._send_json([dict(r) for r in rows])
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/history.html":
+            body = _render_history_html()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/api/pcap/status":
             job_id = parse_qs(parsed.query).get("id", [""])[0].strip()
             if not job_id:
@@ -2637,6 +2973,42 @@ class Handler(BaseHTTPRequestHandler):
                 target=_run_nmap_scan, args=(target, ports), daemon=True
             ).start()
             self._send_json({"status": "running", "target": target})
+            return
+
+        if parsed.path == "/api/flow-history/pin":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length))
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            row_id  = body.get("id")
+            pinned  = int(bool(body.get("pinned", 1)))
+            if row_id is None:
+                self._send_json({"error": "id required"}, 400)
+                return
+            try:
+                from datetime import timedelta
+                with _fh_conn() as hc:
+                    if pinned:
+                        hc.execute(
+                            "UPDATE flow_history SET pinned=1, expires_at=NULL WHERE id=?",
+                            (row_id,),
+                        )
+                    else:
+                        new_exp = (datetime.now(timezone.utc) + timedelta(days=_RETENTION_DAYS)).isoformat()
+                        hc.execute(
+                            "UPDATE flow_history SET pinned=0, expires_at=? WHERE id=?",
+                            (new_exp, row_id),
+                        )
+                    hc.commit()
+                    row = hc.execute(
+                        "SELECT expires_at FROM flow_history WHERE id=?", (row_id,)
+                    ).fetchone()
+                    expires_at = row["expires_at"] if row else None
+                self._send_json({"ok": True, "pinned": pinned, "expires_at": expires_at})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
             return
 
         if parsed.path == "/api/pcap/upload":
@@ -2780,6 +3152,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
+
+        if parsed.path.startswith("/api/flow-history/"):
+            try:
+                row_id = int(parsed.path.removeprefix("/api/flow-history/"))
+            except ValueError:
+                self._send_json({"error": "invalid id"}, 400)
+                return
+            try:
+                with _fh_conn() as hc:
+                    hc.execute("DELETE FROM flow_history WHERE id=?", (row_id,))
+                    hc.commit()
+                self._send_json({"ok": True})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         if parsed.path == "/api/events":
             token = self.headers.get("X-Admin-Token", "")
             if token != ADMIN_TOKEN:
