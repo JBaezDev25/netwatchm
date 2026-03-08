@@ -1394,6 +1394,7 @@ def _render_events_html() -> bytes:
   <a href="/inventory.html">Inventory</a>
   <a href="/analytics.html">Analytics</a>
   <a href="http://localhost:3000/d/netwatchm-inventory/" target="_blank">&#128202; Dashboard</a>
+  <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
   <div class="spacer"></div>
   <label class="auto-toggle">
     <input type="checkbox" id="autoRefresh" checked> Auto-refresh
@@ -2265,6 +2266,7 @@ def _render_history_html() -> bytes:
     <a href="/connection-report.html">&#8592; Report</a>
     <a href="/inventory.html">Inventory</a>
     <a href="/events.html">Events</a>
+    <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
   </nav>
 </header>
 <div class="toolbar">
@@ -2466,6 +2468,7 @@ def _render_pcap_html() -> bytes:
     <a href="/inventory.html">&#8592; Inventory</a>
     <a href="/events.html">Events</a>
     <a href="/connection-report.html">Report</a>
+    <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
   </nav>
 </header>
 <div class="main">
@@ -2816,6 +2819,54 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(state)
             return
 
+        if path == "/api/connections/status":
+            self._send_json({"connected": True, "status": "ok"})
+            return
+
+        if path.startswith("/api/connections/status/"):
+            target = path.removeprefix("/api/connections/status/").strip()
+            try:
+                r = subprocess.run(
+                    ["ping", "-c", "3", "-W", "2", target],
+                    capture_output=True, text=True, timeout=10
+                )
+                connected = r.returncode == 0
+                latency_ms = None
+                avg_latency_ms = None
+                if connected:
+                    for line in r.stdout.splitlines():
+                        if "rtt" in line and "/" in line:
+                            parts = line.split("=")[-1].strip().split("/")
+                            try:
+                                latency_ms = float(parts[0])
+                                avg_latency_ms = float(parts[1])
+                            except (ValueError, IndexError):
+                                pass
+                self._send_json({
+                    "connected": connected,
+                    "target": target,
+                    "latency_ms": latency_ms,
+                    "avg_latency_ms": avg_latency_ms,
+                })
+            except Exception as exc:
+                self._send_json({"connected": False, "target": target, "error": str(exc)})
+            return
+
+        if path == "/api/deep-inspect/history":
+            files = sorted(SERVE_DIR.glob("deep-inspect-*.html"),
+                           key=lambda p: p.stat().st_mtime, reverse=True)
+            result = []
+            for f in files[:20]:
+                ip = f.name.removeprefix("deep-inspect-").removesuffix(".html")
+                result.append({
+                    "capture_id": ip,
+                    "target_ip": ip,
+                    "timestamp": int(f.stat().st_mtime * 1000),
+                    "report_url": f"/{f.name}",
+                })
+            self._send_json(result)
+            return
+
         if path == "/api/flow-history":
             try:
                 with _fh_conn() as hc:
@@ -2975,6 +3026,49 @@ class Handler(BaseHTTPRequestHandler):
                 target=_run_nmap_scan, args=(target, ports), daemon=True
             ).start()
             self._send_json({"status": "running", "target": target})
+            return
+
+        if parsed.path == "/api/nmap/scan":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            target = body.get("target_ip", "").strip()
+            ports  = body.get("ports", "").strip()
+            if not target:
+                self._send_json({"error": "target_ip required"}, 400)
+                return
+            with _nmap_lock:
+                if _nmap_state.get(target, {}).get("status") == "running":
+                    self._send_json({"scan_id": target, "status": "running"})
+                    return
+            threading.Thread(
+                target=_run_nmap_scan, args=(target, ports), daemon=True
+            ).start()
+            self._send_json({"scan_id": target, "status": "running"})
+            return
+
+        if parsed.path == "/api/deep-inspect/start":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            target = body.get("target_ip", "").strip()
+            if not target:
+                self._send_json({"error": "target_ip required"}, 400)
+                return
+            with _deep_lock:
+                if _deep_state.get(target, {}).get("status") == "running":
+                    self._send_json({"capture_id": target, "status": "running"})
+                    return
+            threading.Thread(
+                target=_run_deep_inspect, args=(target, ""), daemon=True
+            ).start()
+            self._send_json({"capture_id": target, "status": "running"})
             return
 
         if parsed.path == "/api/flow-history/pin":
