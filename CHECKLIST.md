@@ -168,55 +168,79 @@ https://localhost:8765/inventory.html
 
 ## Session 6 — UI Polish + Network Tools  ✅ COMPLETE (2026-03-07)
 
-### Verified Devices
+---
+
+### Session 6a — Inventory Tools + Flow History + Alert Fixes
+
+#### Verified Devices
 - [x] `/var/lib/netwatchm/verified.json` — `{ip: bool}` store, same pattern as aliases.json
 - [x] `GET /api/verified` — returns full verified dict
 - [x] `POST /api/verify` — `{ip, verified}` toggle
 - [x] `inventory.html` — checkmark column (✓/○ toggle per device, persists immediately)
 
-### Pcap Analyzer (`/pcap.html`)
-- [x] Drag-and-drop upload + async analysis in background thread
-- [x] tshark analysis: device list (MAC + OUI vendor lookup from `/usr/share/wireshark/manuf`), DNS resolution latency (matched by client_ip + dns.id), TLS handshake latency (matched by tcp.stream)
-- [x] `GET /api/pcap/status`, `POST /api/pcap/upload`
-- [x] Nav link "📊 Pcap" added to inventory.html
-- [x] `scripts/capture-targetip.sh` — interactive prompts: target IP, save path, duration, interface; pre-creates output file to avoid tshark permission denied
-
-### Per-Device nmap Scan
-- [x] Scan button in inventory.html row — triggers `nmap -sV --open -T4 -p 1-1024` per device
+#### Per-Device nmap Scan (from inventory.html)
+- [x] Scan button per row in `inventory.html` — triggers `nmap -sV --open -T4 -p 1-1024` per device
 - [x] `POST /api/nmap`, `GET /api/nmap/status` — async background thread, results in modal overlay
-- [x] Modal shows open ports + services on completion
+- [x] Modal shows open ports + services on completion; no sudo required
 
-### Flow History (`/history.html`)
+#### Pcap Analyzer (`/pcap.html`)
+- [x] Drag-and-drop pcap/pcapng upload + async background analysis via tshark
+- [x] Reports: device list (MAC + OUI vendor from `/usr/share/wireshark/manuf`), DNS resolution latency (matched by client_ip + dns.id pair), TLS handshake latency (matched by tcp.stream)
+- [x] `GET /api/pcap/status`, `POST /api/pcap/upload` endpoints
+- [x] "📊 Pcap" nav link added to `inventory.html`
+- [x] `scripts/capture-targetip.sh` — interactive: prompts for target IP, save path, duration (seconds), interface; pre-creates output file with `touch + chmod 644` to avoid tshark permission denied error
+  - Renamed from `capture-switch.sh`
+- [x] Nintendo Switch investigation: `scannIp.pcapng` identified `192.168.1.217` as Nintendo Co.,Ltd (MAC `98:e2:55:d4:be:85`); port scan showed all RST (no open ports), no DNS/TLS because Switch was passive during scan
+
+#### Flow History (`/history.html`)
 - [x] `flow-history.db` (SQLite) — `active_snapshot` + `flow_history` tables
-- [x] `_update_flow_history()` — compares current flows.db snapshot vs previous; inactive flows → history, 30-day retention (unpinned)
-- [x] Pin-to-keep: pinned entries excluded from 30-day purge
+- [x] `_update_flow_history()` — on each report generate: compares current flows.db snapshot vs previous active_snapshot; inactive flows written to `flow_history`; 30-day rolling purge (unpinned only)
+- [x] Pin-to-keep: `pinned=1` excludes entry from automatic purge
 - [x] `GET /api/flow-history`, `POST /api/flow-history/pin`, `DELETE /api/flow-history/{id}`
-- [x] SPA: search, pin/unpin, delete, date display
-- [x] `scripts/hotdeploy.sh` — fast two-command deploy (copy + restart netwatchm-web)
+- [x] SPA: search bar, pin/unpin toggle, delete, date shown for each inactive connection
+- [x] When Generate button is clicked: only active connections shown in report; inactive ones logged to history
 
-### Connection Report Toolbar Updates
+#### Connection Report Toolbar Updates (`connection_report.py`)
 - [x] "📱 Inventory" button → `/inventory.html`
 - [x] "⏱ History" button → `/history.html`
-- [x] External links group: Dashboard (Grafana), Inventory Dashboard (`/d/netwatchm-inventory/`), NetWatchM Home (`https://localhost:8765/`) with shared new-tab toggle
-- [x] `localStorage` persistence for new-tab preference
+- [x] External links group (purple): Dashboard → `http://localhost:3000`, Inventory Dashboard → `/d/netwatchm-inventory/`, NetWatchM Home → `https://localhost:8765/`
+- [x] Shared new-tab toggle checkbox for the three external links, `localStorage` persists preference
+- [x] `scripts/patch-report-dashboard-btn.sh` — one-time script to apply buttons to existing live `connection-report.html` (writes to `/tmp/`, then `sudo cp`)
 
-### Navigation Buttons Added
-- [x] `events.html` topbar: "Inventory" → `/inventory.html` and "📊 Dashboard" → Grafana (new tab)
-- [x] `deep-inspect-{ip}.html`: navbar with "← Inventory", "⚠ Events" (filtered to IP), "📊 Dashboard"
+#### Adult Domain Alert Fix
+- [x] **Root cause 1:** `192.168.1.180` (user's own machine) was in the whitelist — whitelist suppresses ALL alerts from that src_ip, including ADULT_DOMAIN when browsing from that machine
+- [x] **Root cause 2:** `interface: auto` in config (though enp6s0 was being selected anyway)
+- [x] Fix: remove `192.168.1.180` from whitelist; set `interface: enp6s0` explicitly; add explicit `adult_domain` config block
+- [x] `scripts/apply-config-fix.sh` — backs up `/etc/netwatchm/netwatchm.yaml`, applies `/tmp/netwatchm-fixed.yaml`, restarts `netwatchm` service
+- [x] `/tmp/netwatchm-fixed.yaml` — corrected config (Twingate relays whitelisted, user's own IP removed)
 
-### Adult Domain Alert Fix
-- [x] Root cause: `192.168.1.180` (user's machine) was whitelisted — suppresses ALL alerts including ADULT_DOMAIN from that src_ip
-- [x] `scripts/apply-config-fix.sh` — backs up live config, applies fixed yaml (removes 192.168.1.180 from whitelist, explicit `interface: enp6s0`)
-- [x] `/tmp/netwatchm-fixed.yaml` — corrected config with explicit adult_domain section
+#### Scripts Added
+- [x] `scripts/hotdeploy.sh` — fast deploy: `sudo cp netwatchm_server.py /usr/local/lib/netwatchm/` + `sudo systemctl restart netwatchm-web` (two commands, no interactive prompts)
+- [x] `scripts/apply-config-fix.sh` — safe config update with backup
+- [x] `scripts/capture-targetip.sh` — interactive tshark capture with all params prompted
 
-### Grafana Panels Clarification
-- [x] All flow endpoints working: `/api/flows/devices/enriched`, `/api/flows/devices`, `/api/flows/destinations`, `/api/flows/top-apps`, `/api/flows/browsing`
-- [x] "Top Devices by Data Sent" + "Top Destinations" are inside the collapsed "Connection Report" row — click row header to expand
+---
+
+### Session 6b — Nav Buttons + Grafana Panel Debug
+
+#### Navigation Buttons Added
+- [x] `events.html` topbar: added "Inventory" → `/inventory.html` and "📊 Dashboard" → `http://localhost:3000/d/netwatchm-inventory/` (new tab)
+- [x] `deep-inspect-{ip}.html`: navbar injected at top of every generated report — "← Inventory" → `/inventory.html`, "⚠ Events" → `/events.html?q={ip}` (pre-filtered to that device), "📊 Dashboard" → Grafana (new tab)
+- [x] Both changes in `netwatchm_server.py` (events.html) and `src/netwatchm/reports/deep_inspect.py`
+
+#### Grafana Panel Investigation + Fix
+- [x] Confirmed all flow endpoints return valid data via direct curl tests:
+  - `/api/flows/devices/enriched` → Top Traffic Devices — Live ✅
+  - `/api/flows/devices` → Top Devices by Data Sent ✅
+  - `/api/flows/destinations` → Top Destinations ✅
+  - `/api/flows/top-apps` → Application Activity ✅
+  - `/api/flows/browsing` → Browsing Activity ✅
+- [x] Root cause for "Top Devices by Data Sent" + "Top Destinations" not visible: both panels are **inside the collapsed "Connection Report" row** — click the row header in Grafana to expand
 
 ### Deploy
 ```bash
-bash scripts/hotdeploy.sh              # deploy netwatchm_server.py + restart netwatchm-web
-bash scripts/apply-config-fix.sh       # fix adult domain alerts (removes 192.168.1.180 from whitelist)
+bash scripts/hotdeploy.sh              # deploy netwatchm_server.py → live server (port 8765/8766)
+bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168.1.180 from whitelist)
 ```
 
 ---
