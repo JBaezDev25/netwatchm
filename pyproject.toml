@@ -1,6 +1,6 @@
 [project]
 name = "netwatchm"
-version = "0.2.24"
+version = "0.2.25"
 requires-python = ">=3.12"
 dependencies = [
     "rich>=13.7",
