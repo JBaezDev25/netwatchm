@@ -1440,7 +1440,7 @@ def _render_events_html() -> bytes:
   <a href="/connection-report.html">&#8592; Report</a>
   <a href="/inventory.html">Inventory</a>
   <a href="/analytics.html">Analytics</a>
-  <a href="http://localhost:3000/d/netwatchm-inventory/" target="_blank">&#128202; Dashboard</a>
+  <a href="javascript:void(0)" onclick="window.open('http://'+location.hostname+':3000/d/netwatchm-inventory/')" target="_blank">&#128202; Dashboard</a>
   <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
   <div class="spacer"></div>
   <label class="auto-toggle">
@@ -1952,10 +1952,10 @@ document.getElementById('autoRefresh').addEventListener('change', function() {
   else { document.getElementById('countdown').textContent = ''; }
 });
 
-// Pre-fill search from ?ip= or ?search= URL param (e.g. from Grafana data links)
+// Pre-fill search from ?ip=, ?search=, or ?q= URL param (e.g. from Grafana data links)
 (function() {
   const p = new URLSearchParams(window.location.search);
-  const ip = p.get('ip') || p.get('search');
+  const ip = p.get('ip') || p.get('search') || p.get('q');
   if (ip) document.getElementById('search').value = ip;
 })();
 
@@ -3216,6 +3216,19 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/cert":
+            try:
+                cert_bytes = CERT_FILE.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-x509-ca-cert")
+                self.send_header("Content-Disposition", "attachment; filename=netwatchm.crt")
+                self.send_header("Content-Length", str(len(cert_bytes)))
+                self.end_headers()
+                self.wfile.write(cert_bytes)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         if path == "/inventory.html":
             body = _render_inventory_html()
             self.send_response(200)
@@ -3602,6 +3615,19 @@ def _ensure_cert() -> None:
     if CERT_FILE.exists() and KEY_FILE.exists():
         return
     print("Generating self-signed TLS certificate…", flush=True)
+    import socket as _socket
+    local_ip = os.environ.get("NETWATCHM_SERVER_IP", "")
+    if not local_ip:
+        try:
+            s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            local_ip = "127.0.0.1"
+    san = f"subjectAltName=DNS:localhost,IP:127.0.0.1,IP:{local_ip}"
+    ext_file = CERT_DIR / "san.ext"
+    ext_file.write_text(san)
     subprocess.run(
         [
             "openssl", "req", "-x509",
@@ -3610,13 +3636,15 @@ def _ensure_cert() -> None:
             "-out", str(CERT_FILE),
             "-days", "3650",
             "-nodes",
-            "-subj", "/CN=localhost/O=NetWatchM",
+            "-subj", f"/CN={local_ip}/O=NetWatchM",
+            "-addext", san,
         ],
         check=True,
         capture_output=True,
     )
+    ext_file.unlink(missing_ok=True)
     os.chmod(KEY_FILE, 0o600)
-    print(f"Certificate written to {CERT_FILE}", flush=True)
+    print(f"Certificate written to {CERT_FILE} (SAN: localhost, 127.0.0.1, {local_ip})", flush=True)
 
 
 HTTP_PORT = int(os.environ.get("NETWATCHM_HTTP_PORT", "8766"))
@@ -3951,7 +3979,19 @@ class GrafanaHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/inventory/"):
             inv = SERVE_DIR / "inventory.json"
-            devices = json.loads(inv.read_text()) if inv.exists() else []
+            all_devices = json.loads(inv.read_text()) if inv.exists() else []
+            # Only count devices seen in the last 24 hours (active devices)
+            cutoff = _time.time() - 86400
+            devices = []
+            for d in all_devices:
+                ls = d.get("last_seen") or ""
+                try:
+                    import datetime as _dt
+                    ts = _dt.datetime.fromisoformat(ls).timestamp()
+                    if ts >= cutoff:
+                        devices.append(d)
+                except (ValueError, TypeError):
+                    pass
             counts = {"total": len(devices), "high": 0, "medium": 0, "low": 0}
             for d in devices:
                 lvl = (d.get("threat_level") or "").lower()

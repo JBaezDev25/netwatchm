@@ -95,9 +95,12 @@ class TorExitDetector(Detector):
             return None
 
         self._alerted[matched_ip] = now
+        # Outbound: an internal device is reaching out to Tor — investigate but not HIGH
+        # Inbound: a Tor exit node is connecting to us — HIGH
+        level = ThreatLevel.MEDIUM if direction == "outbound to Tor" else ThreatLevel.HIGH
         return Alert(
             alert_type="TOR_EXIT",
-            level=ThreatLevel.HIGH,
+            level=level,
             src_ip=packet.src_ip,
             dst_ip=packet.dst_ip,
             description=f"Tor exit node {direction}: {matched_ip}",

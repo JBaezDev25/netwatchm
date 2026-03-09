@@ -1,6 +1,6 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-07 (session 6)
+Last updated: 2026-03-08 (session 8)
 
 ## Completed
 - [x] Core capture engine (tshark + async)
@@ -241,14 +241,76 @@ bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168
 
 ---
 
+## Session 7 — IP Lookup Modal + Per-Detector Whitelist  ✅ COMPLETE (2026-03-07)
+
+### Per-Detector IP Whitelist (`detector_whitelist` config)
+- [x] `config.py` — `DetectorWhitelistConfig` dataclass with `is_suppressed(alert_type, ip)` method
+- [x] `__main__.py` — check in `alert_dispatch_loop()` after global whitelist, before scorer/handlers
+- [x] `netwatchm.yaml.example` — documented with all 7 alert types
+- [x] Allows suppressing e.g. `PORT_SCAN` from one IP without silencing all alerts from that device
+
+### IP Lookup Modal in `events.html`
+- [x] Globe button on each expanded event row opens a 4-tab modal
+- [x] **GeoIP tab** — country, city, region, coords, timezone, org/ISP (via GeoLite2)
+- [x] **DNS tab** — reverse PTR + forward A record (`dig +short`)
+- [x] **Security tab** — Tor exit check, threat level, alert history breakdown from `events.db`
+- [x] **WHOIS tab** — parsed key fields + raw output
+- [x] Backend: `_ip_lookup()` in `netwatchm_server.py` aggregates GeoLite2 + ipinfo.io + whois + local DB
+- [x] 163 tests still passing
+
+### Workflow Preference Added
+- [x] Read `CHECKLIST.md` at the start of every session and update it with all tasks requested
+
+---
+
+## Session 8 — Remote Access + URL Fix  ✅ COMPLETE (2026-03-08)
+
+### Grafana Remote Access
+- [x] `scripts/configure-grafana-remote.sh` — patches `/etc/grafana/grafana.ini`: sets `domain = 192.168.1.180` + `root_url = http://192.168.1.180:3000/`; opens ufw port 3000; restarts grafana-server
+- [x] Verified: Grafana accessible from remote machine at `http://192.168.1.180:3000`
+
+### NetWatchM Portal Remote Access (`https://192.168.1.180:8765`)
+- [x] TLS cert regenerated with `subjectAltName` (DNS:localhost, IP:127.0.0.1, IP:\<LAN IP\>) — old cert had `CN=localhost` only, breaking remote browser connections
+- [x] `_ensure_cert()` in `netwatchm_server.py` now auto-detects LAN IP and embeds it in SAN; override with `NETWATCHM_SERVER_IP` env var
+- [x] `scripts/enable-remote-access.sh` — opens ufw port 8765, regenerates cert with LAN IP SAN, restarts `netwatchm-web`
+- [x] Grafana nav link (`📊 Dashboard`) changed from hardcoded `http://localhost:3000/...` to `javascript: window.open('http://'+location.hostname+':3000/...')` — works from any host
+- [x] Verified: portal accessible from remote machine at `https://192.168.1.180:8765`
+
+### Events Portal URL Fix
+- [x] `events.html` pre-fill now handles `?q=` param (alongside `?ip=` and `?search=`) — deep-inspect "View Events" links use `?q={ip}`
+- [x] Deployed via `bash scripts/hotdeploy.sh`
+
+### Windows Cert Trust (remote machine)
+- [x] `GET /cert` endpoint — serves `server.crt` as a downloadable file (`application/x-x509-ca-cert`)
+- [x] `scripts/install-cert-windows.ps1` — clean single-command-per-line script; downloads cert from `/cert` and installs into Windows Trusted Root; run as Administrator on Windows machine
+- [x] Quick bypass alternative: type `thisisunsafe` on Chrome/Edge cert error page
+
+### Connection Report Toolbar Layout
+- [x] Purple external buttons (Dashboard, Inventory Dashboard, NetWatchM) moved to second row below blue buttons
+- [x] Toolbar restructured into two `.toolbar-row` divs; CSS changed to `flex-direction: column`
+
+### Deploy commands (session 8)
+```bash
+bash scripts/hotdeploy.sh               # deploy events.html ?q= fix + cert SAN change + /cert endpoint
+bash scripts/enable-remote-access.sh    # open port 8765, regen TLS cert, restart web
+bash scripts/configure-grafana-remote.sh  # patch grafana.ini, open port 3000, restart grafana
+```
+
+**Windows cert install (run on Windows machine as Administrator):**
+```powershell
+powershell -ExecutionPolicy Bypass -File \\192.168.1.180\...\install-cert-windows.ps1
+# or download the script and run it locally
+```
+
+---
+
 ## Pending — Next Session
 
 ### Must Do (sudo required — run manually)
-- [ ] **`bash scripts/hotdeploy.sh`** — deploys history.html, pcap.html, nav buttons, verified devices, nmap to live server
 - [ ] **`bash scripts/apply-config-fix.sh`** — fixes adult domain alerts (removes user machine from whitelist)
 - [ ] **Windows install test** — verify end-to-end on a clean Windows machine (overdue since session 4)
 
-### Completed This Session
+### Completed This Session (session 7)
 - [x] GitHub repo moved from **public → private** (`al4nbr3/netwatchm`)
 - [x] Grafana credentials removed from CHECKLIST.md (were exposed in public repo)
 - [x] Test count corrected: 143 → 163

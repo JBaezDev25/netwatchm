@@ -544,7 +544,8 @@ def render_html(
   .stat {{ background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 20px; }}
   .stat-label {{ color: var(--muted); font-size: 11px; text-transform: uppercase; }}
   .stat-value {{ color: var(--accent); font-size: 22px; font-weight: bold; margin-top: 4px; }}
-  .toolbar {{ display:flex; gap:10px; align-items:center; margin-bottom:12px; }}
+  .toolbar {{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }}
+  .toolbar-row {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
   .toolbar input {{
     background: var(--surface); border: 1px solid var(--border); color: var(--text);
     padding: 6px 12px; border-radius: 4px; width: 280px; font-family: monospace;
@@ -670,13 +671,23 @@ def render_html(
   <div class="stat"><div class="stat-label">Total Data</div><div class="stat-value">{_esc(_fmt_bytes(total_bytes))}</div></div>
 </div>
 <div class="toolbar">
-  <input type="text" id="search" placeholder="Filter rows…" oninput="filterTable()" />
-  <button onclick="exportCSV()">⬇ Download CSV</button>
-  <button id="analytics-btn" onclick="openAnalytics()" style="background:rgba(88,166,255,.15);color:#58a6ff;border-color:#58a6ff55">&#x1F4CA; Analytics</button>
-  <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
-  <a href="/inventory.html" style="background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4F1; Inventory</a>
-  <a href="/history.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x23F1; History</a>
-  <div class="dash-group">
+  <div class="toolbar-row">
+    <input type="text" id="search" placeholder="Filter rows…" oninput="filterTable()" />
+    <button onclick="exportCSV()">⬇ Download CSV</button>
+    <button id="analytics-btn" onclick="openAnalytics()" style="background:rgba(88,166,255,.15);color:#58a6ff;border-color:#58a6ff55">&#x1F4CA; Analytics</button>
+    <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
+    <a href="/inventory.html" style="background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4F1; Inventory</a>
+    <a href="/history.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x23F1; History</a>
+    <button id="refresh-btn" onclick="triggerRefresh()" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35)">&#x21BB; Refresh</button>
+    <select id="auto-refresh" onchange="setAutoRefresh(this.value)">
+      <option value="0">Auto: Off</option>
+      <option value="60">Auto: 1 min</option>
+      <option value="300">Auto: 5 min</option>
+      <option value="600">Auto: 10 min</option>
+    </select>
+    <span id="refresh-countdown"></span>
+  </div>
+  <div class="toolbar-row">
     <a class="ext-btn" href="http://localhost:3000" onclick="return openLink('http://localhost:3000',event)">&#x1F4CA; Dashboard</a>
     <a class="ext-btn" href="http://localhost:3000/d/netwatchm-inventory/" onclick="return openLink('http://localhost:3000/d/netwatchm-inventory/',event)">&#x1F4F2; Inventory Dashboard</a>
     <a class="ext-btn" href="https://localhost:8765/" onclick="return openLink('https://localhost:8765/',event)">&#x1F3E0; NetWatchM</a>
@@ -685,14 +696,6 @@ def render_html(
       New tab
     </label>
   </div>
-  <button id="refresh-btn" onclick="triggerRefresh()" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35)">&#x21BB; Refresh</button>
-  <select id="auto-refresh" onchange="setAutoRefresh(this.value)">
-    <option value="0">Auto: Off</option>
-    <option value="60">Auto: 1 min</option>
-    <option value="300">Auto: 5 min</option>
-    <option value="600">Auto: 10 min</option>
-  </select>
-  <span id="refresh-countdown"></span>
 </div>
 <table id="flows-table">
 <thead>

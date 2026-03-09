@@ -125,12 +125,21 @@ class DeviceStore:
         return list(self._records.keys())
 
     async def persist(self, path: Path | None = None) -> None:
-        """Serialize records to JSON file."""
+        """Serialize records to JSON file, pruning devices not seen in 48 hours."""
         if path is None:
             path = _default_inventory_path()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
+            cutoff = datetime.now().timestamp() - 172800  # 48 hours
             async with self._lock:
+                active = {
+                    ip: rec for ip, rec in self._records.items()
+                    if rec.last_seen.timestamp() >= cutoff
+                }
+                pruned = len(self._records) - len(active)
+                if pruned:
+                    self._records = active
+                    logger.info("Pruned %d stale inventory entries (>48h)", pruned)
                 data = [rec.to_dict() for rec in self._records.values()]
             path.write_text(json.dumps(data, indent=2))
             logger.debug("Inventory persisted to %s (%d records)", path, len(data))

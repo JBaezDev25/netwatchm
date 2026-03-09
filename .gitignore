@@ -34,3 +34,4 @@ netwatchm-test.yaml
 # Production config (has private IPs, Twingate relays — keep local only)
 netwatchm.yaml.production
 
+.vscode/

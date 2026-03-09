@@ -1,6 +1,7 @@
 """Brute-force detector: fires HIGH alert when N auth attempts in T seconds."""
 from __future__ import annotations
 
+import ipaddress
 import time
 from collections import defaultdict, deque
 
@@ -27,6 +28,11 @@ class BruteForceDetector(Detector):
         if not packet.src_ip or packet.dst_port is None:
             return None
         if packet.dst_port not in self._ports:
+            return None
+        try:
+            if ipaddress.ip_address(packet.src_ip).is_private:
+                return None
+        except ValueError:
             return None
 
         now = time.time()

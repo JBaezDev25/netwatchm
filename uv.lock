@@ -873,7 +873,7 @@ wheels = [
 
 [[package]]
 name = "netwatchm"
-version = "0.1.0"
+version = "0.2.23"
 source = { editable = "." }
 dependencies = [
     { name = "geoip2" },

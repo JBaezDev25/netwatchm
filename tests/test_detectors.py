@@ -99,14 +99,19 @@ class TestBruteForceDetector:
     def test_no_alert_non_auth_port(self) -> None:
         det = self._detector()
         for _ in range(10):
-            result = det.process(make_packet(dst_port=80))
+            result = det.process(make_packet(src_ip="1.2.3.4", dst_port=80))
         assert result is None
+
+    def test_no_alert_internal_src(self) -> None:
+        det = self._detector(attempts=2)
+        results = [det.process(make_packet(src_ip="192.168.1.50", dst_port=22)) for _ in range(5)]
+        assert all(r is None for r in results)
 
     def test_alert_at_threshold(self) -> None:
         det = self._detector(attempts=3)
         alert = None
         for _ in range(4):
-            r = det.process(make_packet(dst_port=22))
+            r = det.process(make_packet(src_ip="1.2.3.4", dst_port=22))
             if r:
                 alert = r
         assert alert is not None
@@ -115,14 +120,14 @@ class TestBruteForceDetector:
 
     def test_no_duplicate_alert(self) -> None:
         det = self._detector(attempts=2)
-        alerts = [det.process(make_packet(dst_port=22)) for _ in range(10)]
+        alerts = [det.process(make_packet(src_ip="1.2.3.4", dst_port=22)) for _ in range(10)]
         non_none = [a for a in alerts if a is not None]
         assert len(non_none) == 1
 
     def test_flush_expired(self) -> None:
         det = self._detector(attempts=2, window=1)
         for _ in range(3):
-            det.process(make_packet(dst_port=22))
+            det.process(make_packet(src_ip="1.2.3.4", dst_port=22))
         time.sleep(1.1)
         det.flush_expired()
         assert len(det._windows) == 0
@@ -225,7 +230,7 @@ class TestTorExitDetector:
         result = det.process(make_packet(src_ip="192.168.1.1", dst_ip=self.TOR_IP))
         assert result is not None
         assert result.alert_type == "TOR_EXIT"
-        assert result.level == ThreatLevel.HIGH
+        assert result.level == ThreatLevel.MEDIUM
         assert "outbound to Tor" in result.description
         assert self.TOR_IP in result.description
 

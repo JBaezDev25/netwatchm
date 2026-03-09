@@ -221,11 +221,75 @@ def send_alert(service: str) -> None:
         /etc/systemd/system/{service}.service
     """)
 
+    dashboard_url = f"https://{hostname}:8765/events.html"
+    html_body = f"""\
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0d1117;font-family:monospace,sans-serif;color:#c9d1d9">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d1117;padding:24px 0">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#161b22;border:1px solid #30363d;border-radius:6px;overflow:hidden">
+      <tr><td style="background:#da3633;padding:16px 24px">
+        <span style="color:#fff;font-size:18px;font-weight:bold">&#9888; NetWatchM Service DOWN</span>
+      </td></tr>
+      <tr><td style="padding:24px">
+        <table width="100%" cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px">
+          <tr><td style="color:#8b949e;width:100px">Service</td><td style="color:#f0f6fc">{service}</td></tr>
+          <tr><td style="color:#8b949e">Host</td><td style="color:#f0f6fc">{hostname}</td></tr>
+          <tr><td style="color:#8b949e">Time</td><td style="color:#f0f6fc">{now}</td></tr>
+          <tr><td style="color:#8b949e">State</td><td style="color:#f85149;font-weight:bold">{active.upper()}</td></tr>
+          <tr><td style="color:#8b949e">Result</td><td style="color:#f0f6fc">{result}</td></tr>
+          <tr><td style="color:#8b949e">Exit code</td><td style="color:#f0f6fc">{exit_code}</td></tr>
+        </table>
+
+        <div style="background:#1c2128;border-left:3px solid #d29922;padding:12px 16px;margin-bottom:20px;border-radius:0 4px 4px 0">
+          <div style="color:#d29922;font-size:11px;font-weight:bold;margin-bottom:6px">WHY THIS IS HAPPENING</div>
+          <div style="color:#c9d1d9;font-size:13px">{reason}</div>
+        </div>
+
+        <div style="margin-bottom:20px">
+          <div style="color:#8b949e;font-size:11px;font-weight:bold;margin-bottom:8px">HOW TO RECOVER</div>
+          <table cellpadding="0" cellspacing="8">
+            <tr><td>
+              <a href="mailto:?body=sudo%20systemctl%20start%20{service}" style="display:inline-block;background:#238636;color:#fff;text-decoration:none;padding:8px 16px;border-radius:4px;font-size:13px;font-weight:bold">
+                &#9654; Restart {service}
+              </a>
+            </td><td style="padding-left:12px">
+              <a href="{dashboard_url}" style="display:inline-block;background:#1f6feb;color:#fff;text-decoration:none;padding:8px 16px;border-radius:4px;font-size:13px;font-weight:bold">
+                &#128269; View Events Dashboard
+              </a>
+            </td></tr>
+          </table>
+          <div style="background:#1c2128;border:1px solid #30363d;border-radius:4px;padding:12px;margin-top:12px;font-size:12px;color:#8b949e">
+            <div style="color:#58a6ff;margin-bottom:4px"># Run these commands on {hostname}:</div>
+            <div>journalctl -u {service} -n 50 --no-pager</div>
+            <div>sudo systemctl start {service}</div>
+            <div>systemctl status {service}</div>
+          </div>
+        </div>
+
+        <details>
+          <summary style="color:#8b949e;font-size:12px;cursor:pointer;margin-bottom:8px">Last log lines (click to expand)</summary>
+          <pre style="background:#1c2128;border:1px solid #30363d;border-radius:4px;padding:12px;font-size:11px;color:#8b949e;overflow-x:auto;white-space:pre-wrap">{logs}</pre>
+        </details>
+      </td></tr>
+      <tr><td style="padding:12px 24px;border-top:1px solid #30363d;color:#484f58;font-size:11px">
+        Sent by NetWatchM on {hostname} &mdash;
+        <a href="{dashboard_url}" style="color:#58a6ff">Open Dashboard</a>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>"""
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = username
     msg["To"]      = recipient
     msg.attach(MIMEText(body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as s:
