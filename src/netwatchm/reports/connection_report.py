@@ -546,6 +546,7 @@ def render_html(
   .stat-value {{ color: var(--accent); font-size: 22px; font-weight: bold; margin-top: 4px; }}
   .toolbar {{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }}
   .toolbar-row {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
+  .toolbar-row.ext-row {{ justify-content:center; padding-left:200px; }}
   .toolbar input {{
     background: var(--surface); border: 1px solid var(--border); color: var(--text);
     padding: 6px 12px; border-radius: 4px; width: 280px; font-family: monospace;
@@ -687,7 +688,7 @@ def render_html(
     </select>
     <span id="refresh-countdown"></span>
   </div>
-  <div class="toolbar-row">
+  <div class="toolbar-row ext-row">
     <a class="ext-btn" href="http://localhost:3000" onclick="return openLink('http://localhost:3000',event)">&#x1F4CA; Dashboard</a>
     <a class="ext-btn" href="http://localhost:3000/d/netwatchm-inventory/" onclick="return openLink('http://localhost:3000/d/netwatchm-inventory/',event)">&#x1F4F2; Inventory Dashboard</a>
     <a class="ext-btn" href="https://localhost:8765/" onclick="return openLink('https://localhost:8765/',event)">&#x1F3E0; NetWatchM</a>

@@ -288,6 +288,10 @@ bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168
 ### Connection Report Toolbar Layout
 - [x] Purple external buttons (Dashboard, Inventory Dashboard, NetWatchM) moved to second row below blue buttons
 - [x] Toolbar restructured into two `.toolbar-row` divs; CSS changed to `flex-direction: column`
+- [x] Purple row centered-right under Analytics using `.ext-row` class (`justify-content:center; padding-left:200px`)
+
+### Whitelist Update
+- [x] `192.168.1.248` added to global whitelist in `/etc/netwatchm/netwatchm.yaml`; service restarted
 
 ### Deploy commands (session 8)
 ```bash
