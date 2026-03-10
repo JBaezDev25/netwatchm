@@ -141,6 +141,7 @@ Side-car JSON stores in `/var/lib/netwatchm/`:
 ## Coding style
 
 - **Comments**: use sparingly. Only comment logic that is genuinely non-obvious. Do not comment what the code already says.
+- **Credentials**: never hardcode passwords, tokens, or secrets in scripts or source files. Scripts that need credentials must prompt interactively (`read -rsp`) or read from an env var.
 
 ## Workflow preferences
 

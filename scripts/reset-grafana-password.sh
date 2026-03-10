@@ -3,7 +3,8 @@
 # Run with: bash scripts/reset-grafana-password.sh
 set -e
 
-NEW_PASS="BioIluvleeloo@5858"
+read -rsp "New Grafana admin password: " NEW_PASS
+echo
 
 sudo grafana-cli admin reset-admin-password "$NEW_PASS"
-echo "Done. Login at http://localhost:3000 with admin / $NEW_PASS"
+echo "Done. Login at http://localhost:3000 with admin / <your password>"

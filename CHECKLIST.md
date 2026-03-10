@@ -308,6 +308,20 @@ powershell -ExecutionPolicy Bypass -File \\192.168.1.180\...\install-cert-window
 
 ---
 
+## Session 9 — Linux Cert Trust (2026-03-09)
+
+### Linux Certificate Install Script
+- [x] `scripts/install-cert-linux.sh` — downloads cert from `/cert` endpoint, installs into system trusted roots (`update-ca-certificates`) and Chrome NSS store (`certutil`); accepts optional `SERVER_IP` and `PORT` args
+
+---
+
+## Session 10 — Security Hardening (2026-03-10)
+
+### Hardcoded Credential Removal
+- [x] `scripts/reset-grafana-password.sh` — removed hardcoded plaintext password; now prompts interactively at runtime (`read -rsp`, silent input)
+
+---
+
 ## Pending — Next Session
 
 ### Must Do (sudo required — run manually)
