@@ -209,6 +209,8 @@
 
         .table-container {
             overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
         }
 
         table {
@@ -460,6 +462,8 @@
             <button class="tab-btn active" onclick="switchTab('history')">Capture History</button>
             <button class="tab-btn" onclick="switchTab('analysis')">Analysis Results</button>
             <button class="tab-btn" onclick="switchTab('traces')">Traceroute Analysis</button>
+            <button class="tab-btn" onclick="switchTab('diagnostics')">Network Diagnostics</button>
+            <button class="tab-btn" onclick="switchTab('bandwidth')">Bandwidth</button>
         </div>
 
         <!-- History Tab -->
@@ -508,6 +512,73 @@
                     📡 Run Traceroute
                 </button>
                 <div id="tracerouteResults"></div>
+            </div>
+        </div>
+
+        <!-- Diagnostics Tab -->
+        <div id="diagnostics" class="tab-content">
+            <div class="card">
+                <h3>Network Diagnostics</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                    Run network diagnostic tools to analyze connections and performance.
+                </p>
+                
+                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                    <div class="form-group">
+                        <label>Target IP / Hostname</label>
+                        <input type="text" id="diagTargetIp" placeholder="e.g., 192.168.1.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Quick Select</label>
+                        <select id="iperfServer" onchange="document.getElementById('diagTargetIp').value = this.value">
+                            <option value="">-- Select --</option>
+                            <option value="192.168.1.1">Local Gateway</option>
+                            <option value="192.168.1.180">ai-rnd-01</option>
+                            <option value="iperf.he.net">iperf.he.net (Public)</option>
+                            <option value="speedtest.tele2.net">speedtest.tele2.net (Public)</option>
+                            <option value="los-angeles.lga1.wl.iperf.uk">iperf.uk (US West)</option>
+                            <option value="nyc.speedtest.wtnet.de">wtnet.de (NYC)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; align-items: center;">
+                    <input type="text" id="conntrackIp" placeholder="Target IP (e.g., 192.168.1.1)" style="width: 200px;">
+                    <button class="btn btn-primary" onclick="runConntrack()">
+                        🔗 Conntrack (Connections)
+                    </button>
+                    <button class="btn btn-primary" onclick="runTcpstates()">
+                        📊 TCP States
+                    </button>
+                    <button class="btn btn-success" onclick="runIperf()">
+                        ⚡ Speed Test (iperf3)
+                    </button>
+                    <button class="btn btn-success" onclick="runSimpleSpeedTest()">
+                        🌐 Internet Speed Test
+                    </button>
+                </div>
+
+                <div id="diagnosticsResults" style="max-height: 500px; overflow-y: auto;">
+                    <p style="color: var(--text-secondary);">Select a diagnostic tool above</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bandwidth Tab -->
+        <div id="bandwidth" class="tab-content">
+            <div class="card">
+                <h3>Bandwidth per Device</h3>
+                <div class="form-group">
+                    <label>Device IP</label>
+                    <input type="text" id="bandwidthIp" placeholder="e.g., 192.168.1.217">
+                </div>
+                <button class="btn btn-primary" onclick="checkBandwidth()">
+                    📈 Check Bandwidth
+                </button>
+                
+                <div id="bandwidthResults" style="margin-top: 1rem;">
+                    <p style="color: var(--text-secondary);">Enter an IP to see bandwidth stats</p>
+                </div>
             </div>
         </div>
     </div>
@@ -820,6 +891,180 @@
                         Error loading connections: ${error.message}
                     </div>
                 `;
+            }
+        }
+
+        // Run conntrack - show active TCP connections for target IP
+        async function runConntrack() {
+            const targetIp = document.getElementById('conntrackIp').value.trim();
+            if (!targetIp) {
+                document.getElementById('diagnosticsResults').innerHTML = '<p style="color: var(--text-secondary);">Enter a target IP to view its connections</p>';
+                return;
+            }
+            const resultsDiv = document.getElementById('diagnosticsResults');
+            resultsDiv.innerHTML = '<p style="color:var(--text-secondary)">⏳ Loading connections for ' + targetIp + '...</p>';
+            try {
+                const res = await fetch('/api/diagnostics/conntrack?target=' + encodeURIComponent(targetIp));
+                const data = await res.json();
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${data.error}</div>`;
+                    return;
+                }
+                let html = `<div class="metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">${data.count}</div>
+                        <div class="metric-label">Active Connections for ${targetIp}</div>
+                    </div>
+                </div>`;
+                if (data.connections && data.connections.length > 0) {
+                    html += `<div class="table-container"><table>
+                        <thead><tr><th>Source</th><th>Destination</th><th>Sports</th><th>Dport</th></tr></thead>
+                        <tbody>`;
+                    data.connections.slice(0, 50).forEach(c => {
+                        html += `<tr><td>${c.src}</td><td>${c.dst}</td><td>${c.sport || '-'}</td><td>${c.dport || '-'}</td></tr>`;
+                    });
+                    html += '</tbody></table></div>';
+                    if (data.connections.length > 50) {
+                        html += `<p style="color:var(--text-secondary)">Showing first 50 of ${data.connections.length} connections</p>`;
+                    }
+                } else {
+                    html += '<p style="color:var(--text-secondary)">No active connections found for this IP</p>';
+                }
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Run TCP states
+        async function runTcpstates() {
+            const resultsDiv = document.getElementById('diagnosticsResults');
+            resultsDiv.innerHTML = '<p style="color:var(--text-secondary)">⏳ Loading TCP states...</p>';
+            try {
+                const res = await fetch('/api/diagnostics/tcpstates');
+                const data = await res.json();
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${data.error}</div>`;
+                    return;
+                }
+                let html = `<div class="metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">${data.count}</div>
+                        <div class="metric-label">Established Connections</div>
+                    </div>
+                </div>`;
+                if (data.connections && data.connections.length > 0) {
+                    html += `<div class="table-container"><table>
+                        <thead><tr><th>State</th><th>Local Address</th><th>Peer Address</th></tr></thead>
+                        <tbody>`;
+                    data.connections.slice(0, 30).forEach(c => {
+                        html += `<tr><td>${c.state}</td><td>${c.local}</td><td>${c.peer}</td></tr>`;
+                    });
+                    html += '</tbody></table></div>';
+                }
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Run iperf3 speed test
+        async function runIperf() {
+            const targetIp = document.getElementById('diagTargetIp').value.trim();
+            if (!targetIp) {
+                alert('Please enter a target IP for the speed test');
+                return;
+            }
+            const resultsDiv = document.getElementById('diagnosticsResults');
+            resultsDiv.innerHTML = '<p style="color:var(--text-secondary)">⏳ Running speed test (10s)...</p>';
+            try {
+                const res = await fetch('/api/diagnostics/iperf?target=' + encodeURIComponent(targetIp) + '&duration=10');
+                const data = await res.json();
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${data.error}</div>`;
+                    return;
+                }
+                resultsDiv.innerHTML = `
+                    <div class="metrics">
+                        <div class="metric-card">
+                            <div class="metric-value">${data.sender_mbps || '-'}</div>
+                            <div class="metric-label">Sender (Mbps)</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${data.receiver_mbps || '-'}</div>
+                            <div class="metric-label">Receiver (Mbps)</div>
+                        </div>
+                    </div>
+                    <p style="color:var(--text-secondary)">Target: ${data.target}</p>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Check bandwidth for a device
+        async function checkBandwidth() {
+            const ip = document.getElementById('bandwidthIp').value.trim();
+            if (!ip) {
+                alert('Please enter an IP address');
+                return;
+            }
+            const resultsDiv = document.getElementById('bandwidthResults');
+            resultsDiv.innerHTML = '<p style="color:var(--text-secondary)">⏳ Loading bandwidth data...</p>';
+            try {
+                const res = await fetch('/api/diagnostics/bandwidth/' + encodeURIComponent(ip));
+                const data = await res.json();
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${data.error}</div>`;
+                    return;
+                }
+                resultsDiv.innerHTML = `
+                    <div class="metrics">
+                        <div class="metric-card">
+                            <div class="metric-value">${data.sent_mb} MB</div>
+                            <div class="metric-label">Sent</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${data.received_mb} MB</div>
+                            <div class="metric-label">Received</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${data.flow_count}</div>
+                            <div class="metric-label">Flow Count</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Simple internet speed test (no server needed)
+        async function runSimpleSpeedTest() {
+            const resultsDiv = document.getElementById('diagnosticsResults');
+            resultsDiv.innerHTML = '<p style="color:var(--text-secondary)">🌐 Testing internet speed...</p>';
+            try {
+                const res = await fetch('/api/diagnostics/speedtest');
+                const data = await res.json();
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${data.error}</div>`;
+                    return;
+                }
+                let html = `<div class="metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">${data.avg_mbps || '-'}</div>
+                        <div class="metric-label">Avg Mbps</div>
+                    </div>
+                </div><div class="table-container"><table>
+                    <thead><tr><th>Server</th><th>Size</th><th>Time</th><th>Speed</th></tr></thead>
+                    <tbody>`;
+                data.servers.forEach(s => {
+                    html += `<tr><td>${s.url}</td><td>${s.size_mb || '-'}MB</td><td>${s.duration_s ? s.duration_s + 's' : '-'}</td><td>${s.mbps ? s.mbps + ' Mbps' : (s.error || '-')}</td></tr>`;
+                });
+                html += '</tbody></table></div>';
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-error">Error: ${error.message}</div>`;
             }
         }
 

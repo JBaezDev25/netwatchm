@@ -149,4 +149,5 @@ Side-car JSON stores in `/var/lib/netwatchm/`:
 - Live config edits: write to `/tmp/netwatchm.yaml` first, then use a script with `sudo cp`. Restart the service after config changes.
 - Before proposing a new feature or change, check `CHECKLIST.md` to understand what already exists and what is pending.
 - **CHECKLIST.md auto-update**: After EVERY change made to the project (code, scripts, config, fixes), immediately update `CHECKLIST.md` to record it under the current session section. Do not wait until the end of the session — update it after each individual task.
+- **CHECKLIST.md reminder**: Remind the user to update CHECKLIST.md every 30 minutes with a countdown. Reset the countdown if the user asks to do it manually.
 - **Change confirmation**: After any file(s) in the project are modified, always end the response with a summary block listing every file that was updated, created, or deleted — with a ✅ confirmation that changes are complete.

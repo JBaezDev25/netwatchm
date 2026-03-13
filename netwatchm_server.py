@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """NetWatchM web server — serves dashboard and triggers connection reports via API."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -34,18 +35,18 @@ def _send_test_ntfy() -> tuple[bool, str]:
     if not ntfy.get("enabled", False):
         return False, "ntfy is not enabled in config"
     server = ntfy.get("server", "https://ntfy.sh").rstrip("/")
-    topic  = ntfy.get("topic", "")
-    token  = os.environ.get("NETWATCHM_NTFY_TOKEN", ntfy.get("token", ""))
+    topic = ntfy.get("topic", "")
+    token = os.environ.get("NETWATCHM_NTFY_TOKEN", ntfy.get("token", ""))
 
     if not topic:
         return False, "ntfy topic is not configured"
 
-    url  = f"{server}/{topic}"
+    url = f"{server}/{topic}"
     body = b"This is a test notification from NetWatchM. If you see this, push alerts are working!"
     headers = {
-        "X-Title":    "[TEST] NetWatchM Alert",
+        "X-Title": "[TEST] NetWatchM Alert",
         "X-Priority": "3",
-        "X-Tags":     "white_check_mark",
+        "X-Tags": "white_check_mark",
         "Content-Type": "text/plain",
     }
     if token:
@@ -77,41 +78,47 @@ def _forward_grafana_ntfy(payload: dict) -> tuple[bool, str]:
     if not ntfy.get("enabled", False):
         return False, "ntfy not enabled"
     server = ntfy.get("server", "https://ntfy.sh").rstrip("/")
-    topic  = ntfy.get("topic", "")
-    token  = os.environ.get("NETWATCHM_NTFY_TOKEN", ntfy.get("token", ""))
+    topic = ntfy.get("topic", "")
+    token = os.environ.get("NETWATCHM_NTFY_TOKEN", ntfy.get("token", ""))
     if not topic:
         return False, "ntfy topic not configured"
 
-    status  = payload.get("status", "firing")
-    alerts  = payload.get("alerts", [])
-    title   = payload.get("title", "") or f"[{status.upper()}] Grafana Alert"
+    status = payload.get("status", "firing")
+    alerts = payload.get("alerts", [])
+    title = payload.get("title", "") or f"[{status.upper()}] Grafana Alert"
 
     # Build message body from alert annotations
     lines: list[str] = []
     for a in alerts:
         ann = a.get("annotations", {})
-        summary = ann.get("summary") or ann.get("description") or a.get("labels", {}).get("alertname", "")
+        summary = (
+            ann.get("summary")
+            or ann.get("description")
+            or a.get("labels", {}).get("alertname", "")
+        )
         if summary:
             lines.append(summary)
     body_text = "\n".join(lines) if lines else title
 
     priority = "4" if status == "firing" else "2"
-    tag      = "warning" if status == "firing" else "white_check_mark"
+    tag = "warning" if status == "firing" else "white_check_mark"
 
     # HTTP headers must be ASCII — strip/replace non-ASCII chars
     safe_title = title.encode("ascii", errors="replace").decode("ascii")
 
     url = f"{server}/{topic}"
     headers = {
-        "X-Title":    safe_title,
+        "X-Title": safe_title,
         "X-Priority": priority,
-        "X-Tags":     tag,
+        "X-Tags": tag,
         "Content-Type": "text/plain",
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    req = urllib.request.Request(url, data=body_text.encode(), headers=headers, method="POST")
+    req = urllib.request.Request(
+        url, data=body_text.encode(), headers=headers, method="POST"
+    )
     try:
         with urllib.request.urlopen(req, timeout=10):
             return True, f"Grafana alert forwarded to ntfy (status={status})"
@@ -202,6 +209,7 @@ def _update_flow_history(duration_s: int) -> None:
     Unpinned entries older than RETENTION_DAYS are purged automatically.
     """
     from datetime import timedelta
+
     now = datetime.now(timezone.utc)
     expires = (now + timedelta(days=_RETENTION_DAYS)).isoformat()
 
@@ -242,8 +250,15 @@ def _update_flow_history(duration_s: int) -> None:
                     "INSERT INTO flow_history "
                     "(dst_ip, dns, port, protocol, last_active, went_inactive, expires_at, pinned) "
                     "VALUES (?,?,?,?,?,?,?,0)",
-                    (dst_ip, dns, meta.get("port"), meta.get("protocol"),
-                     now.isoformat(), now.isoformat(), expires),
+                    (
+                        dst_ip,
+                        dns,
+                        meta.get("port"),
+                        meta.get("protocol"),
+                        now.isoformat(),
+                        now.isoformat(),
+                        expires,
+                    ),
                 )
 
         # ── 4. Reactivated (back in current) — remove unpinned history entry ──
@@ -260,8 +275,13 @@ def _update_flow_history(duration_s: int) -> None:
             "INSERT INTO active_snapshot (dst_ip, dns, port, protocol, report_time) "
             "VALUES (?,?,?,?,?)",
             [
-                (k[0], k[1], current_meta[k].get("port"),
-                 current_meta[k].get("protocol"), now.isoformat())
+                (
+                    k[0],
+                    k[1],
+                    current_meta[k].get("port"),
+                    current_meta[k].get("protocol"),
+                    now.isoformat(),
+                )
                 for k in current
             ],
         )
@@ -311,15 +331,28 @@ def _classify_ip(ip_str: str) -> str:
     except ValueError:
         return "External(IP)"
 
+
 import sys as _sys
+
+
 def _data_dir() -> str:
     if _sys.platform == "win32":
-        return os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "netwatchm")
+        return os.path.join(
+            os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "netwatchm"
+        )
     return "/var/lib/netwatchm"
+
+
 def _config_file() -> str:
     if _sys.platform == "win32":
-        return os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "netwatchm", "netwatchm.yaml")
+        return os.path.join(
+            os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+            "netwatchm",
+            "netwatchm.yaml",
+        )
     return "/etc/netwatchm/netwatchm.yaml"
+
+
 _DD = _data_dir()
 
 SERVE_DIR = Path(os.environ.get("NETWATCHM_SERVE_DIR", _DD))
@@ -327,21 +360,29 @@ PORT = int(os.environ.get("NETWATCHM_PORT", "8765"))
 NETWATCHM_CMD = os.environ.get("NETWATCHM_CMD", "netwatchm")
 NETWATCHM_CONFIG = os.environ.get("NETWATCHM_CONFIG", _config_file())
 DEFAULT_NETWORK = os.environ.get("NETWATCHM_NETWORK", "192.168.1.0/24")
-GEOIP_DB    = os.environ.get("NETWATCHM_GEOIP_DB",      str(Path(_DD) / "GeoLite2-City.mmdb"))
-FLOW_DB          = os.environ.get("NETWATCHM_FLOW_DB",         str(Path(_DD) / "flows.db"))
-FLOW_HISTORY_DB  = os.environ.get("NETWATCHM_FLOW_HISTORY_DB", str(Path(_DD) / "flow-history.db"))
-EVENT_DB    = os.environ.get("NETWATCHM_EVENT_DB",       str(Path(_DD) / "events.db"))
+GEOIP_DB = os.environ.get("NETWATCHM_GEOIP_DB", str(Path(_DD) / "GeoLite2-City.mmdb"))
+FLOW_DB = os.environ.get("NETWATCHM_FLOW_DB", str(Path(_DD) / "flows.db"))
+FLOW_HISTORY_DB = os.environ.get(
+    "NETWATCHM_FLOW_HISTORY_DB", str(Path(_DD) / "flow-history.db")
+)
+EVENT_DB = os.environ.get("NETWATCHM_EVENT_DB", str(Path(_DD) / "events.db"))
 ADMIN_TOKEN = os.environ.get("NETWATCHM_ADMIN_TOKEN", "netwatchm-admin")
-READ_TOKEN  = os.environ.get("NETWATCHM_READ_TOKEN", "")  # empty = public reads allowed
-ALIASES_FILE   = Path(os.environ.get("NETWATCHM_ALIASES_FILE",   str(Path(_DD) / "aliases.json")))
-VERIFIED_FILE  = Path(os.environ.get("NETWATCHM_VERIFIED_FILE",  str(Path(_DD) / "verified.json")))
-SUPPRESSED_FILE = Path(os.environ.get("NETWATCHM_SUPPRESSED_FILE", str(Path(_DD) / "suppressed.json")))
+READ_TOKEN = os.environ.get("NETWATCHM_READ_TOKEN", "")  # empty = public reads allowed
+ALIASES_FILE = Path(
+    os.environ.get("NETWATCHM_ALIASES_FILE", str(Path(_DD) / "aliases.json"))
+)
+VERIFIED_FILE = Path(
+    os.environ.get("NETWATCHM_VERIFIED_FILE", str(Path(_DD) / "verified.json"))
+)
+SUPPRESSED_FILE = Path(
+    os.environ.get("NETWATCHM_SUPPRESSED_FILE", str(Path(_DD) / "suppressed.json"))
+)
 REPORTS_DIR = SERVE_DIR / "reports"
 REPORTS_MAX = 50  # keep this many archived reports
 
 _lock = threading.Lock()
 _state: dict = {
-    "status": "idle",       # idle | running | ready | error
+    "status": "idle",  # idle | running | ready | error
     "generated_at": None,
     "duration": None,
     "network": None,
@@ -350,7 +391,7 @@ _state: dict = {
 
 # Investigation state keyed by target IP
 _inv_lock = threading.Lock()
-_inv_state: dict[str, dict] = {}   # {ip: {status, error}}
+_inv_state: dict[str, dict] = {}  # {ip: {status, error}}
 
 # Deep inspect state keyed by target IP
 _deep_lock = threading.Lock()
@@ -375,8 +416,16 @@ def _run_deep_inspect(target_ip: str, ports: str) -> None:
         _deep_state[target_ip] = {"status": "running", "error": None}
     try:
         out_path = SERVE_DIR / f"deep-inspect-{target_ip}.html"
-        cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
-               "deep-inspect", "--target", target_ip, "--output", str(out_path)]
+        cmd = [
+            NETWATCHM_CMD,
+            "--config",
+            NETWATCHM_CONFIG,
+            "deep-inspect",
+            "--target",
+            target_ip,
+            "--output",
+            str(out_path),
+        ]
         if ports:
             cmd += ["--ports", ports]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -387,16 +436,22 @@ def _run_deep_inspect(target_ip: str, ports: str) -> None:
             inv_file = SERVE_DIR / "inventory.json"
             if inv_file.exists():
                 inv = json.loads(inv_file.read_text())
-                hostname = next((d.get("hostname", "") for d in inv
-                                 if d.get("ip") == target_ip and d.get("hostname")), "")
+                hostname = next(
+                    (
+                        d.get("hostname", "")
+                        for d in inv
+                        if d.get("ip") == target_ip and d.get("hostname")
+                    ),
+                    "",
+                )
                 if hostname:
                     html = out_path.read_text()
                     html = html.replace(
                         f"Deep Inspect: {target_ip}",
-                        f"Deep Inspect: {hostname} ({target_ip})"
+                        f"Deep Inspect: {hostname} ({target_ip})",
                     ).replace(
                         f"Deep Inspect — {target_ip}",
-                        f"Deep Inspect — {hostname} ({target_ip})"
+                        f"Deep Inspect — {hostname} ({target_ip})",
                     )
                     out_path.write_text(html)
         except Exception:  # noqa: BLE001
@@ -411,21 +466,32 @@ def _run_deep_inspect(target_ip: str, ports: str) -> None:
 def _run_analytics() -> None:
     """Regenerate analytics.html from the flow store in a background thread."""
     from datetime import datetime, timezone
+
     with _anal_lock:
         _anal_state.update({"status": "running", "error": None})
     try:
         out_path = SERVE_DIR / "analytics.html"
-        cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
-               "analytics", "--output", str(out_path), "--db-path", FLOW_DB]
+        cmd = [
+            NETWATCHM_CMD,
+            "--config",
+            NETWATCHM_CONFIG,
+            "analytics",
+            "--output",
+            str(out_path),
+            "--db-path",
+            FLOW_DB,
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "analytics failed")
         with _anal_lock:
-            _anal_state.update({
-                "status": "ready",
-                "error": None,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-            })
+            _anal_state.update(
+                {
+                    "status": "ready",
+                    "error": None,
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
     except Exception as exc:
         with _anal_lock:
             _anal_state.update({"status": "error", "error": str(exc)})
@@ -435,8 +501,16 @@ def _run_investigate(target_ip: str, ports: str) -> None:
     """Run netwatchm investigate in a background thread, write HTML to SERVE_DIR."""
     out_path = SERVE_DIR / f"investigate-{target_ip}.html"
     try:
-        cmd = [NETWATCHM_CMD, "--config", NETWATCHM_CONFIG,
-               "investigate", "--target", target_ip, "--output", str(out_path)]
+        cmd = [
+            NETWATCHM_CMD,
+            "--config",
+            NETWATCHM_CONFIG,
+            "investigate",
+            "--target",
+            target_ip,
+            "--output",
+            str(out_path),
+        ]
         if ports:
             cmd += ["--ports", ports]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -452,6 +526,7 @@ def _run_investigate(target_ip: str, ports: str) -> None:
 def _run_nmap_scan(target_ip: str, ports: str) -> None:
     """Run nmap against target_ip in a background thread; store output in _nmap_state."""
     import shutil
+
     with _nmap_lock:
         _nmap_state[target_ip] = {"status": "running", "output": "", "error": None}
     try:
@@ -482,7 +557,211 @@ def _run_nmap_scan(target_ip: str, ports: str) -> None:
             }
     except Exception as exc:
         with _nmap_lock:
-            _nmap_state[target_ip] = {"status": "error", "output": "", "error": str(exc)}
+            _nmap_state[target_ip] = {
+                "status": "error",
+                "output": "",
+                "error": str(exc),
+            }
+
+
+# ---------------------------------------------------------------------------
+# Network diagnostics (conntrack, ss, iperf)
+# ---------------------------------------------------------------------------
+
+
+def _run_conntrack(target: str | None = None) -> dict:
+    """Get active TCP connections via conntrack, optionally filtered by target IP."""
+    try:
+        result = subprocess.run(
+            ["conntrack", "-L", "-p", "tcp", "--state", "ESTABLISHED"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return {"error": result.stderr.strip() or "conntrack failed"}
+        connections = []
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split()
+            src = dst = sport = dport = None
+            for p in parts:
+                if p.startswith("src="):
+                    src = p[4:]
+                elif p.startswith("dst="):
+                    dst = p[4:]
+                elif p.startswith("sport="):
+                    sport = p[6:]
+                elif p.startswith("dport="):
+                    dport = p[6:]
+            if src and dst:
+                if target and src != target and dst != target:
+                    continue
+                connections.append(
+                    {"src": src, "dst": dst, "sport": sport, "dport": dport}
+                )
+        return {"connections": connections, "count": len(connections)}
+    except FileNotFoundError:
+        return {"error": "conntrack not installed"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _run_tcpstates() -> dict:
+    """Get TCP connection states via ss."""
+    try:
+        result = subprocess.run(
+            ["ss", "-tan", "state", "established"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return {"error": result.stderr.strip() or "ss failed"}
+        lines = result.stdout.strip().split("\n")
+        if len(lines) < 2:
+            return {"connections": [], "count": 0}
+        headers = lines[0].split()
+        connections = []
+        for line in lines[1:]:
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 5:
+                connections.append(
+                    {
+                        "state": parts[0],
+                        "local": parts[4],
+                        "peer": parts[5] if len(parts) > 5 else "",
+                    }
+                )
+        return {"connections": connections, "count": len(connections)}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _run_iperf_client(target: str, duration: int = 10) -> dict:
+    """Run iperf3 client test to target."""
+    try:
+        result = subprocess.run(
+            ["iperf3", "-c", target, "-t", str(duration), "-f", "m", "-P", "4"],
+            capture_output=True,
+            text=True,
+            timeout=duration + 20,
+        )
+        if result.returncode != 0:
+            err = result.stderr.strip()
+            if "connect" in err.lower() or "no route" in err.lower():
+                return {
+                    "error": f"Cannot connect to {target}. Try a public server.",
+                    "target": target,
+                }
+            return {"error": err or "iperf failed", "target": target}
+        output = result.stdout
+        sender = receiver = None
+        for line in output.split("\n"):
+            if "sender" in line and "Mbits/sec" in line:
+                parts = line.split()
+                for i, p in enumerate(parts):
+                    if p == "Mbits/sec" and i > 0:
+                        try:
+                            sender = float(parts[i - 1])
+                        except (ValueError, IndexError):
+                            pass
+            elif "receiver" in line and "Mbits/sec" in line:
+                parts = line.split()
+                for i, p in enumerate(parts):
+                    if p == "Mbits/sec" and i > 0:
+                        try:
+                            receiver = float(parts[i - 1])
+                        except (ValueError, IndexError):
+                            pass
+        return {
+            "target": target,
+            "sender_mbps": sender,
+            "receiver_mbps": receiver,
+            "duration": duration,
+            "raw": output,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "error": "Test timed out - target may not be reachable",
+            "target": target,
+        }
+    except FileNotFoundError:
+        return {"error": "iperf3 not installed"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _run_simple_speedtest() -> dict:
+    """Simple HTTP-based speed test using public test files."""
+    import urllib.request
+
+    test_urls = [
+        ("http://speedtest.tele2.net/1MB.zip", 1),
+        ("http://speedtest.tele2.net/10MB.zip", 10),
+    ]
+    results = {"servers": []}
+    for url, size_mb in test_urls:
+        try:
+            import time
+
+            start = time.time()
+            req = urllib.request.Request(url, headers={"User-Agent": "NetWatchM/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+            elapsed = time.time() - start
+            mbps = (len(data) * 8) / (elapsed * 1_000_000)
+            results["servers"].append(
+                {
+                    "url": url,
+                    "size_mb": size_mb,
+                    "duration_s": round(elapsed, 2),
+                    "mbps": round(mbps, 2),
+                }
+            )
+        except Exception as e:
+            results["servers"].append({"url": url, "error": str(e)})
+    if results["servers"]:
+        results["avg_mbps"] = round(
+            sum(s.get("mbps", 0) for s in results["servers"]) / len(results["servers"]),
+            2,
+        )
+    return results
+
+
+def _get_bandwidth_for_ip(ip: str) -> dict:
+    """Get bandwidth stats for a specific IP from flow data."""
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(str(FLOW_DB))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT 
+                SUM(CASE WHEN src_ip = ? THEN bytes ELSE 0 END) as sent,
+                SUM(CASE WHEN dst_ip = ? THEN bytes ELSE 0 END) as received,
+                COUNT(*) as flow_count
+            FROM flows
+            WHERE src_ip = ? OR dst_ip = ?
+        """,
+            (ip, ip, ip, ip),
+        )
+        row = cur.fetchone()
+        conn.close()
+        return {
+            "ip": ip,
+            "sent_bytes": row[0] or 0,
+            "received_bytes": row[1] or 0,
+            "flow_count": row[2] or 0,
+            "sent_mb": round((row[0] or 0) / 1024 / 1024, 2),
+            "received_mb": round((row[1] or 0) / 1024 / 1024, 2),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 # ---------------------------------------------------------------------------
@@ -492,12 +771,31 @@ def _run_nmap_scan(target_ip: str, ports: str) -> None:
 _NINTENDO_KEYWORDS = ("nintendo", "nintend", "wup-", "lp1.", "nasc.", "ctest.")
 
 _PORT_SERVICE = {
-    20: "FTP-data", 21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP",
-    53: "DNS", 80: "HTTP", 110: "POP3", 111: "RPCbind", 135: "MSRPC",
-    139: "NetBIOS", 143: "IMAP", 443: "HTTPS", 445: "SMB", 554: "RTSP",
-    587: "SMTP/TLS", 993: "IMAPS", 995: "POP3S", 1720: "H.323",
-    1723: "PPTP", 3306: "MySQL", 3389: "RDP", 5900: "VNC",
-    8080: "HTTP-alt", 8443: "HTTPS-alt",
+    20: "FTP-data",
+    21: "FTP",
+    22: "SSH",
+    23: "Telnet",
+    25: "SMTP",
+    53: "DNS",
+    80: "HTTP",
+    110: "POP3",
+    111: "RPCbind",
+    135: "MSRPC",
+    139: "NetBIOS",
+    143: "IMAP",
+    443: "HTTPS",
+    445: "SMB",
+    554: "RTSP",
+    587: "SMTP/TLS",
+    993: "IMAPS",
+    995: "POP3S",
+    1720: "H.323",
+    1723: "PPTP",
+    3306: "MySQL",
+    3389: "RDP",
+    5900: "VNC",
+    8080: "HTTP-alt",
+    8443: "HTTPS-alt",
 }
 
 
@@ -505,8 +803,8 @@ def _oui_lookup(mac: str) -> str:
     """Return vendor string for a MAC address using the Wireshark manuf file."""
     if not mac:
         return ""
-    prefix6  = mac[:8].upper()   # e.g. "98:E2:55"
-    prefix8  = mac[:11].upper()  # e.g. "98:E2:55:D4"
+    prefix6 = mac[:8].upper()  # e.g. "98:E2:55"
+    prefix8 = mac[:11].upper()  # e.g. "98:E2:55:D4"
     manuf_paths = [
         "/usr/share/wireshark/manuf",
         "/usr/share/wireshark/manuf.gz",
@@ -518,6 +816,7 @@ def _oui_lookup(mac: str) -> str:
         try:
             if mp.endswith(".gz"):
                 import gzip
+
                 text = gzip.open(mp, "rt", errors="ignore").read()
             else:
                 text = p.read_text(errors="ignore")
@@ -539,7 +838,9 @@ def _tshark(pcap_path: str, *args: str, timeout: int = 90) -> str:
     try:
         r = subprocess.run(
             ["tshark", "-r", pcap_path] + list(args),
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         return r.stdout
     except subprocess.TimeoutExpired:
@@ -565,8 +866,15 @@ def _analyze_pcap(pcap_path: str) -> dict:
 
     # ── 2. IP → MAC mapping + packet counts ──────────────────────────────────
     ipmac_out = _tshark(
-        pcap_path, "-T", "fields", "-e", "ip.src", "-e", "eth.src",
-        "-E", "separator=\t",
+        pcap_path,
+        "-T",
+        "fields",
+        "-e",
+        "ip.src",
+        "-e",
+        "eth.src",
+        "-E",
+        "separator=\t",
     )
     ip_to_mac: dict[str, str] = {}
     ip_pkt_count: dict[str, int] = collections.Counter()
@@ -580,9 +888,16 @@ def _analyze_pcap(pcap_path: str) -> dict:
     # ── 3. Open ports (SYN-ACK responses) ────────────────────────────────────
     synack_out = _tshark(
         pcap_path,
-        "-Y", "tcp.flags.syn==1 and tcp.flags.ack==1",
-        "-T", "fields", "-e", "ip.src", "-e", "tcp.srcport",
-        "-E", "separator=\t",
+        "-Y",
+        "tcp.flags.syn==1 and tcp.flags.ack==1",
+        "-T",
+        "fields",
+        "-e",
+        "ip.src",
+        "-e",
+        "tcp.srcport",
+        "-E",
+        "separator=\t",
     )
     open_ports_by_ip: dict[str, list[int]] = collections.defaultdict(list)
     for line in synack_out.splitlines():
@@ -596,15 +911,26 @@ def _analyze_pcap(pcap_path: str) -> dict:
     # ── 4. DNS latency ────────────────────────────────────────────────────────
     dns_out = _tshark(
         pcap_path,
-        "-Y", "dns",
-        "-T", "fields",
-        "-e", "frame.time_epoch",
-        "-e", "ip.src", "-e", "ip.dst",
-        "-e", "dns.id",
-        "-e", "dns.flags.response",
-        "-e", "dns.qry.name",
-        "-e", "dns.a",
-        "-E", "separator=\t",
+        "-Y",
+        "dns",
+        "-T",
+        "fields",
+        "-e",
+        "frame.time_epoch",
+        "-e",
+        "ip.src",
+        "-e",
+        "ip.dst",
+        "-e",
+        "dns.id",
+        "-e",
+        "dns.flags.response",
+        "-e",
+        "dns.qry.name",
+        "-e",
+        "dns.a",
+        "-E",
+        "separator=\t",
     )
     # key: (src_ip, dst_ip, dns_id) → query record
     dns_pending: dict[tuple, dict] = {}
@@ -614,11 +940,11 @@ def _analyze_pcap(pcap_path: str) -> dict:
         if len(parts) < 6:
             continue
         try:
-            ts        = float(parts[0])
-            src, dst  = parts[1], parts[2]
-            dns_id    = parts[3].strip()
-            is_resp   = parts[4].strip() == "1"
-            qname     = parts[5].strip()
+            ts = float(parts[0])
+            src, dst = parts[1], parts[2]
+            dns_id = parts[3].strip()
+            is_resp = parts[4].strip() == "1"
+            qname = parts[5].strip()
             a_records = parts[6].strip() if len(parts) > 6 else ""
         except (ValueError, IndexError):
             continue
@@ -626,7 +952,10 @@ def _analyze_pcap(pcap_path: str) -> dict:
         if not is_resp:
             # query: key by (client, server, id)
             dns_pending[(src, dst, dns_id)] = {
-                "ts": ts, "src": src, "server": dst, "qname": qname,
+                "ts": ts,
+                "src": src,
+                "server": dst,
+                "qname": qname,
             }
         else:
             # response: client was dst of query, server was src
@@ -634,30 +963,42 @@ def _analyze_pcap(pcap_path: str) -> dict:
             q = dns_pending.pop(key, None)
             if q:
                 latency_ms = round((ts - q["ts"]) * 1000, 2)
-                nintendo   = any(k in q["qname"].lower() for k in _NINTENDO_KEYWORDS)
-                resolved   = a_records.split(",")[0].strip() if a_records else ""
-                dns_results.append({
-                    "query":       q["qname"],
-                    "src_ip":      q["src"],
-                    "server_ip":   q["server"],
-                    "resolved_ip": resolved,
-                    "latency_ms":  latency_ms,
-                    "nintendo":    nintendo,
-                })
+                nintendo = any(k in q["qname"].lower() for k in _NINTENDO_KEYWORDS)
+                resolved = a_records.split(",")[0].strip() if a_records else ""
+                dns_results.append(
+                    {
+                        "query": q["qname"],
+                        "src_ip": q["src"],
+                        "server_ip": q["server"],
+                        "resolved_ip": resolved,
+                        "latency_ms": latency_ms,
+                        "nintendo": nintendo,
+                    }
+                )
 
     dns_results.sort(key=lambda x: x["latency_ms"])
 
     # ── 5. TLS handshake latency ──────────────────────────────────────────────
     tls_out = _tshark(
         pcap_path,
-        "-Y", "tls.handshake.type == 1 or tls.handshake.type == 2",
-        "-T", "fields",
-        "-e", "frame.time_epoch",
-        "-e", "ip.src", "-e", "ip.dst",
-        "-e", "tcp.stream",
-        "-e", "tls.handshake.type",
-        "-e", "tls.handshake.extensions_server_name",
-        "-E", "separator=\t",
+        "-Y",
+        "tls.handshake.type == 1 or tls.handshake.type == 2",
+        "-T",
+        "fields",
+        "-e",
+        "frame.time_epoch",
+        "-e",
+        "ip.src",
+        "-e",
+        "ip.dst",
+        "-e",
+        "tcp.stream",
+        "-e",
+        "tls.handshake.type",
+        "-e",
+        "tls.handshake.extensions_server_name",
+        "-E",
+        "separator=\t",
     )
     tls_pending: dict[str, dict] = {}  # tcp.stream → ClientHello info
     tls_results: list[dict] = []
@@ -666,11 +1007,11 @@ def _analyze_pcap(pcap_path: str) -> dict:
         if len(parts) < 5:
             continue
         try:
-            ts     = float(parts[0])
+            ts = float(parts[0])
             src, dst = parts[1], parts[2]
             stream = parts[3].strip()
-            htype  = int(parts[4].strip())
-            sni    = parts[5].strip() if len(parts) > 5 else ""
+            htype = int(parts[4].strip())
+            sni = parts[5].strip() if len(parts) > 5 else ""
         except (ValueError, IndexError):
             continue
 
@@ -680,15 +1021,17 @@ def _analyze_pcap(pcap_path: str) -> dict:
             ch = tls_pending.pop(stream, None)
             if ch:
                 latency_ms = round((ts - ch["ts"]) * 1000, 2)
-                name       = ch["sni"] or ch["dst"]
-                nintendo   = any(k in name.lower() for k in _NINTENDO_KEYWORDS)
-                tls_results.append({
-                    "server_name": name,
-                    "src_ip":      ch["src"],
-                    "dst_ip":      ch["dst"],
-                    "latency_ms":  latency_ms,
-                    "nintendo":    nintendo,
-                })
+                name = ch["sni"] or ch["dst"]
+                nintendo = any(k in name.lower() for k in _NINTENDO_KEYWORDS)
+                tls_results.append(
+                    {
+                        "server_name": name,
+                        "src_ip": ch["src"],
+                        "dst_ip": ch["dst"],
+                        "latency_ms": latency_ms,
+                        "nintendo": nintendo,
+                    }
+                )
 
     tls_results.sort(key=lambda x: x["latency_ms"])
 
@@ -696,31 +1039,31 @@ def _analyze_pcap(pcap_path: str) -> dict:
     all_ips = set(ip_to_mac) | set(ip_pkt_count)
     devices = []
     for ip in all_ips:
-        mac    = ip_to_mac.get(ip, "")
+        mac = ip_to_mac.get(ip, "")
         vendor = _oui_lookup(mac)
-        ports  = sorted(set(open_ports_by_ip.get(ip, [])))
-        port_labels = [
-            f"{p}/{_PORT_SERVICE.get(p, 'unknown')}" for p in ports
-        ]
-        devices.append({
-            "ip":          ip,
-            "mac":         mac,
-            "vendor":      vendor,
-            "packet_count": ip_pkt_count.get(ip, 0),
-            "open_ports":  port_labels,
-            "nintendo":    "nintendo" in vendor.lower(),
-        })
+        ports = sorted(set(open_ports_by_ip.get(ip, [])))
+        port_labels = [f"{p}/{_PORT_SERVICE.get(p, 'unknown')}" for p in ports]
+        devices.append(
+            {
+                "ip": ip,
+                "mac": mac,
+                "vendor": vendor,
+                "packet_count": ip_pkt_count.get(ip, 0),
+                "open_ports": port_labels,
+                "nintendo": "nintendo" in vendor.lower(),
+            }
+        )
     devices.sort(key=lambda d: d["packet_count"], reverse=True)
 
     return {
         "summary": {
-            "filename":      Path(pcap_path).name,
+            "filename": Path(pcap_path).name,
             "total_packets": total_packets,
-            "duration_s":    duration_s,
+            "duration_s": duration_s,
         },
         "devices": devices,
-        "dns":     dns_results,
-        "tls":     tls_results,
+        "dns": dns_results,
+        "tls": tls_results,
     }
 
 
@@ -747,11 +1090,15 @@ def _run_report(duration: int, network: str) -> None:
         result = subprocess.run(
             [
                 NETWATCHM_CMD,
-                "--config", NETWATCHM_CONFIG,
+                "--config",
+                NETWATCHM_CONFIG,
                 "report",
-                "--duration", str(duration),
-                "--network", network,
-                "--output", str(html_path),
+                "--duration",
+                str(duration),
+                "--network",
+                network,
+                "--output",
+                str(html_path),
             ],
             capture_output=True,
             text=True,
@@ -766,18 +1113,22 @@ def _run_report(duration: int, network: str) -> None:
         except Exception:
             pass  # history update is best-effort
         with _lock:
-            _state.update({
-                "status": "ready",
-                "generated_at": now.isoformat(),
-                "error": None,
-            })
+            _state.update(
+                {
+                    "status": "ready",
+                    "generated_at": now.isoformat(),
+                    "error": None,
+                }
+            )
     except Exception as exc:
         with _lock:
-            _state.update({
-                "status": "error",
-                "generated_at": None,
-                "error": str(exc),
-            })
+            _state.update(
+                {
+                    "status": "error",
+                    "generated_at": None,
+                    "error": str(exc),
+                }
+            )
 
 
 def _archive_report(src: Path, ts: datetime) -> None:
@@ -820,7 +1171,11 @@ def _render_reports_index() -> bytes:
             f" &nbsp; <a href='/reports/{p.name}' download>Download</a></td>"
             f"</tr>"
         )
-    rows_html = "\n".join(rows) if rows else "<tr><td colspan='3' style='color:var(--muted)'>No archived reports yet.</td></tr>"
+    rows_html = (
+        "\n".join(rows)
+        if rows
+        else "<tr><td colspan='3' style='color:var(--muted)'>No archived reports yet.</td></tr>"
+    )
     page = f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
@@ -877,8 +1232,10 @@ def _query_flows_endpoint(sub: str) -> object:
                        COALESCE(SUM(bytes),0) AS bytes
                 FROM flows GROUP BY src_ip ORDER BY bytes DESC LIMIT 20
             """)
-            return [{"ip": r["ip"], "host": r["host"] or r["ip"], "bytes": r["bytes"]}
-                    for r in cur.fetchall()]
+            return [
+                {"ip": r["ip"], "host": r["host"] or r["ip"], "bytes": r["bytes"]}
+                for r in cur.fetchall()
+            ]
         if sub == "devices/top":
             cur.execute("""
                 SELECT src_ip AS ip, MAX(src_host) AS host,
@@ -889,17 +1246,37 @@ def _query_flows_endpoint(sub: str) -> object:
             if not row:
                 return [{"value": 0, "label": "—", "time": int(_time.time() * 1000)}]
             label = f"{row['host'] or row['ip']} ({row['ip']})"
-            return [{"value": row["bytes"], "label": label,
-                     "time": int(_time.time() * 1000)}]
+            return [
+                {
+                    "value": row["bytes"],
+                    "label": label,
+                    "time": int(_time.time() * 1000),
+                }
+            ]
         if sub == "devices/top/why":
             _PORT_SERVICES = {
-                80: "HTTP", 443: "HTTPS", 8080: "HTTP-alt", 8443: "HTTPS-alt",
-                22: "SSH", 3389: "RDP", 21: "FTP", 23: "Telnet",
-                25: "SMTP", 587: "SMTP", 465: "SMTPS",
-                53: "DNS", 123: "NTP", 161: "SNMP",
-                445: "SMB/File Share", 139: "NetBIOS", 3306: "MySQL",
-                5432: "PostgreSQL", 6379: "Redis", 27017: "MongoDB",
-                1194: "OpenVPN", 51820: "WireGuard",
+                80: "HTTP",
+                443: "HTTPS",
+                8080: "HTTP-alt",
+                8443: "HTTPS-alt",
+                22: "SSH",
+                3389: "RDP",
+                21: "FTP",
+                23: "Telnet",
+                25: "SMTP",
+                587: "SMTP",
+                465: "SMTPS",
+                53: "DNS",
+                123: "NTP",
+                161: "SNMP",
+                445: "SMB/File Share",
+                139: "NetBIOS",
+                3306: "MySQL",
+                5432: "PostgreSQL",
+                6379: "Redis",
+                27017: "MongoDB",
+                1194: "OpenVPN",
+                51820: "WireGuard",
             }
             # Find top sender
             top = cur.execute("""
@@ -909,22 +1286,27 @@ def _query_flows_endpoint(sub: str) -> object:
             if not top:
                 return []
             top_ip = top["src_ip"]
-            rows = cur.execute("""
+            rows = cur.execute(
+                """
                 SELECT dst_ip, MAX(domain) AS domain, dst_port,
                        COALESCE(SUM(bytes),0) AS bytes, COUNT(*) AS conns
                 FROM flows WHERE src_ip=?
                 GROUP BY dst_ip ORDER BY bytes DESC LIMIT 8
-            """, (top_ip,)).fetchall()
+            """,
+                (top_ip,),
+            ).fetchall()
             result = []
             for r in rows:
                 svc = _PORT_SERVICES.get(r["dst_port"], f"port {r['dst_port']}")
                 dest = r["domain"] or r["dst_ip"]
-                result.append({
-                    "destination": dest,
-                    "service": svc,
-                    "bytes": r["bytes"],
-                    "connections": r["conns"],
-                })
+                result.append(
+                    {
+                        "destination": dest,
+                        "service": svc,
+                        "bytes": r["bytes"],
+                        "connections": r["conns"],
+                    }
+                )
             return result
         if sub == "destinations":
             cur.execute("""
@@ -932,9 +1314,15 @@ def _query_flows_endpoint(sub: str) -> object:
                        dst_port AS port, COALESCE(SUM(bytes),0) AS bytes
                 FROM flows GROUP BY dst_ip ORDER BY bytes DESC LIMIT 10
             """)
-            return [{"ip": r["ip"], "domain": r["domain"] or r["ip"],
-                     "port": r["port"], "bytes": r["bytes"]}
-                    for r in cur.fetchall()]
+            return [
+                {
+                    "ip": r["ip"],
+                    "domain": r["domain"] or r["ip"],
+                    "port": r["port"],
+                    "bytes": r["bytes"],
+                }
+                for r in cur.fetchall()
+            ]
         if sub == "protocols":
             cur.execute("""
                 SELECT COALESCE(protocol,'Other') AS name,
@@ -954,10 +1342,23 @@ def _query_flows_endpoint(sub: str) -> object:
             return [{"hour": r["hour"], "bytes": r["bytes"]} for r in cur.fetchall()]
         if sub == "top-apps":
             _SVC = {
-                80:"HTTP", 443:"HTTPS", 8080:"HTTP-alt", 8443:"HTTPS-alt",
-                22:"SSH", 3389:"RDP", 21:"FTP", 25:"SMTP", 587:"SMTP",
-                53:"DNS", 123:"NTP", 445:"SMB", 3306:"MySQL",
-                5432:"PostgreSQL", 6379:"Redis", 1194:"OpenVPN", 51820:"WireGuard",
+                80: "HTTP",
+                443: "HTTPS",
+                8080: "HTTP-alt",
+                8443: "HTTPS-alt",
+                22: "SSH",
+                3389: "RDP",
+                21: "FTP",
+                25: "SMTP",
+                587: "SMTP",
+                53: "DNS",
+                123: "NTP",
+                445: "SMB",
+                3306: "MySQL",
+                5432: "PostgreSQL",
+                6379: "Redis",
+                1194: "OpenVPN",
+                51820: "WireGuard",
             }
             cur.execute("""
                 SELECT dst_port, COALESCE(SUM(bytes),0) AS bytes
@@ -967,8 +1368,10 @@ def _query_flows_endpoint(sub: str) -> object:
             for r in cur.fetchall():
                 name = _SVC.get(r["dst_port"], f"port {r['dst_port']}")
                 result[name] = result.get(name, 0) + r["bytes"]
-            return [{"app": k, "bytes": v} for k, v in
-                    sorted(result.items(), key=lambda x: -x[1])]
+            return [
+                {"app": k, "bytes": v}
+                for k, v in sorted(result.items(), key=lambda x: -x[1])
+            ]
         if sub == "devices/enriched":
             cur.execute("""
                 SELECT src_ip AS ip, MAX(src_host) AS host,
@@ -977,31 +1380,49 @@ def _query_flows_endpoint(sub: str) -> object:
             """)
             devices = [dict(r) for r in cur.fetchall()]
             _SVC2 = {
-                80:"HTTP", 443:"HTTPS", 8080:"HTTP-alt", 8443:"HTTPS-alt",
-                22:"SSH", 3389:"RDP", 21:"FTP", 25:"SMTP", 587:"SMTP",
-                53:"DNS", 123:"NTP", 445:"SMB", 3306:"MySQL",
-                5432:"PostgreSQL", 6379:"Redis", 1194:"OpenVPN", 51820:"WireGuard",
+                80: "HTTP",
+                443: "HTTPS",
+                8080: "HTTP-alt",
+                8443: "HTTPS-alt",
+                22: "SSH",
+                3389: "RDP",
+                21: "FTP",
+                25: "SMTP",
+                587: "SMTP",
+                53: "DNS",
+                123: "NTP",
+                445: "SMB",
+                3306: "MySQL",
+                5432: "PostgreSQL",
+                6379: "Redis",
+                1194: "OpenVPN",
+                51820: "WireGuard",
             }
             result2 = []
             for dev in devices:
-                top = cur.execute("""
+                top = cur.execute(
+                    """
                     SELECT dst_ip, MAX(domain) AS domain, dst_port,
                            COALESCE(SUM(bytes),0) AS bytes
                     FROM flows WHERE src_ip=?
                     GROUP BY dst_ip ORDER BY bytes DESC LIMIT 1
-                """, (dev["ip"],)).fetchone()
+                """,
+                    (dev["ip"],),
+                ).fetchone()
                 dest = ""
                 svc = ""
                 if top:
                     dest = top["domain"] or top["dst_ip"]
                     svc = _SVC2.get(top["dst_port"], f"port {top['dst_port']}")
-                result2.append({
-                    "ip": dev["ip"],
-                    "device": dev["host"] or dev["ip"],
-                    "traffic": dev["total"],
-                    "top_destination": dest,
-                    "service": svc,
-                })
+                result2.append(
+                    {
+                        "ip": dev["ip"],
+                        "device": dev["host"] or dev["ip"],
+                        "traffic": dev["total"],
+                        "top_destination": dest,
+                        "service": svc,
+                    }
+                )
             return result2
         return {"error": "unknown endpoint"}
     finally:
@@ -1070,14 +1491,20 @@ def _query_events_paged(
             clauses.append("(src_ip = ? OR dst_ip = ?)")
             params.extend([ip, ip])
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        total = con.execute(f"SELECT COUNT(*) FROM events {where}", params).fetchone()[0]
+        total = con.execute(f"SELECT COUNT(*) FROM events {where}", params).fetchone()[
+            0
+        ]
         cur = con.execute(
             f"SELECT id, timestamp, alert_type, level, src_ip, dst_ip, description "
             f"FROM events {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
             params + [limit, offset],
         )
-        return {"events": [dict(r) for r in cur.fetchall()], "total": total,
-                "offset": offset, "limit": limit}
+        return {
+            "events": [dict(r) for r in cur.fetchall()],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
     finally:
         con.close()
 
@@ -1102,8 +1529,14 @@ def _render_inspect_launcher(ip: str) -> str:
         inv_file = SERVE_DIR / "inventory.json"
         if inv_file.exists():
             inv = json.loads(inv_file.read_text())
-            hostname = next((d.get("hostname", "") for d in inv
-                             if d.get("ip") == ip and d.get("hostname")), "")
+            hostname = next(
+                (
+                    d.get("hostname", "")
+                    for d in inv
+                    if d.get("ip") == ip and d.get("hostname")
+                ),
+                "",
+            )
     except Exception:  # noqa: BLE001
         pass
     display = f"{hostname} ({ip})" if hostname else ip
@@ -2911,7 +3344,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/events":
             if not _check_read_auth(self.headers):
-                self._send_json({"error": "unauthorized — set X-Read-Token header"}, 401)
+                self._send_json(
+                    {"error": "unauthorized — set X-Read-Token header"}, 401
+                )
                 return
             qs = parse_qs(parsed.query)
             try:
@@ -2938,7 +3373,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/events/types":
             if not _check_read_auth(self.headers):
-                self._send_json({"error": "unauthorized — set X-Read-Token header"}, 401)
+                self._send_json(
+                    {"error": "unauthorized — set X-Read-Token header"}, 401
+                )
                 return
             try:
                 self._send_json(_query_event_types())
@@ -2971,7 +3408,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "target required"}, 400)
                 return
             with _nmap_lock:
-                state = _nmap_state.get(target, {"status": "unknown", "output": "", "error": None})
+                state = _nmap_state.get(
+                    target, {"status": "unknown", "output": "", "error": None}
+                )
             self._send_json(state)
             return
 
@@ -2979,11 +3418,14 @@ class Handler(BaseHTTPRequestHandler):
             # Return all inventory devices with live ping status
             inv_file = SERVE_DIR / "inventory.json"
             devices = json.loads(inv_file.read_text()) if inv_file.exists() else []
+
             def _ping(ip: str) -> tuple[bool, float | None]:
                 try:
                     r = subprocess.run(
                         ["ping", "-c", "1", "-W", "1", ip],
-                        capture_output=True, text=True, timeout=3
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
                     )
                     if r.returncode != 0:
                         return False, None
@@ -2997,19 +3439,23 @@ class Handler(BaseHTTPRequestHandler):
                     return True, None
                 except Exception:
                     return False, None
+
             import concurrent.futures
+
             result = []
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
                 futures = {ex.submit(_ping, d.get("ip", "")): d for d in devices}
                 for fut, dev in futures.items():
                     connected, latency_ms = fut.result()
-                    result.append({
-                        "ip": dev.get("ip", ""),
-                        "hostname": dev.get("hostname") or dev.get("ip", ""),
-                        "connected": connected,
-                        "latency_ms": latency_ms,
-                        "last_seen": dev.get("last_seen", ""),
-                    })
+                    result.append(
+                        {
+                            "ip": dev.get("ip", ""),
+                            "hostname": dev.get("hostname") or dev.get("ip", ""),
+                            "connected": connected,
+                            "latency_ms": latency_ms,
+                            "last_seen": dev.get("last_seen", ""),
+                        }
+                    )
             result.sort(key=lambda x: (not x["connected"], x["ip"]))
             self._send_json(result)
             return
@@ -3019,7 +3465,9 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 r = subprocess.run(
                     ["ping", "-c", "3", "-W", "2", target],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 connected = r.returncode == 0
                 latency_ms = None
@@ -3033,28 +3481,75 @@ class Handler(BaseHTTPRequestHandler):
                                 avg_latency_ms = float(parts[1])
                             except (ValueError, IndexError):
                                 pass
-                self._send_json({
-                    "connected": connected,
-                    "target": target,
-                    "latency_ms": latency_ms,
-                    "avg_latency_ms": avg_latency_ms,
-                })
+                self._send_json(
+                    {
+                        "connected": connected,
+                        "target": target,
+                        "latency_ms": latency_ms,
+                        "avg_latency_ms": avg_latency_ms,
+                    }
+                )
             except Exception as exc:
-                self._send_json({"connected": False, "target": target, "error": str(exc)})
+                self._send_json(
+                    {"connected": False, "target": target, "error": str(exc)}
+                )
+            return
+
+        # Network diagnostics endpoints
+        if path == "/api/diagnostics/conntrack":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0].strip()
+            result = _run_conntrack(target if target else None)
+            self._send_json(result)
+            return
+
+        if path == "/api/diagnostics/tcpstates":
+            result = _run_tcpstates()
+            self._send_json(result)
+            return
+
+        if path == "/api/diagnostics/iperf":
+            qs = parse_qs(parsed.query)
+            target = qs.get("target", [""])[0].strip()
+            duration = int(qs.get("duration", ["10"])[0])
+            if not target:
+                self._send_json({"error": "target required"}, 400)
+                return
+            result = _run_iperf_client(target, duration)
+            self._send_json(result)
+            return
+
+        if path.startswith("/api/diagnostics/bandwidth/"):
+            ip = path.removeprefix("/api/diagnostics/bandwidth/").strip()
+            if not ip:
+                self._send_json({"error": "ip required"}, 400)
+                return
+            result = _get_bandwidth_for_ip(ip)
+            self._send_json(result)
+            return
+
+        if path == "/api/diagnostics/speedtest":
+            result = _run_simple_speedtest()
+            self._send_json(result)
             return
 
         if path == "/api/deep-inspect/history":
-            files = sorted(SERVE_DIR.glob("deep-inspect-*.html"),
-                           key=lambda p: p.stat().st_mtime, reverse=True)
+            files = sorted(
+                SERVE_DIR.glob("deep-inspect-*.html"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
             result = []
             for f in files[:20]:
                 ip = f.name.removeprefix("deep-inspect-").removesuffix(".html")
-                result.append({
-                    "capture_id": ip,
-                    "target_ip": ip,
-                    "timestamp": int(f.stat().st_mtime * 1000),
-                    "report_url": f"/{f.name}",
-                })
+                result.append(
+                    {
+                        "capture_id": ip,
+                        "target_ip": ip,
+                        "timestamp": int(f.stat().st_mtime * 1000),
+                        "report_url": f"/{f.name}",
+                    }
+                )
             self._send_json(result)
             return
 
@@ -3074,23 +3569,28 @@ class Handler(BaseHTTPRequestHandler):
                         cur = con.cursor()
                         row = cur.execute(
                             "SELECT COALESCE(SUM(packets),0) AS p, COALESCE(SUM(bytes),0) AS b "
-                            "FROM flows WHERE src_ip=? OR dst_ip=?", (target, target)
+                            "FROM flows WHERE src_ip=? OR dst_ip=?",
+                            (target, target),
                         ).fetchone()
                         packet_count = row["p"]
-                        byte_count   = row["b"]
+                        byte_count = row["b"]
                         if byte_count > 0:
                             bandwidth_mbps = round(byte_count * 8 / 1_000_000, 2)
                         proto_rows = cur.execute(
                             "SELECT COALESCE(protocol,'Other') AS protocol, "
                             "COUNT(*) AS cnt FROM flows "
                             "WHERE src_ip=? OR dst_ip=? GROUP BY protocol ORDER BY cnt DESC",
-                            (target, target)
+                            (target, target),
                         ).fetchall()
                         total_flows = sum(r["cnt"] for r in proto_rows) or 1
-                        protocols = [{"protocol": r["protocol"],
-                                      "count": r["cnt"],
-                                      "percentage": round(r["cnt"] * 100 / total_flows, 1)}
-                                     for r in proto_rows]
+                        protocols = [
+                            {
+                                "protocol": r["protocol"],
+                                "count": r["cnt"],
+                                "percentage": round(r["cnt"] * 100 / total_flows, 1),
+                            }
+                            for r in proto_rows
+                        ]
                     finally:
                         con.close()
 
@@ -3104,7 +3604,8 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         for er in econ.execute(
                             "SELECT alert_type, level, description FROM events "
-                            "WHERE src_ip=? ORDER BY timestamp DESC LIMIT 10", (target,)
+                            "WHERE src_ip=? ORDER BY timestamp DESC LIMIT 10",
+                            (target,),
                         ).fetchall():
                             alerts.append(f"[{er['level']}] {er['alert_type']}")
                             if er["description"]:
@@ -3114,10 +3615,12 @@ class Handler(BaseHTTPRequestHandler):
 
                 # Latency via ping
                 latency_ms = None
-                hop_count  = None
+                hop_count = None
                 pr = subprocess.run(
                     ["ping", "-c", "3", "-W", "2", target],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 if pr.returncode == 0:
                     for line in pr.stdout.splitlines():
@@ -3131,19 +3634,22 @@ class Handler(BaseHTTPRequestHandler):
                 if not findings:
                     findings = ["No threat events recorded for this device"]
 
-                self._send_json({
-                    "target": target,
-                    "packet_count": packet_count,
-                    "byte_count": byte_count,
-                    "bandwidth_mbps": bandwidth_mbps,
-                    "hop_count": hop_count,
-                    "latency_ms": latency_ms,
-                    "alerts": alerts or ["No alerts for this device"],
-                    "findings": findings,
-                    "protocols": protocols,
-                    "report_url": f"/deep-inspect-{target}.html"
-                        if (SERVE_DIR / f"deep-inspect-{target}.html").exists() else None,
-                })
+                self._send_json(
+                    {
+                        "target": target,
+                        "packet_count": packet_count,
+                        "byte_count": byte_count,
+                        "bandwidth_mbps": bandwidth_mbps,
+                        "hop_count": hop_count,
+                        "latency_ms": latency_ms,
+                        "alerts": alerts or ["No alerts for this device"],
+                        "findings": findings,
+                        "protocols": protocols,
+                        "report_url": f"/deep-inspect-{target}.html"
+                        if (SERVE_DIR / f"deep-inspect-{target}.html").exists()
+                        else None,
+                    }
+                )
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return
@@ -3177,7 +3683,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "id required"}, 400)
                 return
             with _pcap_lock:
-                state = _pcap_state.get(job_id, {"status": "unknown", "result": None, "error": None})
+                state = _pcap_state.get(
+                    job_id, {"status": "unknown", "result": None, "error": None}
+                )
             self._send_json(state)
             return
 
@@ -3221,7 +3729,9 @@ class Handler(BaseHTTPRequestHandler):
                 cert_bytes = CERT_FILE.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-x509-ca-cert")
-                self.send_header("Content-Disposition", "attachment; filename=netwatchm.crt")
+                self.send_header(
+                    "Content-Disposition", "attachment; filename=netwatchm.crt"
+                )
                 self.send_header("Content-Length", str(len(cert_bytes)))
                 self.end_headers()
                 self.wfile.write(cert_bytes)
@@ -3308,7 +3818,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/nmap":
             qs = parse_qs(parsed.query)
             target = qs.get("target", [""])[0].strip()
-            ports  = qs.get("ports",  [""])[0].strip()
+            ports = qs.get("ports", [""])[0].strip()
             if not target:
                 self._send_json({"error": "target required"}, 400)
                 return
@@ -3330,7 +3840,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "invalid JSON"}, 400)
                 return
             target = body.get("target_ip", "").strip()
-            ports  = body.get("ports", "").strip()
+            ports = body.get("ports", "").strip()
             if not target:
                 self._send_json({"error": "target_ip required"}, 400)
                 return
@@ -3372,13 +3882,14 @@ class Handler(BaseHTTPRequestHandler):
             except (json.JSONDecodeError, ValueError):
                 self._send_json({"error": "invalid JSON"}, 400)
                 return
-            row_id  = body.get("id")
-            pinned  = int(bool(body.get("pinned", 1)))
+            row_id = body.get("id")
+            pinned = int(bool(body.get("pinned", 1)))
             if row_id is None:
                 self._send_json({"error": "id required"}, 400)
                 return
             try:
                 from datetime import timedelta
+
                 with _fh_conn() as hc:
                     if pinned:
                         hc.execute(
@@ -3386,7 +3897,9 @@ class Handler(BaseHTTPRequestHandler):
                             (row_id,),
                         )
                     else:
-                        new_exp = (datetime.now(timezone.utc) + timedelta(days=_RETENTION_DAYS)).isoformat()
+                        new_exp = (
+                            datetime.now(timezone.utc) + timedelta(days=_RETENTION_DAYS)
+                        ).isoformat()
                         hc.execute(
                             "UPDATE flow_history SET pinned=0, expires_at=? WHERE id=?",
                             (new_exp, row_id),
@@ -3396,13 +3909,16 @@ class Handler(BaseHTTPRequestHandler):
                         "SELECT expires_at FROM flow_history WHERE id=?", (row_id,)
                     ).fetchone()
                     expires_at = row["expires_at"] if row else None
-                self._send_json({"ok": True, "pinned": pinned, "expires_at": expires_at})
+                self._send_json(
+                    {"ok": True, "pinned": pinned, "expires_at": expires_at}
+                )
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return
 
         if parsed.path == "/api/pcap/upload":
             import tempfile, uuid as _uuid
+
             qs = parse_qs(parsed.query)
             filename = qs.get("filename", ["upload.pcap"])[0]
             # sanitise filename
@@ -3416,7 +3932,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             tmp_dir = Path(tempfile.gettempdir()) / "netwatchm-pcap"
             tmp_dir.mkdir(parents=True, exist_ok=True)
-            job_id  = str(_uuid.uuid4())
+            job_id = str(_uuid.uuid4())
             tmp_path = tmp_dir / f"{job_id}_{safe_name}"
             try:
                 data = self.rfile.read(length)
@@ -3425,7 +3941,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": f"Write failed: {exc}"}, 500)
                 return
             with _pcap_lock:
-                _pcap_state[job_id] = {"status": "running", "result": None, "error": None}
+                _pcap_state[job_id] = {
+                    "status": "running",
+                    "result": None,
+                    "error": None,
+                }
             threading.Thread(
                 target=_run_pcap_job, args=(job_id, str(tmp_path)), daemon=True
             ).start()
@@ -3465,25 +3985,29 @@ class Handler(BaseHTTPRequestHandler):
                 if _state["status"] == "running":
                     self._send_json({"error": "Report already running"}, 409)
                     return
-                _state.update({
-                    "status": "running",
-                    "duration": duration,
-                    "network": network,
-                    "error": None,
-                    "generated_at": None,
-                })
+                _state.update(
+                    {
+                        "status": "running",
+                        "duration": duration,
+                        "network": network,
+                        "error": None,
+                        "generated_at": None,
+                    }
+                )
 
             thread = threading.Thread(
                 target=_run_report, args=(duration, network), daemon=True
             )
             thread.start()
-            self._send_json({"status": "running", "duration": duration, "network": network})
+            self._send_json(
+                {"status": "running", "duration": duration, "network": network}
+            )
             return
 
         if parsed.path == "/api/investigate":
             qs = parse_qs(parsed.query)
             target = qs.get("target", [""])[0].strip()
-            ports  = qs.get("ports",  [""])[0].strip()
+            ports = qs.get("ports", [""])[0].strip()
             if not target:
                 self._send_json({"error": "target required"}, 400)
                 return
@@ -3496,17 +4020,19 @@ class Handler(BaseHTTPRequestHandler):
                 target=_run_investigate, args=(target, ports), daemon=True
             )
             thread.start()
-            self._send_json({
-                "status": "running",
-                "target": target,
-                "result_url": f"/investigate-{target}.html",
-            })
+            self._send_json(
+                {
+                    "status": "running",
+                    "target": target,
+                    "result_url": f"/investigate-{target}.html",
+                }
+            )
             return
 
         if parsed.path == "/api/deep-inspect":
             qs = parse_qs(parsed.query)
             target = qs.get("target", [""])[0].strip()
-            ports  = qs.get("ports",  [""])[0].strip()
+            ports = qs.get("ports", [""])[0].strip()
             if not target:
                 self._send_json({"error": "target required"}, 400)
                 return
@@ -3517,11 +4043,13 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(
                 target=_run_deep_inspect, args=(target, ports), daemon=True
             ).start()
-            self._send_json({
-                "status": "running",
-                "target": target,
-                "result_url": f"/deep-inspect-{target}.html",
-            })
+            self._send_json(
+                {
+                    "status": "running",
+                    "target": target,
+                    "result_url": f"/deep-inspect-{target}.html",
+                }
+            )
             return
 
         if parsed.path == "/api/analytics":
@@ -3607,7 +4135,7 @@ class Handler(BaseHTTPRequestHandler):
 
 CERT_DIR = Path(os.environ.get("NETWATCHM_CERT_DIR", _DD))
 CERT_FILE = CERT_DIR / "server.crt"
-KEY_FILE  = CERT_DIR / "server.key"
+KEY_FILE = CERT_DIR / "server.key"
 
 
 def _ensure_cert() -> None:
@@ -3616,6 +4144,7 @@ def _ensure_cert() -> None:
         return
     print("Generating self-signed TLS certificate…", flush=True)
     import socket as _socket
+
     local_ip = os.environ.get("NETWATCHM_SERVER_IP", "")
     if not local_ip:
         try:
@@ -3630,21 +4159,32 @@ def _ensure_cert() -> None:
     ext_file.write_text(san)
     subprocess.run(
         [
-            "openssl", "req", "-x509",
-            "-newkey", "rsa:2048",
-            "-keyout", str(KEY_FILE),
-            "-out", str(CERT_FILE),
-            "-days", "3650",
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            str(KEY_FILE),
+            "-out",
+            str(CERT_FILE),
+            "-days",
+            "3650",
             "-nodes",
-            "-subj", f"/CN={local_ip}/O=NetWatchM",
-            "-addext", san,
+            "-subj",
+            f"/CN={local_ip}/O=NetWatchM",
+            "-addext",
+            san,
         ],
         check=True,
         capture_output=True,
     )
     ext_file.unlink(missing_ok=True)
     os.chmod(KEY_FILE, 0o600)
-    print(f"Certificate written to {CERT_FILE} (SAN: localhost, 127.0.0.1, {local_ip})", flush=True)
+    print(
+        f"Certificate written to {CERT_FILE} (SAN: localhost, 127.0.0.1, {local_ip})",
+        flush=True,
+    )
 
 
 HTTP_PORT = int(os.environ.get("NETWATCHM_HTTP_PORT", "8766"))
@@ -3674,12 +4214,14 @@ def _query_adult_domains() -> list[dict]:
             desc = r["description"] or ""
             # "Adult domain accessed (DNS): xvideos.com" → "xvideos.com"
             domain = desc.split(": ", 1)[-1] if ": " in desc else desc
-            rows.append({
-                "src_ip": r["src_ip"] or "—",
-                "domain": domain,
-                "count": r["count"],
-                "last_seen": r["last_seen"],
-            })
+            rows.append(
+                {
+                    "src_ip": r["src_ip"] or "—",
+                    "domain": domain,
+                    "count": r["count"],
+                    "last_seen": r["last_seen"],
+                }
+            )
         return rows
     finally:
         con.close()
@@ -3710,6 +4252,7 @@ def _geoip_country(ip: str) -> str:
         return ""
     try:
         import geoip2.database  # type: ignore
+
         with geoip2.database.Reader(str(db)) as reader:
             rec = reader.city(ip)
             return rec.country.iso_code or ""
@@ -3750,7 +4293,9 @@ def _count_events_by_level(level: str) -> list[dict]:
         return [{"time": int(_time.time() * 1000), "value": 0}]
     con = sqlite3.connect(str(db))
     try:
-        cur = con.execute("SELECT COUNT(*) FROM events WHERE level = ?", (level.upper(),))
+        cur = con.execute(
+            "SELECT COUNT(*) FROM events WHERE level = ?", (level.upper(),)
+        )
         count = cur.fetchone()[0]
     finally:
         con.close()
@@ -3763,13 +4308,15 @@ def _ip_lookup(ip: str) -> dict:
 
     # ── DNS (reverse + forward) ──────────────────────────────────────────────
     try:
-        ptr_r = subprocess.run(["dig", "+short", "-x", ip],
-                               capture_output=True, text=True, timeout=5)
+        ptr_r = subprocess.run(
+            ["dig", "+short", "-x", ip], capture_output=True, text=True, timeout=5
+        )
         ptr = ptr_r.stdout.strip().rstrip(".")
         fwd = ""
         if ptr:
-            fwd_r = subprocess.run(["dig", "+short", ptr],
-                                   capture_output=True, text=True, timeout=5)
+            fwd_r = subprocess.run(
+                ["dig", "+short", ptr], capture_output=True, text=True, timeout=5
+            )
             fwd = fwd_r.stdout.strip()
         result["dns"] = {"ptr": ptr or "(none)", "forward": fwd or "(none)"}
     except Exception as exc:
@@ -3779,8 +4326,10 @@ def _ip_lookup(ip: str) -> dict:
     geo: dict = {}
     try:
         import geoip2.database
-        db_path = os.environ.get("NETWATCHM_GEOIP_DB",
-                                 "/var/lib/netwatchm/GeoLite2-City.mmdb")
+
+        db_path = os.environ.get(
+            "NETWATCHM_GEOIP_DB", "/var/lib/netwatchm/GeoLite2-City.mmdb"
+        )
         if Path(db_path).exists():
             with geoip2.database.Reader(db_path) as reader:
                 r = reader.city(ip)
@@ -3797,8 +4346,10 @@ def _ip_lookup(ip: str) -> dict:
     # ipinfo.io for org/ISP (free, no key)
     try:
         import urllib.request as _ur
-        req = _ur.Request(f"https://ipinfo.io/{ip}/json",
-                          headers={"User-Agent": "netwatchm/1.0"})
+
+        req = _ur.Request(
+            f"https://ipinfo.io/{ip}/json", headers={"User-Agent": "netwatchm/1.0"}
+        )
         with _ur.urlopen(req, timeout=5) as resp:
             ipinfo = json.loads(resp.read())
         geo["org"] = ipinfo.get("org", "")
@@ -3816,9 +4367,20 @@ def _ip_lookup(ip: str) -> dict:
         wo = subprocess.run(["whois", ip], capture_output=True, text=True, timeout=12)
         raw = wo.stdout
         parsed: dict[str, str] = {}
-        want = {"netname", "org-name", "orgname", "organization", "descr",
-                "country", "cidr", "inetnum", "netrange",
-                "abuse-mailbox", "aut-num", "registrant"}
+        want = {
+            "netname",
+            "org-name",
+            "orgname",
+            "organization",
+            "descr",
+            "country",
+            "cidr",
+            "inetnum",
+            "netrange",
+            "abuse-mailbox",
+            "aut-num",
+            "registrant",
+        }
         for line in raw.splitlines():
             if ":" in line:
                 k, _, v = line.partition(":")
@@ -3831,16 +4393,24 @@ def _ip_lookup(ip: str) -> dict:
         result["whois"] = {"parsed": {}, "raw": f"Error: {exc}"}
 
     # ── Security ─────────────────────────────────────────────────────────────
-    sec: dict = {"is_tor_exit": False, "is_private": False,
-                 "alert_count": 0, "alert_types": [], "threat_level": "UNKNOWN"}
+    sec: dict = {
+        "is_tor_exit": False,
+        "is_private": False,
+        "alert_count": 0,
+        "alert_types": [],
+        "threat_level": "UNKNOWN",
+    }
     try:
         import ipaddress
+
         sec["is_private"] = ipaddress.ip_address(ip).is_private
     except Exception:
         pass
     # Tor exit check
-    for tor_path in ("/var/lib/netwatchm/tor-exit-nodes.txt",
-                     "/tmp/tor-exit-nodes.txt"):
+    for tor_path in (
+        "/var/lib/netwatchm/tor-exit-nodes.txt",
+        "/tmp/tor-exit-nodes.txt",
+    ):
         if Path(tor_path).exists():
             sec["is_tor_exit"] = ip in Path(tor_path).read_text()
             break
@@ -3853,12 +4423,14 @@ def _ip_lookup(ip: str) -> dict:
             rows = econ.execute(
                 "SELECT alert_type, level, COUNT(*) AS cnt FROM events "
                 "WHERE src_ip=? OR dst_ip=? GROUP BY alert_type ORDER BY cnt DESC",
-                (ip, ip)
+                (ip, ip),
             ).fetchall()
             econ.close()
             sec["alert_count"] = sum(r["cnt"] for r in rows)
-            sec["alert_types"] = [{"type": r["alert_type"], "level": r["level"],
-                                    "count": r["cnt"]} for r in rows]
+            sec["alert_types"] = [
+                {"type": r["alert_type"], "level": r["level"], "count": r["cnt"]}
+                for r in rows
+            ]
             levels = [r["level"] for r in rows]
             if "CRITICAL" in levels:
                 sec["threat_level"] = "CRITICAL"
@@ -3966,11 +4538,11 @@ class GrafanaHandler(BaseHTTPRequestHandler):
             inv = SERVE_DIR / "inventory.json"
             if inv.exists():
                 devices = json.loads(inv.read_text())
-                aliases  = _load_aliases()
+                aliases = _load_aliases()
                 verified = _load_verified()
                 for d in devices:
                     d["ip_category"] = _classify_ip(d.get("ip", ""))
-                    d["label"]    = aliases.get(d.get("ip", ""), "")
+                    d["label"] = aliases.get(d.get("ip", ""), "")
                     d["verified"] = verified.get(d.get("ip", ""), False)
                 self._send_json(devices)
             else:
@@ -3987,6 +4559,7 @@ class GrafanaHandler(BaseHTTPRequestHandler):
                 ls = d.get("last_seen") or ""
                 try:
                     import datetime as _dt
+
                     ts = _dt.datetime.fromisoformat(ls).timestamp()
                     if ts >= cutoff:
                         devices.append(d)
@@ -4028,9 +4601,11 @@ class GrafanaHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, 500)
             return
 
-        if path in ("/api/events/count/critical",
-                    "/api/events/count/high",
-                    "/api/events/count/medium"):
+        if path in (
+            "/api/events/count/critical",
+            "/api/events/count/high",
+            "/api/events/count/medium",
+        ):
             level = path.split("/")[-1]
             try:
                 self._send_json(_count_events_by_level(level))
@@ -4102,10 +4677,15 @@ if __name__ == "__main__":
     # Plain HTTP server for Grafana Infinity (localhost only, no TLS)
     grafana_server = HTTPServer(("127.0.0.1", HTTP_PORT), GrafanaHandler)
     threading.Thread(target=grafana_server.serve_forever, daemon=True).start()
-    print(f"Grafana HTTP endpoint listening on http://127.0.0.1:{HTTP_PORT}", flush=True)
+    print(
+        f"Grafana HTTP endpoint listening on http://127.0.0.1:{HTTP_PORT}", flush=True
+    )
 
     print(f"NetWatchM web server listening on https://0.0.0.0:{PORT}", flush=True)
-    print("Note: browser will show a self-signed cert warning — click 'Advanced > Proceed'.", flush=True)
+    print(
+        "Note: browser will show a self-signed cert warning — click 'Advanced > Proceed'.",
+        flush=True,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

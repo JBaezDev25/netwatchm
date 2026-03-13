@@ -1,6 +1,6 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-08 (session 8)
+Last updated: 2026-03-12 (session 9)
 
 ## Completed
 - [x] Core capture engine (tshark + async)
@@ -319,6 +319,36 @@ powershell -ExecutionPolicy Bypass -File \\192.168.1.180\...\install-cert-window
 
 ### Hardcoded Credential Removal
 - [x] `scripts/reset-grafana-password.sh` — removed hardcoded plaintext password; now prompts interactively at runtime (`read -rsp`, silent input)
+
+---
+
+## Session 11 — Network Diagnostics Tools (2026-03-12)
+
+### Network Diagnostic Tools Added
+- [x] Installed `conntrack` and `iperf3` packages
+- [x] API endpoints added to `netwatchm_server.py`:
+  - `/api/diagnostics/conntrack` — show active TCP connections
+  - `/api/diagnostics/tcpstates` — show TCP connection states via `ss`
+  - `/api/diagnostics/iperf` — run iperf3 bandwidth test to target IP
+  - `/api/diagnostics/bandwidth/{ip}` — get bandwidth stats per device from flow DB
+- [x] `deep-inspect-web.html` updated with new tabs:
+  - **Network Diagnostics** — buttons for conntrack, tcpstates, iperf
+  - **Bandwidth** — check per-device bandwidth from flow data
+
+### Conntrack IP Filter Update (2026-03-12)
+- [x] `/api/diagnostics/conntrack` now accepts optional `target` query param to filter by IP
+- [x] `deep-inspect-web.html`: conntrack now requires target IP input; shows blank when idle
+
+### IP Investigation Guide (2026-03-12)
+- [x] Created `docs/ip-investigation-qrcards.md` — comprehensive reference for investigating suspicious IPs
+- [x] Updated Quick Reference Card with tcpdump port 80/443 command
+- [x] Created `docs/ip-investigation-log.md` — real investigation example with step-by-step log
+
+### Deploy commands
+```bash
+bash scripts/hotdeploy.sh              # deploy netwatchm_server.py
+bash scripts/copy-deep-inspect-web.sh  # copy updated HTML UI
+```
 
 ---
 
