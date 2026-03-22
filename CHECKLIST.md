@@ -1,6 +1,33 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-12 (session 9)
+Last updated: 2026-03-22 (session 13)
+
+## Session 13 — 2026-03-22
+
+### Hostname (mDNS) Access
+- [x] TLS cert SAN extended to include `DNS:ai-rnd-01.local` + `DNS:ai-rnd-01` — portal now accessible via `https://ai-rnd-01.local:8765` from any LAN device
+- [x] `scripts/enable-remote-access.sh` — auto-detects hostname via `hostname` and adds it to SAN
+- [x] `netwatchm_server.py` `_ensure_cert()` — also includes hostname SANs on first-run cert generation
+- [x] `apply-config-fix.sh` applied — adult domain alerts fixed (user machine removed from whitelist)
+
+---
+
+## Session 12 — 2026-03-20
+
+- [x] Added `TrackerDomainDetector` — new `TRACKER_DOMAIN` (LOW) alert type for ads/tracking/analytics domains
+  - Uses Steven Black unified adware+malware hosts list (separate from porn-only list)
+  - Keeps `ADULT_DOMAIN` (MEDIUM) purely for adult content — no more false positives like `api.segment.io`
+  - `TrackerDomainConfig` added to `config.py` + `load_config()`
+  - `detector/tracker_domain.py`, wired into `detector/__init__.py` and `__main__.py`
+  - `netwatchm.yaml.example` updated with `tracker_domain` thresholds + `TRACKER_DOMAIN` in detector_whitelist comment
+  - 10 new tests — 174 total, all passing
+
+### Deploy
+```bash
+bash scripts/hotdeploy.sh
+```
+
+---
 
 ## Completed
 - [x] Core capture engine (tshark + async)
@@ -355,7 +382,7 @@ bash scripts/copy-deep-inspect-web.sh  # copy updated HTML UI
 ## Pending — Next Session
 
 ### Must Do (sudo required — run manually)
-- [ ] **`bash scripts/apply-config-fix.sh`** — fixes adult domain alerts (removes user machine from whitelist)
+- [x] **`bash scripts/apply-config-fix.sh`** — fixes adult domain alerts (removes user machine from whitelist) — applied 2026-03-22
 - [ ] **Windows install test** — verify end-to-end on a clean Windows machine (overdue since session 4)
 
 ### Completed This Session (session 7)

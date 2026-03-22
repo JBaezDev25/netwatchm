@@ -14,6 +14,16 @@ thresholds:
     window_seconds: 60
   new_ip:
     enabled: true
+  adult_domain:
+    enabled: true
+    # list_url: ...  # Steven Black porn-only list (default)
+    alert_window_seconds: 3600
+    extra_domains: []  # add custom adult domains here
+  tracker_domain:
+    enabled: true
+    # list_url: ...  # Steven Black unified adware+malware list (default)
+    alert_window_seconds: 3600
+    extra_domains: []  # e.g. [api.segment.io, www.google-analytics.com]
 
 alerts:
   terminal: true
@@ -71,7 +81,8 @@ detector_whitelist:
   # Suppress specific alert types from specific IPs only.
   # Does NOT suppress other alert types from these IPs.
   # Key = alert type (PORT_SCAN, BRUTE_FORCE, EXFILTRATION, NEW_IP,
-  #                   TOR_EXIT, ADULT_DOMAIN, DATA_HOG)
+  #                   TOR_EXIT, ADULT_DOMAIN, TRACKER_DOMAIN, DATA_HOG)
   # Value = list of src_ip addresses to suppress for that type
   PORT_SCAN: []          # e.g. [192.168.1.180]  — suppress port scan from your own machine
   BRUTE_FORCE: []        # e.g. [192.168.1.50]   — suppress brute force from a scanner
+  TRACKER_DOMAIN: []     # e.g. [192.168.1.10]   — suppress tracker alerts from a specific device

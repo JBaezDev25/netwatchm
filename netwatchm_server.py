@@ -4154,7 +4154,9 @@ def _ensure_cert() -> None:
             s.close()
         except Exception:
             local_ip = "127.0.0.1"
-    san = f"subjectAltName=DNS:localhost,IP:127.0.0.1,IP:{local_ip}"
+    import socket as _socket2
+    hostname = _socket2.gethostname()
+    san = f"subjectAltName=DNS:localhost,DNS:{hostname}.local,DNS:{hostname},IP:127.0.0.1,IP:{local_ip}"
     ext_file = CERT_DIR / "san.ext"
     ext_file.write_text(san)
     subprocess.run(
@@ -4182,7 +4184,7 @@ def _ensure_cert() -> None:
     ext_file.unlink(missing_ok=True)
     os.chmod(KEY_FILE, 0o600)
     print(
-        f"Certificate written to {CERT_FILE} (SAN: localhost, 127.0.0.1, {local_ip})",
+        f"Certificate written to {CERT_FILE} (SAN: localhost, {hostname}.local, {hostname}, 127.0.0.1, {local_ip})",
         flush=True,
     )
 

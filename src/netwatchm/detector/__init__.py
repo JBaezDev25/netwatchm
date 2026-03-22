@@ -6,6 +6,7 @@ from .exfiltration import ExfiltrationDetector
 from .new_ip import NewIPDetector
 from .port_scan import PortScanDetector
 from .tor_exit import TorExitDetector
+from .tracker_domain import TrackerDomainDetector
 
 __all__ = [
     "AdultDomainDetector",
@@ -15,4 +16,5 @@ __all__ = [
     "NewIPDetector",
     "PortScanDetector",
     "TorExitDetector",
+    "TrackerDomainDetector",
 ]

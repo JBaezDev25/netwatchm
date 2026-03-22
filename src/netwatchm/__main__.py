@@ -28,6 +28,7 @@ from .detector import (
     NewIPDetector,
     PortScanDetector,
     TorExitDetector,
+    TrackerDomainDetector,
 )
 from .interface import detect_interface
 from .inventory.exporter import export_inventory
@@ -88,6 +89,7 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
         NewIPDetector(config.thresholds.new_ip, config.baseline_period),
         TorExitDetector(config.thresholds.tor_exit),
         AdultDomainDetector(config.thresholds.adult_domain),
+        TrackerDomainDetector(config.thresholds.tracker_domain),
         DataHogDetector(config.thresholds.data_hog),
     ]
 

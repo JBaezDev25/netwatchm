@@ -14,6 +14,7 @@ from netwatchm.config import (
     NewIPThreshold,
     PortScanThreshold,
     TorExitConfig,
+    TrackerDomainConfig,
 )
 from netwatchm.detector.adult_domain import AdultDomainDetector
 from netwatchm.detector.brute_force import BruteForceDetector
@@ -22,6 +23,7 @@ from netwatchm.detector.exfiltration import ExfiltrationDetector
 from netwatchm.detector.new_ip import NewIPDetector
 from netwatchm.detector.port_scan import PortScanDetector
 from netwatchm.detector.tor_exit import TorExitDetector
+from netwatchm.detector.tracker_domain import TrackerDomainDetector
 from netwatchm.models import Packet, ThreatLevel
 from .conftest import make_packet
 
@@ -366,6 +368,87 @@ class TestAdultDomainDetector:
         result = det.process(make_packet(dns_query=f"{self.ADULT_DOMAIN}."))
         assert result is not None
         assert self.ADULT_DOMAIN in result.description
+
+
+# ──────────────── Tracker Domain ────────────────
+
+class TestTrackerDomainDetector:
+    TRACKER = "api.segment.io"
+
+    def _detector(self, **kwargs) -> TrackerDomainDetector:
+        cfg = TrackerDomainConfig(**{"alert_window_seconds": 10, **kwargs})
+        return TrackerDomainDetector(cfg, domain_set={self.TRACKER})
+
+    def test_no_alert_normal_dns(self) -> None:
+        det = self._detector()
+        assert det.process(make_packet(dns_query="google.com")) is None
+
+    def test_alert_on_dns_query(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=self.TRACKER))
+        assert result is not None
+        assert result.alert_type == "TRACKER_DOMAIN"
+        assert result.level == ThreatLevel.LOW
+        assert "DNS" in result.description
+        assert self.TRACKER in result.description
+
+    def test_alert_on_sni(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(sni=self.TRACKER))
+        assert result is not None
+        assert result.alert_type == "TRACKER_DOMAIN"
+        assert "SNI" in result.description
+
+    def test_dedup_suppresses_second(self) -> None:
+        det = self._detector()
+        first = det.process(make_packet(dns_query=self.TRACKER))
+        second = det.process(make_packet(dns_query=self.TRACKER))
+        assert first is not None
+        assert second is None
+
+    def test_dedup_per_device(self) -> None:
+        det = self._detector()
+        r1 = det.process(make_packet(src_ip="192.168.1.1", dns_query=self.TRACKER))
+        r2 = det.process(make_packet(src_ip="192.168.1.2", dns_query=self.TRACKER))
+        assert r1 is not None
+        assert r2 is not None
+
+    def test_dedup_expires_re_alerts(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        first = det.process(make_packet(dns_query=self.TRACKER))
+        assert first is not None
+        key = f"192.168.1.100:{self.TRACKER}"
+        det._alerted[key] = time.time() - 2
+        second = det.process(make_packet(dns_query=self.TRACKER))
+        assert second is not None
+
+    def test_disabled_no_alert(self) -> None:
+        det = self._detector(enabled=False)
+        assert det.process(make_packet(dns_query=self.TRACKER)) is None
+
+    def test_extra_domains_blocked(self) -> None:
+        det = TrackerDomainDetector(
+            TrackerDomainConfig(alert_window_seconds=10, extra_domains=["custom-tracker.example"]),
+            domain_set=set(),
+        )
+        result = det.process(make_packet(dns_query="custom-tracker.example"))
+        assert result is not None
+        assert result.alert_type == "TRACKER_DOMAIN"
+
+    def test_fqdn_trailing_dot_stripped(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=f"{self.TRACKER}."))
+        assert result is not None
+        assert self.TRACKER in result.description
+
+    def test_flush_expired_clears_alerted(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        det.process(make_packet(dns_query=self.TRACKER))
+        key = f"192.168.1.100:{self.TRACKER}"
+        assert key in det._alerted
+        det._alerted[key] = time.time() - 2
+        det.flush_expired()
+        assert key not in det._alerted
 
 
 # ──────────────── Data Hog ────────────────

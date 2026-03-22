@@ -14,13 +14,15 @@ else
 fi
 
 echo ""
-echo "=== Regenerating TLS certificate with LAN IP in SAN ==="
+echo "=== Regenerating TLS certificate with LAN IP + hostname in SAN ==="
 LOCAL_IP=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/{print $7; exit}')
 if [[ -z "$LOCAL_IP" ]]; then
     echo "Could not detect local IP. Set NETWATCHM_SERVER_IP and re-run."
     exit 1
 fi
+HOSTNAME=$(hostname)
 echo "Detected local IP: $LOCAL_IP"
+echo "Detected hostname: $HOSTNAME"
 
 sudo openssl req -x509 \
     -newkey rsa:2048 \
@@ -29,10 +31,10 @@ sudo openssl req -x509 \
     -days 3650 \
     -nodes \
     -subj "/CN=$LOCAL_IP/O=NetWatchM" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:$LOCAL_IP"
+    -addext "subjectAltName=DNS:localhost,DNS:${HOSTNAME}.local,DNS:${HOSTNAME},IP:127.0.0.1,IP:$LOCAL_IP"
 
 sudo chmod 600 "$KEY_FILE"
-echo "Certificate written with SAN: localhost, 127.0.0.1, $LOCAL_IP"
+echo "Certificate written with SAN: localhost, ${HOSTNAME}.local, ${HOSTNAME}, 127.0.0.1, $LOCAL_IP"
 
 echo ""
 echo "=== Restarting netwatchm-web ==="
