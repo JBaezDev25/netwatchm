@@ -450,7 +450,7 @@ bash scripts/copy-deep-inspect-web.sh  # copy updated HTML UI
 - [x] `netwatchm.yaml.production` added to `.gitignore` (contains private IPs)
 
 ### Improvements / Nice to Have
-- [ ] **README.md** — outdated, still describes v0.1.0 (Feb 2026); needs full rewrite
+- [x] **README.md** — rewritten session 15 (2026-04-06): current feature set, all portal pages, AI assistant, architecture, scripts, 174 tests
 - [ ] **Events retention setting** — 72h is hardcoded in `event_store.py`; expose as config option
 - [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
 - [ ] **Events portal paging** — currently loads up to 500 events; add pagination for large datasets

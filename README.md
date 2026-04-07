@@ -1,28 +1,30 @@
 # NetWatchM
 
-> Real-time network threat monitor for Linux — port scan, brute force,
-> data exfiltration, and new-device detection with a Rich terminal dashboard,
-> browser-based web UI, and email alerts.
+> Real-time network threat monitor for Linux — port scan detection, brute force, data exfiltration, adult/tracker domain alerts, and new-device notifications with a Rich terminal dashboard, full browser-based web UI, Grafana integration, and push notifications.
 
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-174%20passing-brightgreen)
 ![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
 
 ---
 
 ## What It Does
 
-NetWatchM watches every packet on your network interface and alerts you in real time when it detects:
+NetWatchM watches every packet on your network interface and alerts you in real time:
 
 | Threat | How it works |
 |--------|-------------|
 | **Port Scan** | A single IP hits 15+ distinct ports within 10 seconds |
 | **Brute Force** | 10+ login attempts to SSH / RDP / FTP / MySQL / VNC in 30 seconds |
 | **Exfiltration** | A device sends more than 10 MB in 60 seconds |
-| **New Device** | An IP not seen during the 5-minute baseline period appears |
+| **Data Hog** | A device transfers more than 10 GiB in 24 hours |
+| **New Device** | An IP not seen during baseline period appears |
+| **Adult Domain** | DNS/TLS SNI matches Steven Black adult domain list (153k domains) |
+| **Tracker Domain** | DNS/TLS SNI matches ads/tracking/analytics domain list |
+| **Tor Exit Node** | Outbound connection to a known Tor exit node |
 
-Alerts are delivered via terminal, rotating log file, sound (beep), and Gmail email.
+Alerts are delivered via: terminal, rotating log file, sound (beep), Gmail email, and **ntfy push notifications** (Android/iOS).
 
 ---
 
@@ -34,7 +36,55 @@ cd netwatchm
 sudo bash install.sh
 ```
 
-The installer handles everything: Python deps, config, log directories, and three systemd services (`netwatchm`, `netwatchm-web`, `netwatchm-notify@`).
+The installer handles Python deps, config, log directories, TLS cert, GeoIP database, and systemd services.
+
+After install, open the portal in your browser:
+
+```
+https://localhost:8765/events.html        # Security events SPA
+https://localhost:8765/inventory.html     # Device inventory
+https://localhost:8765/ai.html            # AI network assistant
+```
+
+From any machine on the LAN (after running `scripts/setup-hostname.sh`):
+
+```
+https://netwatch.local:8765/events.html
+```
+
+---
+
+## Web Portal Pages
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Events | `/events.html` | Live security alert feed — search, filter, export CSV |
+| Inventory | `/inventory.html` | All discovered devices — friendly names, nmap scan, verify |
+| Analytics | `/analytics.html` | Flow data charts — device traffic, destinations, protocols, hourly |
+| Connection Report | `/connection-report.html` | Per-flow breakdown with GeoIP, risk scoring, deep inspect |
+| History | `/history.html` | Historical inactive connections (30-day rolling) |
+| Pcap Analyzer | `/pcap.html` | Upload .pcap/.pcapng — device list, DNS/TLS latency analysis |
+| AI Assistant | `/ai.html` | Natural-language device analysis powered by OpenAI |
+| Reports Index | `/reports` | Archive of past connection reports (last 50 kept) |
+
+---
+
+## AI Assistant
+
+The built-in AI Chat (`/ai.html`) uses OpenAI `gpt-4o-mini` to answer natural-language questions about your network:
+
+- "What is 192.168.1.50 doing on the network?"
+- "Which devices contacted port 443 in the last 72 hours?"
+- "Summarize all devices and flag anything suspicious"
+- "Explain what port 8883 is used for"
+
+Context is pulled live from inventory, events, and flow data. The AI correctly distinguishes between destination ports *contacted* and local listening ports.
+
+**Setup:**
+```bash
+bash scripts/setup-ai-key.sh   # prompts for OPENAI_API_KEY, writes to systemd drop-in
+bash scripts/hotdeploy.sh      # deploy server + ai.html
+```
 
 ---
 
@@ -44,27 +94,45 @@ The installer handles everything: Python deps, config, log directories, and thre
 Network Interface
       │
       ▼
-  tshark subprocess  ──►  capture.py  ──►  packet queue
-                                                │
-                          ┌─────────────────────┤
-                          │   4 Detectors        │
-                          │   PortScan           │
-                          │   BruteForce    ──►  alert queue
-                          │   Exfiltration       │
-                          │   NewIP              │
-                          └─────────────────────┘
-                                                │
-                          ┌─────────────────────┤
-                          │   Alert Handlers     │
-                          │   Terminal           │
-                          │   Log file      ◄────┘
-                          │   Sound
-                          │   Email
-                          └─────────────────────┘
-                                                │
-                          inventory.json  ◄──────┘
-                                │
-                          report.html  (browser dashboard)
+  tshark subprocess ──► capture.py ──► packet queue
+                                            │
+                    ┌───────────────────────┤
+                    │   Detectors            │
+                    │   PortScan             │
+                    │   BruteForce      ──► alert queue
+                    │   Exfiltration         │
+                    │   NewIP                │
+                    │   DataHog              │
+                    │   AdultDomain          │
+                    │   TrackerDomain        │
+                    │   TorExitNode          │
+                    └───────────────────────┘
+                                            │
+                    ┌───────────────────────┤
+                    │   Alert Handlers       │
+                    │   Terminal             │
+                    │   Log file        ◄───┘
+                    │   Sound
+                    │   Email (Gmail SMTP)
+                    │   ntfy push (Android/iOS)
+                    └───────────────────────┘
+
+netwatchm_server.py (port 8765, TLS)
+  ├── /events.html       — live SPA (SQLite events.db)
+  ├── /inventory.html    — device SPA (inventory.json + aliases.json)
+  ├── /history.html      — flow history SPA (flow-history.db)
+  ├── /pcap.html         — pcap upload analyzer
+  ├── /ai.html           — AI chat UI (OpenAI gpt-4o-mini)
+  ├── /api/ai            — AI query endpoint
+  ├── /api/deep-inspect  — async GeoIP + nmap + SSH/SMB/HTTP inspection
+  ├── /api/analytics     — async Chart.js analytics page generator
+  ├── /api/aliases       — friendly device names CRUD
+  ├── /api/verified      — device verified status toggle
+  ├── /api/nmap          — per-device nmap scan
+  └── /api/diagnostics/* — conntrack, tcpstates, iperf3
+
+Grafana (port 3000)
+  └── netwatchm_server.py (port 8766, no TLS) — Grafana-only API
 ```
 
 ---
@@ -79,57 +147,81 @@ netwatchm/
 │   ├── config.py            # YAML config loader
 │   ├── capture.py           # tshark subprocess + NDJSON parser
 │   ├── scorer.py            # Aggregate threat level from active alerts
-│   ├── detector/            # port_scan, brute_force, exfiltration, new_ip
-│   ├── alerts/              # terminal, logfile, sound, email_alert
+│   ├── detector/            # port_scan, brute_force, exfiltration, new_ip,
+│   │                        # data_hog, adult_domain, tracker_domain, tor_exit
+│   ├── alerts/              # terminal, logfile, sound, email_alert, ntfy_alert
 │   ├── inventory/           # store, resolver, exporter
+│   ├── reports/             # connection_report, analytics_report, deep_inspect,
+│   │                        # flow_store, flow_history
 │   ├── ui/                  # dashboard, inventory_view, input_handler
 │   └── service/             # linux.py (systemd), windows.py (pywin32)
 ├── scripts/
-│   ├── notify-down.py       # Service-down email notifier
-│   └── Watch-NetWatchMLogs.ps1  # PowerShell HIGH-alert log watcher
-├── tests/                   # 57 pytest tests (all passing)
-├── netwatchm-web.service    # Permanent web dashboard service
-├── netwatchm-notify@.service # Service-down alert template
-├── netwatchm-journald.conf  # Journal disk limits (200 MB cap)
-├── netwatchm-logrotate      # Daily logrotate safety net
-├── report.html              # Browser inventory dashboard
-├── NetWatchM-guide.pdf      # 17-phase beginner build guide
-├── install.sh               # Linux one-shot installer (10 steps)
-├── deploy-services.sh       # Re-deploy service units without full reinstall
-└── netwatchm.yaml.example   # Annotated config template
+│   ├── hotdeploy.sh         # Fast deploy: copy server + ai.html + restart
+│   ├── setup-hostname.sh    # Enable netwatch.local mDNS via Avahi
+│   ├── setup-ai-key.sh      # Write OPENAI_API_KEY to systemd drop-in
+│   ├── enable-remote-access.sh  # Open port 8765 + regenerate TLS cert with LAN SAN
+│   ├── setup-grafana-alerts.sh  # Configure Grafana email alerting
+│   ├── install-cert-linux.sh    # Trust NetWatchM cert on Linux client
+│   ├── install-cert-windows.ps1 # Trust NetWatchM cert on Windows client
+│   └── ...                  # 15+ additional setup and deploy scripts
+├── netwachmInstall/
+│   └── install.ps1          # Windows installer (GUI progress, upgrade/uninstall)
+├── tests/                   # 174 pytest tests (all passing)
+├── ai.html                  # AI Chat web UI
+├── netwatchm_server.py      # Combined HTTPS server (8765) + Grafana API (8766)
+├── netwatchm.yaml.example   # Annotated config template
+└── install.sh               # Linux one-shot installer
 ```
 
 ---
 
 ## Installation
 
-### Automated (recommended)
+### Linux (recommended)
 
 ```bash
+git clone https://github.com/al4nbr3/netwatchm.git
+cd netwatchm
 sudo bash install.sh
 ```
 
-Installs and enables two services:
+Installs and enables:
 
-| Service | Description | URL |
-|---------|-------------|-----|
-| `netwatchm` | Packet capture + threat detection | — |
-| `netwatchm-web` | Browser dashboard HTTP server | http://localhost:8765/report.html |
+| Service | Description |
+|---------|-------------|
+| `netwatchm` | Packet capture + threat detection |
+| `netwatchm-web` | Browser portal (HTTPS, port 8765) |
 
-### Re-deploy services only
+### Windows
 
-If the Python package is already installed and you only need to (re-)deploy the
-systemd units, notify script, and journald limits:
-
-```bash
-sudo bash deploy-services.sh
+```
+1. git clone https://github.com/al4nbr3/netwatchm.git
+2. cd netwatchm
+3. Right-click netwachmInstall\install.ps1 → Properties → Unblock → OK
+4. powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1
 ```
 
-### Manual (development)
+The Windows installer shows a GUI progress window and creates Desktop + Start Menu shortcuts.
+
+### Enable mDNS hostname (optional)
+
+Access the portal from any LAN device by name instead of IP:
 
 ```bash
-uv sync
-sudo uv run netwatchm --config netwatchm.yaml.example --interface eth0
+bash scripts/setup-hostname.sh
+# Portal available at https://netwatch.local:8765
+```
+
+### Trust the TLS certificate
+
+```bash
+# Linux client
+bash scripts/install-cert-linux.sh 192.168.1.180
+
+# Windows client (run as Administrator)
+powershell -ExecutionPolicy Bypass -File scripts/install-cert-windows.ps1
+
+# Quick bypass (Chrome/Edge): type "thisisunsafe" on the cert warning page
 ```
 
 ---
@@ -139,8 +231,7 @@ sudo uv run netwatchm --config netwatchm.yaml.example --interface eth0
 Config lives at `/etc/netwatchm/netwatchm.yaml` after install.
 
 ```yaml
-interface: auto          # or e.g. enp6s0, wlan0
-baseline_period: 300     # seconds to learn the network before alerting
+interface: enp6s0        # or auto
 
 thresholds:
   port_scan:
@@ -149,142 +240,96 @@ thresholds:
   brute_force:
     attempts_per_window: 10
     window_seconds: 30
-    ports: [22, 3389, 21, 3306, 5900]
   exfiltration:
     bytes_per_window: 10485760   # 10 MB
     window_seconds: 60
+  data_hog:
+    bytes_24h: 10737418240       # 10 GiB
 
 alerts:
   terminal: true
   log:
     enabled: true
     path: /var/log/netwatchm/netwatchm.log
-  sound:
-    enabled: true
   email:
-    enabled: false           # set to true + configure below
+    enabled: false
     smtp_host: smtp.gmail.com
     smtp_port: 587
     username: you@gmail.com
     recipient: you@gmail.com
     min_level: HIGH
+  ntfy:
+    enabled: false
+    server: https://ntfy.sh
+    topic: your-topic
+    min_level: MEDIUM
+
+whitelist:
+  - 192.168.1.1          # router
+  - 10.0.0.0/8           # CIDR blocks supported
+
+detector_whitelist:
+  PORT_SCAN:
+    - 192.168.1.50       # suppress port scan alerts from this IP only
 ```
 
-> **Email password:** never put it in the YAML. Use the environment variable:
-> ```bash
-> echo "NETWATCHM_EMAIL_PASSWORD=your-app-password" | sudo tee /etc/netwatchm/env
-> sudo chmod 600 /etc/netwatchm/env
-> ```
+> **Email/ntfy credentials:** never put passwords in YAML. Use env vars or systemd drop-ins.
+
+---
+
+## Grafana Dashboard
+
+NetWatchM ships a full Grafana dashboard with live data panels:
+
+- Device inventory table (threat level color-coded, links to events + deep inspect)
+- Top traffic devices and destinations
+- Alert history table (MEDIUM+, with GeoIP country)
+- Protocol / application doughnut charts
+- Hourly activity bar chart
+- Adult domain trigger sites panel
+- CRITICAL / HIGH / MEDIUM alert count stat panels
+
+```bash
+# One-time setup
+bash scripts/configure-grafana-remote.sh
+bash scripts/import-dashboard.sh
+
+# Wire Grafana → ntfy push notifications
+bash scripts/setup-grafana-ntfy.sh
+```
+
+Grafana runs on port 3000. Default credentials are set during install — change them immediately.
 
 ---
 
 ## Running
 
 ```bash
-# Service management
+# Service control
 sudo systemctl start netwatchm
-sudo systemctl stop netwatchm
-sudo systemctl restart netwatchm
-systemctl status netwatchm
+sudo systemctl restart netwatchm-web
+journalctl -u netwatchm -f
 
-# Interactive mode (with Rich dashboard)
+# Interactive terminal dashboard
 sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml
 
-# Headless / log-only
-sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml --no-ui
+# Generate connection report manually
+sudo bash scripts/gen-report.sh
 
-# Live logs
-journalctl -u netwatchm -f
+# Deploy server changes
+bash scripts/hotdeploy.sh
 ```
 
-### Dashboard keyboard shortcuts
+### Terminal dashboard keyboard shortcuts
 
 | Key | Action |
 |-----|--------|
 | `Q` | Quit |
-| `I` | Switch to inventory view |
-| `M` | Switch back to main dashboard |
-| `E` | Export inventory to CSV |
-| `/` | Filter devices by IP / hostname |
+| `I` | Inventory view |
+| `M` | Main dashboard |
+| `E` | Export inventory CSV |
+| `/` | Filter by IP / hostname |
 | `Esc` | Clear filter |
-
----
-
-## Web Dashboard
-
-```bash
-# Open in browser (service is started by the installer)
-http://localhost:8765/report.html
-
-# Service management
-systemctl status netwatchm-web
-sudo systemctl restart netwatchm-web
-```
-
-Features: summary cards, sortable table, threat filter, port badges, auto-refresh every 30 s, dark/light theme, CSV export.
-
----
-
-## Device Inventory
-
-```bash
-# Terminal table
-uv run netwatchm inventory
-
-# Filter + sort
-uv run netwatchm inventory --filter 192.168 --sort-by threat
-
-# Export to CSV
-uv run netwatchm inventory --export /tmp/devices.csv
-```
-
-Inventory is saved automatically to `/var/lib/netwatchm/inventory.json` every 60 seconds.
-
----
-
-## Service-Down Alerts
-
-When `netwatchm` or `netwatchm-web` crashes, an email is sent automatically with:
-- The failure reason in plain English (mapped from systemd exit code)
-- The last 25 journal log lines
-- Exact commands to restart
-
-Uses `netwatchm-notify@.service` triggered by `OnFailure=` in each service unit.
-
----
-
-## Log Management
-
-| Layer | Cap | Mechanism |
-|-------|-----|-----------|
-| Alert log | 60 MB (10 MB × 6 files) | Python `RotatingFileHandler` |
-| systemd journal | 200 MB, 30-day retention | `netwatchm-journald.conf` drop-in |
-| Alert log (backup) | 7 days compressed | `netwatchm-logrotate` |
-
-Journal limits are applied automatically by `deploy-services.sh` (and by `install.sh`). To apply them manually:
-
-```bash
-sudo mkdir -p /etc/systemd/journald.conf.d
-sudo cp netwatchm-journald.conf /etc/systemd/journald.conf.d/netwatchm.conf
-sudo systemctl restart systemd-journald
-sudo journalctl --vacuum-size=200M
-```
-
----
-
-## PowerShell Log Watcher
-
-Read-only, non-destructive watcher that raises a coloured console alert the instant `HIGH` appears in a journal line.
-
-```powershell
-# Load and run
-. ./scripts/Watch-NetWatchMLogs.ps1
-Watch-NetWatchMLogs
-
-# Export HIGH alerts to CSV
-Watch-NetWatchMLogs -EmitObjects |
-    Export-Csv ~/high-alerts.csv -Append -NoTypeInformation
-```
 
 ---
 
@@ -292,7 +337,7 @@ Watch-NetWatchMLogs -EmitObjects |
 
 ```bash
 uv run pytest tests/ -v
-# 57 passed
+# 174 passed
 ```
 
 ---
@@ -305,16 +350,10 @@ uv run pytest tests/ -v
 | tshark | any recent |
 | uv | any |
 | Linux | systemd-based |
+| nmap | for deep inspect / per-device scan |
+| avahi-daemon | for `netwatch.local` mDNS (optional) |
 
-Python dependencies: `rich`, `pyyaml`, `pygame`
-
----
-
-## Documentation
-
-A complete 17-phase beginner build guide is included:
-
-📄 **[NetWatchM-guide.pdf](NetWatchM-guide.pdf)** — covers installation, configuration, dashboard usage, all four detectors, alert channels, log management, service-down alerts, and the PowerShell watcher.
+Python dependencies: `rich`, `pyyaml`, `pygame`, `geoip2`, `paramiko`, `openai`
 
 ---
 
