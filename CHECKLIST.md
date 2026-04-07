@@ -1,6 +1,59 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-03-22 (session 13)
+Last updated: 2026-04-06 (session 15)
+
+## Session 15 — 2026-04-06
+
+### AI Chat Integration (Web UI)
+- [x] `netwatchm_server.py` — `_AI_SYSTEM_PROMPT` explains ports_observed semantics (destination ports contacted, not local listeners); ephemeral port range 32768–60999 explicitly excluded from analysis
+- [x] `netwatchm_server.py` — `_PORT_NAMES` dict (40+ named services), `_EPHEMERAL_PORT_MIN = 32768`, `_fmt_bytes()` helper
+- [x] `netwatchm_server.py` — `_build_device_context(ip)` reads inventory.json + events.db + flows.db; filters to known named ports only (eliminates misleading "56k open ports" reports)
+- [x] `netwatchm_server.py` — `_build_network_context()` builds network-wide summary (device count, named service distribution)
+- [x] `netwatchm_server.py` — `_ai_sessions: dict[str, list[dict]]` + `_ai_lock` for multi-turn conversation state; trimmed to last 20 messages per session
+- [x] `netwatchm_server.py` — `_ai_ask(query, focus_ip, session_id)` calls OpenAI `gpt-4o-mini` with session history
+- [x] `netwatchm_server.py` — `POST /api/ai` + `POST /api/ai/reset` routes in `do_POST`; `GET /ai.html` file serve in `do_GET`
+- [x] `ai.html` — dark-theme chat UI (matching NetWatchM color scheme); device dropdown via `/api/aliases` + inventory; multi-turn session; simple markdown rendering (bold, code, lists); suggestion buttons that change by context
+- [x] `openai>=1.0` added to `pyproject.toml` dependencies; `uv.lock` updated
+- [x] `scripts/setup-ai-key.sh` — writes `OPENAI_API_KEY` to systemd drop-in `/etc/systemd/system/netwatchm-web.service.d/ai-env.conf`; uses `uv add openai` in project dir
+- [x] `scripts/deploy-ai.sh` — copies `ai.html` to `/var/lib/netwatchm/ai.html` and restarts `netwatchm-web`
+- [x] `scripts/hotdeploy.sh` — updated to also copy `ai.html` to `/var/lib/netwatchm/ai.html` (3-step deploy)
+
+### mDNS Hostname (`netwatch.local`)
+- [x] `scripts/setup-hostname.sh` — creates Avahi service XML + `netwatch-mdns.service` systemd unit; publishes `netwatch.local` → LAN IP via `avahi-publish -a -R`
+- [x] Verified: `avahi-resolve -n netwatch.local` → `192.168.1.180`; all pages accessible from any LAN device by hostname
+
+### AI Chat Nav Link — All Pages
+- [x] `netwatchm_server.py` — AI Chat link added to dynamically rendered nav bars: events.html topbar, inventory.html nav, history.html nav, pcap.html nav
+- [x] `src/netwatchm/reports/analytics_report.py` — full nav bar added: Connection Report, Inventory, Events, History, 🤖 AI Chat
+- [x] `src/netwatchm/reports/connection_report.py` — AI Chat button added to toolbar
+- [x] `netwatchm_server.py` — reports index (`/reports`) updated with AI Chat link
+- [x] `netwatchm_server.py` — startup log updated to show `netwatch.local:8765` and AI Assistant URL
+- [x] `scripts/patch-static-nav.sh` — Python-based patch injects AI Chat nav link into existing on-disk `analytics.html` (for pages already generated before this session)
+
+### Bug Fixes
+- [x] Fixed routing bug: `/api/ai` and `/api/ai/reset` routes were accidentally placed inside `do_DELETE` instead of `do_POST`; moved to correct location
+- [x] Port analysis: AI no longer reports ephemeral outbound ports as "open ports"; context limited to named services only
+
+### Deploy commands (session 15)
+```bash
+bash scripts/setup-ai-key.sh             # one-time: write OPENAI_API_KEY to systemd drop-in
+bash scripts/setup-hostname.sh           # one-time: enable netwatch.local mDNS hostname
+bash scripts/hotdeploy.sh               # deploy server + ai.html
+bash scripts/patch-static-nav.sh        # patch existing static analytics.html with AI nav link
+```
+
+---
+
+## Session 14 — 2026-03-29
+
+### LAN IP / FQDN — remote access fixes
+- [x] `netwatchm_server.py` — added `_get_local_ip()` helper; startup log now prints `Access via IP: https://<LAN-IP>:8765` and `Access via hostname: https://<fqdn>:8765`
+- [x] `socket` added to top-level imports
+- [x] `src/netwatchm/reports/connection_report.py` — Dashboard/Inventory Dashboard links now use `location.hostname` dynamically; NetWatchM Home uses relative `/`
+- [x] `src/netwatchm/reports/deep_inspect.py` — Grafana Dashboard link now uses `location.hostname` dynamically
+- [x] `scripts/import-dashboard.sh` — auto-detects server LAN IP and substitutes `localhost:8765` → `<LAN-IP>:8765` in Grafana panel links at import time (uses `NETWATCHM_SERVER_IP` override or UDP probe)
+
+---
 
 ## Session 13 — 2026-03-22
 

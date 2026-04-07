@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import shutil
+import socket
 import sqlite3
 import ssl
 import subprocess
@@ -1197,7 +1198,12 @@ def _render_reports_index() -> bytes:
   .back {{ display:inline-block; margin-bottom:16px; color:var(--muted); font-size:12px; }}
 </style>
 </head><body>
-<a class="back" href="/connection-report.html">← Back to Live Report</a>
+<div style="display:flex;gap:14px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+  <a class="back" href="/connection-report.html" style="margin:0">← Back to Live Report</a>
+  <a class="back" href="/inventory.html" style="margin:0">Inventory</a>
+  <a class="back" href="/events.html" style="margin:0">Events</a>
+  <a href="/ai.html" style="color:#58a6ff;font-size:12px;font-weight:bold;text-decoration:none">&#129302; AI Chat</a>
+</div>
 <h1>NetWatchM — Report History</h1>
 <div class="meta">{len(archives)} saved report(s) &nbsp;|&nbsp; Max {REPORTS_MAX} kept</div>
 <table>
@@ -1875,6 +1881,7 @@ def _render_events_html() -> bytes:
   <a href="/analytics.html">Analytics</a>
   <a href="javascript:void(0)" onclick="window.open('http://'+location.hostname+':3000/d/netwatchm-inventory/')" target="_blank">&#128202; Dashboard</a>
   <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+  <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   <div class="spacer"></div>
   <label class="auto-toggle">
     <input type="checkbox" id="autoRefresh" checked> Auto-refresh
@@ -2475,6 +2482,7 @@ def _render_inventory_html() -> bytes:
     <a href="/events.html">Events</a>
     <a href="/analytics.html">Analytics</a>
     <a href="/pcap.html">&#128202; Pcap</a>
+    <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   </nav>
   <div class="toolbar">
     <input type="search" id="searchBox" placeholder="Search IP, label, hostname, vendor…">
@@ -2845,6 +2853,7 @@ def _render_history_html() -> bytes:
     <a href="/inventory.html">Inventory</a>
     <a href="/events.html">Events</a>
     <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   </nav>
 </header>
 <div class="toolbar">
@@ -3047,6 +3056,7 @@ def _render_pcap_html() -> bytes:
     <a href="/events.html">Events</a>
     <a href="/connection-report.html">Report</a>
     <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   </nav>
 </header>
 <div class="main">
@@ -3274,6 +3284,266 @@ function hideResults(){document.getElementById('results').style.display='none';}
 </body>
 </html>"""
     return page.encode()
+
+
+_AI_SYSTEM_PROMPT = """\
+You are a network security analyst assistant integrated with NetWatchM, \
+a real-time network monitoring system. You have access to live data from \
+the local network: device inventory (IP, MAC, hostname, vendor), \
+first/last seen timestamps, service ports, security alert history, \
+and flow statistics.
+
+IMPORTANT — understand the data model before analyzing:
+- "Service ports" = destination ports (< 32768) this device has sent traffic TO. \
+  These represent services the device actively uses or hosts. \
+  Ephemeral/dynamic ports (32768–60999) are EXCLUDED — they are normal outbound \
+  connection ports, not services.
+- A high service-port count is NOT automatically a threat — a monitoring server \
+  or gateway naturally contacts many services.
+- "Flow history" shows actual destination ports used in the last 72 h with byte \
+  counts — use this as the primary indicator of active service usage.
+- Threat level is set by NetWatchM detectors (port scan, brute force, etc.), \
+  NOT by port count alone.
+
+Your role:
+- Describe devices clearly: identity, likely role, activity patterns
+- Analyze active service ports: name the service, explain what it does, flag concerns
+- Use flow history as the strongest signal for what a device is actually doing
+- Highlight real anomalies: known-malicious ports, unexpected services, alert patterns
+- Infer likely device type from port profile and vendor info
+- Be concise but thorough; use bullet points for structured data
+- Ground your analysis in the provided data — do not speculate beyond it
+- Do NOT raise alarms based on port count alone
+
+When asked about a specific device lead with: identity summary, threat posture, \
+active service analysis (from flow history first, then service ports), \
+risk assessment, and recommended actions.
+Tone: professional, clear, security-focused.\
+"""
+
+# Ephemeral port range on Linux (from /proc/sys/net/ipv4/ip_local_port_range)
+_EPHEMERAL_PORT_MIN = 32768
+
+_PORT_NAMES: dict[int, str] = {
+    20: "FTP-Data", 21: "FTP", 22: "SSH/SFTP", 23: "Telnet", 25: "SMTP",
+    53: "DNS", 67: "DHCP-Server", 68: "DHCP-Client", 80: "HTTP", 88: "Kerberos",
+    110: "POP3", 123: "NTP", 135: "RPC", 137: "NetBIOS-NS", 138: "NetBIOS-DGM",
+    139: "NetBIOS-SSN", 143: "IMAP", 161: "SNMP", 162: "SNMP-Trap", 179: "BGP",
+    389: "LDAP", 443: "HTTPS", 445: "SMB", 465: "SMTPS", 514: "Syslog",
+    515: "LPD-Print", 587: "SMTP-Submit", 631: "IPP-Print", 636: "LDAPS",
+    993: "IMAPS", 995: "POP3S", 1194: "OpenVPN", 1433: "MSSQL", 1883: "MQTT",
+    2049: "NFS", 2375: "Docker-HTTP", 2376: "Docker-TLS", 3000: "HTTP-Node",
+    3306: "MySQL", 3389: "RDP", 5353: "mDNS", 5432: "PostgreSQL", 5900: "VNC",
+    6379: "Redis", 8080: "HTTP-Alt", 8443: "HTTPS-Alt", 8765: "NetWatchM",
+    8766: "NetWatchM-Graf", 9090: "Prometheus", 9100: "Node-Exporter",
+    27017: "MongoDB", 51820: "WireGuard",
+}
+
+
+def _fmt_bytes(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+
+def _build_device_context(ip: str) -> str:
+    """Build a structured text block describing a device for the AI."""
+    lines: list[str] = []
+
+    # --- Inventory ---
+    inv_path = Path(EVENT_DB).parent / "inventory.json"
+    device: dict = {}
+    if inv_path.exists():
+        try:
+            records = json.loads(inv_path.read_text())
+            for rec in records:
+                if rec.get("ip") == ip:
+                    device = rec
+                    break
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    aliases: dict = {}
+    alias_path = ALIASES_FILE
+    if alias_path.exists():
+        try:
+            aliases = json.loads(alias_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    verified: dict = {}
+    ver_path = VERIFIED_FILE
+    if ver_path.exists():
+        try:
+            verified = json.loads(ver_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    alias = aliases.get(ip, "")
+    display_name = alias or device.get("hostname") or ip
+
+    lines.append("=== DEVICE IDENTITY ===")
+    lines.append(f"IP Address  : {ip}")
+    lines.append(f"Display Name: {display_name}")
+    lines.append(f"Hostname    : {device.get('hostname') or 'not resolved'}")
+    lines.append(f"Alias       : {alias or 'none'}")
+    lines.append(f"MAC Address : {device.get('mac') or 'unknown'}")
+    lines.append(f"Vendor      : {device.get('vendor') or 'unknown'}")
+    lines.append(f"Verified    : {'yes' if verified.get(ip) else 'no'}")
+    lines.append(f"Threat Level: {device.get('threat_level', 'unknown')}")
+    lines.append(f"First Seen  : {device.get('first_seen', 'unknown')}")
+    lines.append(f"Last Seen   : {device.get('last_seen', 'unknown')}")
+    lines.append(f"Bytes Sent  : {_fmt_bytes(device.get('bytes_sent', 0))}")
+    lines.append(f"Bytes Recv  : {_fmt_bytes(device.get('bytes_received', 0))}")
+
+    all_ports = sorted(device.get("ports_observed", []))
+    # Only show ports that are recognized named services (in _PORT_NAMES).
+    # ports_observed tracks ALL destination ports ever seen — including ports this
+    # device contacted on other devices while monitoring. Filtering to named services
+    # removes the noise and shows only meaningful service interactions.
+    known_ports = [p for p in all_ports if p in _PORT_NAMES]
+    ephemeral_count = len([p for p in all_ports if p >= _EPHEMERAL_PORT_MIN])
+    unknown_count = len(all_ports) - len(known_ports) - ephemeral_count
+    lines.append(
+        f"\n=== RECOGNIZED SERVICE PORTS ({len(known_ports)} named services "
+        f"| {ephemeral_count} ephemeral excluded | {unknown_count} unrecognized excluded) ==="
+    )
+    lines.append("  Note: these are ports this device communicated with — not necessarily local listeners.")
+    for p in known_ports:
+        name = _PORT_NAMES[p]
+        lines.append(f"  {p:>6}  {name}")
+
+    # --- Events ---
+    try:
+        con = sqlite3.connect(EVENT_DB)
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT timestamp, alert_type, level, src_ip, dst_ip, description "
+            "FROM events WHERE src_ip=? OR dst_ip=? ORDER BY timestamp DESC LIMIT 20",
+            (ip, ip),
+        ).fetchall()
+        con.close()
+        lines.append(f"\n=== SECURITY ALERTS ({len(rows)}) ===")
+        for r in rows:
+            ts = datetime.fromtimestamp(r["timestamp"]).strftime("%m-%d %H:%M")
+            direction = "→" if r["src_ip"] == ip else "←"
+            peer = r["dst_ip"] if r["src_ip"] == ip else r["src_ip"]
+            lines.append(
+                f"  [{ts}] [{r['level']:<8}] {r['alert_type']:<20} {direction} {peer or '?'}"
+            )
+            lines.append(f"    {r['description']}")
+        if not rows:
+            lines.append("  No alerts recorded")
+    except Exception:
+        lines.append("\n=== SECURITY ALERTS ===\n  (unavailable)")
+
+    # --- Flows ---
+    try:
+        fc = sqlite3.connect(FLOW_DB)
+        fc.row_factory = sqlite3.Row
+        flow_rows = fc.execute(
+            """SELECT dst_port, protocol, MAX(domain) AS domain,
+                      COUNT(*) AS flows, COALESCE(SUM(bytes),0) AS bytes
+               FROM flows WHERE src_ip=? AND dst_port IS NOT NULL
+               GROUP BY dst_port ORDER BY bytes DESC LIMIT 15""",
+            (ip,),
+        ).fetchall()
+        fc.close()
+        if flow_rows:
+            lines.append("\n=== PORT USAGE (flow history, 72h) ===")
+            lines.append(f"{'Port':<7} {'Service':<18} {'Proto':<8} {'Flows':<7} {'Bytes':<12} Domain")
+            for r in flow_rows:
+                name = _PORT_NAMES.get(r["dst_port"], f"port-{r['dst_port']}")
+                lines.append(
+                    f"  {r['dst_port']:<7} {name:<18} {r['protocol'] or '?':<8} "
+                    f"{r['flows']:<7} {_fmt_bytes(r['bytes']):<12} {r['domain'] or ''}"
+                )
+    except Exception:
+        pass
+
+    return "\n".join(lines)
+
+
+def _build_network_context() -> str:
+    """Build a summary of all devices for network-wide AI queries."""
+    inv_path = Path(EVENT_DB).parent / "inventory.json"
+    if not inv_path.exists():
+        return "No inventory data available."
+    try:
+        records = json.loads(inv_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return "Could not read inventory."
+    lines = [f"=== NETWORK INVENTORY ({len(records)} devices) ===",
+             f"{'IP':<18} {'Hostname':<25} {'MAC':<19} {'Vendor':<20} {'Threat':<10} {'Svcs':<6} Last Seen",
+             "-" * 110]
+    for r in sorted(records, key=lambda x: x.get("ip", "")):
+        # Count only recognized named-service ports (not ephemeral or unknown)
+        svc_count = sum(1 for p in r.get("ports_observed", []) if p in _PORT_NAMES)
+        lines.append(
+            f"{r.get('ip',''):<18} {(r.get('hostname') or '?')[:24]:<25} "
+            f"{(r.get('mac') or '?'):<19} {(r.get('vendor') or 'unknown')[:19]:<20} "
+            f"{r.get('threat_level','LOW'):<10} {svc_count:<6} "
+            f"{(r.get('last_seen') or '')[:19]}"
+        )
+    return "\n".join(lines)
+
+
+# AI conversation sessions keyed by session_id
+_ai_sessions: dict[str, list[dict]] = {}
+_ai_lock = threading.Lock()
+
+
+def _ai_ask(query: str, focus_ip: str | None = None, session_id: str | None = None) -> str:
+    """Call OpenAI with network context and return the reply text."""
+    try:
+        from openai import OpenAI  # type: ignore
+    except ImportError:
+        return "OpenAI package not installed. Run: pip install openai"
+
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        return "OPENAI_API_KEY not set. Add it to the server environment."
+
+    client = OpenAI(api_key=api_key)
+
+    # Build context
+    if focus_ip:
+        context = _build_device_context(focus_ip)
+    else:
+        context = _build_network_context()
+
+    # Manage session history
+    with _ai_lock:
+        if session_id not in _ai_sessions:
+            _ai_sessions[session_id or "default"] = []
+        history = _ai_sessions.get(session_id or "default", [])
+
+    if not history or focus_ip:
+        user_content = f"Network context:\n\n{context}\n\n---\n\n{query}"
+    else:
+        user_content = query
+
+    history.append({"role": "user", "content": user_content})
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            max_tokens=2048,
+            messages=[{"role": "system", "content": _AI_SYSTEM_PROMPT}] + history,
+        )
+        reply = response.choices[0].message.content
+    except Exception as exc:
+        reply = f"AI error: {exc}"
+
+    history.append({"role": "assistant", "content": reply})
+
+    # Trim history to last 20 messages to prevent runaway context
+    with _ai_lock:
+        _ai_sessions[session_id or "default"] = history[-20:]
+
+    return reply
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -3739,6 +4009,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, 500)
             return
 
+        if path == "/ai.html":
+            self._send_file(SERVE_DIR / "ai.html")
+            return
+
         if path == "/inventory.html":
             body = _render_inventory_html()
             self.send_response(200)
@@ -4066,6 +4340,35 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": ok, "message": msg}, 200 if ok else 400)
             return
 
+        if parsed.path == "/api/ai":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            query = (body.get("query") or "").strip()
+            focus_ip = (body.get("focus_ip") or "").strip() or None
+            session_id = (body.get("session_id") or "default").strip()
+            if not query:
+                self._send_json({"error": "query required"}, 400)
+                return
+            reply = _ai_ask(query, focus_ip=focus_ip, session_id=session_id)
+            self._send_json({"reply": reply})
+            return
+
+        if parsed.path == "/api/ai/reset":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                body = {}
+            session_id = (body.get("session_id") or "default").strip()
+            with _ai_lock:
+                _ai_sessions.pop(session_id, None)
+            self._send_json({"ok": True})
+            return
+
         self.send_error(404, "Not Found")
 
     def do_DELETE(self) -> None:
@@ -4138,24 +4441,28 @@ CERT_FILE = CERT_DIR / "server.crt"
 KEY_FILE = CERT_DIR / "server.key"
 
 
+def _get_local_ip() -> str:
+    """Return the LAN IP of this host (or env override), never localhost."""
+    ip = os.environ.get("NETWATCHM_SERVER_IP", "")
+    if ip:
+        return ip
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = "127.0.0.1"
+    return ip
+
+
 def _ensure_cert() -> None:
     """Generate a self-signed TLS certificate if one doesn't already exist."""
     if CERT_FILE.exists() and KEY_FILE.exists():
         return
     print("Generating self-signed TLS certificate…", flush=True)
-    import socket as _socket
-
-    local_ip = os.environ.get("NETWATCHM_SERVER_IP", "")
-    if not local_ip:
-        try:
-            s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-            s.close()
-        except Exception:
-            local_ip = "127.0.0.1"
-    import socket as _socket2
-    hostname = _socket2.gethostname()
+    local_ip = _get_local_ip()
+    hostname = socket.gethostname()
     san = f"subjectAltName=DNS:localhost,DNS:{hostname}.local,DNS:{hostname},IP:127.0.0.1,IP:{local_ip}"
     ext_file = CERT_DIR / "san.ext"
     ext_file.write_text(san)
@@ -4683,7 +4990,13 @@ if __name__ == "__main__":
         f"Grafana HTTP endpoint listening on http://127.0.0.1:{HTTP_PORT}", flush=True
     )
 
+    _lan_ip = _get_local_ip()
+    _fqdn = socket.getfqdn()
     print(f"NetWatchM web server listening on https://0.0.0.0:{PORT}", flush=True)
+    print(f"  Access via IP       : https://{_lan_ip}:{PORT}", flush=True)
+    print(f"  Access via hostname : https://{_fqdn}:{PORT}", flush=True)
+    print(f"  Access via mDNS     : https://netwatch.local:{PORT}", flush=True)
+    print(f"  AI Assistant        : https://netwatch.local:{PORT}/ai.html", flush=True)
     print(
         "Note: browser will show a self-signed cert warning — click 'Advanced > Proceed'.",
         flush=True,

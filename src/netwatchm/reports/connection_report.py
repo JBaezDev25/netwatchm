@@ -679,6 +679,7 @@ def render_html(
     <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
     <a href="/inventory.html" style="background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4F1; Inventory</a>
     <a href="/history.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x23F1; History</a>
+    <a href="/ai.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F916; AI Chat</a>
     <button id="refresh-btn" onclick="triggerRefresh()" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35)">&#x21BB; Refresh</button>
     <select id="auto-refresh" onchange="setAutoRefresh(this.value)">
       <option value="0">Auto: Off</option>
@@ -689,9 +690,9 @@ def render_html(
     <span id="refresh-countdown"></span>
   </div>
   <div class="toolbar-row ext-row">
-    <a class="ext-btn" href="http://localhost:3000" onclick="return openLink('http://localhost:3000',event)">&#x1F4CA; Dashboard</a>
-    <a class="ext-btn" href="http://localhost:3000/d/netwatchm-inventory/" onclick="return openLink('http://localhost:3000/d/netwatchm-inventory/',event)">&#x1F4F2; Inventory Dashboard</a>
-    <a class="ext-btn" href="https://localhost:8765/" onclick="return openLink('https://localhost:8765/',event)">&#x1F3E0; NetWatchM</a>
+    <a class="ext-btn" href="javascript:void(0)" onclick="return openLink('http://'+location.hostname+':3000',event)">&#x1F4CA; Dashboard</a>
+    <a class="ext-btn" href="javascript:void(0)" onclick="return openLink('http://'+location.hostname+':3000/d/netwatchm-inventory/',event)">&#x1F4F2; Inventory Dashboard</a>
+    <a class="ext-btn" href="/" onclick="return openLink(location.origin+'/',event)">&#x1F3E0; NetWatchM</a>
     <label class="toggle-wrap" title="Open links in new tab or same page">
       <input type="checkbox" id="dash-newtab" onchange="saveDashPref(this.checked)">
       New tab

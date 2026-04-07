@@ -9,6 +9,9 @@ dependencies = [
     "geoip2>=4.8",
     "paramiko>=3.4",
     "requests>=2.31",
+    "anthropic>=0.86.0",
+    "pyshark>=0.6",
+    "openai>=2.30.0",
 ]
 
 [project.optional-dependencies]

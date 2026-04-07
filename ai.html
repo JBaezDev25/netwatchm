@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — AI Assistant</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --surface2:#21262d;
+    --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
+    --accent:#58a6ff; --low:#3fb950; --medium:#d29922;
+    --high:#f85149; --critical:#ff7b72;
+    --user-bubble:#1c2a3a; --ai-bubble:#161b22;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: monospace; font-size: 13px;
+    display: flex; flex-direction: column; height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ── */
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 20px; display: flex; align-items: center; gap: 16px;
+    height: 44px; flex-shrink: 0;
+  }
+  header h1 { color: var(--accent); font-size: 15px; white-space: nowrap; }
+  nav { display: flex; gap: 14px; align-items: center; margin-left: auto; }
+  nav a {
+    color: var(--muted); font-size: 12px; text-decoration: none;
+    padding: 4px 8px; border-radius: 4px; transition: color .15s;
+  }
+  nav a:hover { color: var(--text); }
+  nav a.active { color: var(--accent); }
+
+  /* ── Context bar ── */
+  #context-bar {
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    padding: 8px 20px; display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0; flex-wrap: wrap;
+  }
+  #context-bar label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  #device-select {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px; font-family: monospace; font-size: 12px;
+    min-width: 200px;
+  }
+  #device-select:focus { outline: none; border-color: var(--accent); }
+  .ctx-badge {
+    padding: 2px 10px; border-radius: 10px; font-size: 11px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+  }
+  #btn-reset {
+    margin-left: auto; background: none; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 4px 10px;
+    cursor: pointer; font-size: 11px; font-family: monospace;
+  }
+  #btn-reset:hover { border-color: var(--high); color: var(--high); }
+
+  /* ── Chat window ── */
+  #chat-window {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+    scroll-behavior: smooth;
+  }
+  .msg { display: flex; gap: 12px; max-width: 860px; }
+  .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; border: 1px solid var(--border);
+  }
+  .msg.user .avatar     { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .msg.assistant .avatar { background: var(--surface2); color: var(--accent); }
+
+  .bubble {
+    padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+    line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    max-width: 100%;
+  }
+  .msg.user .bubble      { background: var(--user-bubble); border-color: #1f3a5c; }
+  .msg.assistant .bubble { background: var(--ai-bubble); }
+  .bubble strong         { color: var(--accent); }
+  .bubble code           { background: var(--surface2); padding: 1px 5px; border-radius: 3px; }
+  .bubble ul, .bubble ol { padding-left: 18px; }
+  .bubble li             { margin: 3px 0; }
+
+  .thinking {
+    color: var(--muted); font-style: italic; animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+  /* ── Input bar ── */
+  #input-bar {
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 12px 20px; display: flex; gap: 10px; align-items: flex-end;
+    flex-shrink: 0;
+  }
+  #user-input {
+    flex: 1; background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-family: monospace; font-size: 13px;
+    resize: none; min-height: 38px; max-height: 120px;
+    overflow-y: auto; line-height: 1.5;
+  }
+  #user-input:focus { outline: none; border-color: var(--accent); }
+  #btn-send {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 9px 18px; cursor: pointer;
+    font-family: monospace; font-size: 13px; flex-shrink: 0;
+  }
+  #btn-send:hover  { opacity: .9; }
+  #btn-send:disabled { opacity: .4; cursor: default; }
+
+  /* ── Suggestions ── */
+  #suggestions {
+    padding: 0 20px 10px; display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0;
+  }
+  .sug-btn {
+    background: var(--surface2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 12px; padding: 4px 12px; font-size: 11px; cursor: pointer;
+    font-family: monospace; transition: color .15s, border-color .15s;
+  }
+  .sug-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  #empty-state {
+    text-align: center; color: var(--muted); margin: auto;
+    padding: 40px 20px;
+  }
+  #empty-state h2 { color: var(--accent); font-size: 18px; margin-bottom: 10px; }
+  #empty-state p  { line-height: 1.7; max-width: 480px; margin: 0 auto; }
+
+  /* scrollbar */
+  #chat-window::-webkit-scrollbar { width: 6px; }
+  #chat-window::-webkit-scrollbar-track { background: transparent; }
+  #chat-window::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#129302; NetWatchM AI Assistant</h1>
+  <nav>
+    <a href="/connection-report.html">Report</a>
+    <a href="/inventory.html">Inventory</a>
+    <a href="/events.html">Events</a>
+    <a href="/analytics.html">Analytics</a>
+    <a href="/history.html">History</a>
+    <a href="/deep-inspect-web.html">Deep Inspect</a>
+    <a href="/ai.html" class="active">&#129302; AI Chat</a>
+  </nav>
+</header>
+
+<div id="context-bar">
+  <label>Focus device:</label>
+  <select id="device-select">
+    <option value="">— Whole network —</option>
+  </select>
+  <span id="focus-badge" class="ctx-badge" style="display:none"></span>
+  <button id="btn-reset" title="Clear conversation">&#10006; Reset chat</button>
+</div>
+
+<div id="chat-window">
+  <div id="empty-state">
+    <h2>Network Intelligence</h2>
+    <p>
+      Ask me anything about your network — device profiles, port analysis,
+      security alerts, or traffic patterns. Select a device above to focus
+      the conversation, or ask about the whole network.
+    </p>
+  </div>
+</div>
+
+<div id="suggestions">
+  <button class="sug-btn" onclick="suggest('Summarize all devices on the network')">Network summary</button>
+  <button class="sug-btn" onclick="suggest('Which devices have HIGH or CRITICAL threat levels?')">High-threat devices</button>
+  <button class="sug-btn" onclick="suggest('What are the most common ports seen across the network?')">Common ports</button>
+  <button class="sug-btn" onclick="suggest('Are there any security concerns I should investigate?')">Security concerns</button>
+</div>
+
+<div id="input-bar">
+  <textarea id="user-input" placeholder="Ask about a device, port, or network activity…" rows="1"></textarea>
+  <button id="btn-send" onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+  const SESSION_ID = 'session-' + Math.random().toString(36).slice(2, 10);
+  let focusIP = '';
+
+  // ── Load device list ────────────────────────────────────────────────────
+  async function loadDevices() {
+    try {
+      const r = await fetch('/api/aliases');
+      const aliases = r.ok ? await r.json() : {};
+      const inv = await fetch('/var/lib/netwatchm/inventory.json').catch(() => null);
+      let ips = [];
+      if (inv && inv.ok) {
+        const records = await inv.json();
+        ips = records.map(d => ({ ip: d.ip, host: d.hostname, vendor: d.vendor }));
+      }
+      const sel = document.getElementById('device-select');
+      ips.sort((a,b) => a.ip.localeCompare(b.ip, undefined, {numeric:true}));
+      ips.forEach(d => {
+        const label = aliases[d.ip] || d.host || d.ip;
+        const opt = document.createElement('option');
+        opt.value = d.ip;
+        opt.textContent = `${d.ip}  —  ${label}`;
+        sel.appendChild(opt);
+      });
+    } catch(e) { /* non-critical */ }
+  }
+
+  // ── Device selector ─────────────────────────────────────────────────────
+  document.getElementById('device-select').addEventListener('change', function() {
+    focusIP = this.value;
+    const badge = document.getElementById('focus-badge');
+    if (focusIP) {
+      badge.textContent = '📍 ' + focusIP;
+      badge.style.display = '';
+      document.getElementById('suggestions').innerHTML = `
+        <button class="sug-btn" onclick="suggest('Give me a full profile of this device')">Full profile</button>
+        <button class="sug-btn" onclick="suggest('What ports is this device using and what services are they?')">Port analysis</button>
+        <button class="sug-btn" onclick="suggest('Are there any security alerts for this device?')">Alert history</button>
+        <button class="sug-btn" onclick="suggest('What is this device probably used for on my network?')">Identify device</button>
+        <button class="sug-btn" onclick="suggest('What is the risk level of this device?')">Risk assessment</button>
+      `;
+    } else {
+      badge.style.display = 'none';
+      document.getElementById('suggestions').innerHTML = `
+        <button class="sug-btn" onclick="suggest('Summarize all devices on the network')">Network summary</button>
+        <button class="sug-btn" onclick="suggest('Which devices have HIGH or CRITICAL threat levels?')">High-threat devices</button>
+        <button class="sug-btn" onclick="suggest('What are the most common ports seen across the network?')">Common ports</button>
+        <button class="sug-btn" onclick="suggest('Are there any security concerns I should investigate?')">Security concerns</button>
+      `;
+    }
+    // Reset chat on focus change
+    resetChat();
+  });
+
+  // ── Reset ───────────────────────────────────────────────────────────────
+  async function resetChat() {
+    try {
+      await fetch('/api/ai/reset', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: SESSION_ID})
+      });
+    } catch(e) {}
+    document.getElementById('chat-window').innerHTML =
+      '<div id="empty-state"><h2>Network Intelligence</h2>' +
+      '<p>Ask me anything about your network — device profiles, port analysis, ' +
+      'security alerts, or traffic patterns.</p></div>';
+  }
+  document.getElementById('btn-reset').onclick = resetChat;
+
+  // ── Suggestions ─────────────────────────────────────────────────────────
+  function suggest(text) {
+    document.getElementById('user-input').value = text;
+    sendMessage();
+  }
+
+  // ── Send ────────────────────────────────────────────────────────────────
+  async function sendMessage() {
+    const input = document.getElementById('user-input');
+    const query = input.value.trim();
+    if (!query) return;
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Remove empty state
+    const es = document.getElementById('empty-state');
+    if (es) es.remove();
+
+    // Suggestions go away after first message
+    document.getElementById('suggestions').style.display = 'none';
+
+    appendMsg('user', query);
+    const thinkingEl = appendMsg('assistant', '…', true);
+
+    document.getElementById('btn-send').disabled = true;
+
+    try {
+      const resp = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          query,
+          focus_ip: focusIP || undefined,
+          session_id: SESSION_ID,
+        })
+      });
+      const data = await resp.json();
+      thinkingEl.querySelector('.bubble').innerHTML = formatReply(data.reply || data.error || 'No response');
+      thinkingEl.querySelector('.bubble').classList.remove('thinking');
+    } catch(e) {
+      thinkingEl.querySelector('.bubble').textContent = 'Network error: ' + e.message;
+      thinkingEl.querySelector('.bubble').classList.remove('thinking');
+    }
+
+    document.getElementById('btn-send').disabled = false;
+    input.focus();
+    scrollToBottom();
+  }
+
+  function appendMsg(role, text, thinking=false) {
+    const win = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+    const avatar = role === 'user' ? '👤' : '🤖';
+    div.innerHTML = `
+      <div class="avatar">${avatar}</div>
+      <div class="bubble${thinking ? ' thinking' : ''}">${thinking ? text : formatReply(text)}</div>
+    `;
+    win.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function formatReply(text) {
+    // Simple markdown-lite rendering
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^- (.+)$/gm, '• $1')
+      .replace(/^\d+\. (.+)$/gm, '  $1')
+      .replace(/\n/g, '<br>');
+  }
+
+  function scrollToBottom() {
+    const win = document.getElementById('chat-window');
+    win.scrollTop = win.scrollHeight;
+  }
+
+  // ── Auto-resize textarea ─────────────────────────────────────────────────
+  const ta = document.getElementById('user-input');
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+  });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  // ── Init ────────────────────────────────────────────────────────────────
+  loadDevices();
+</script>
+</body>
+</html>
