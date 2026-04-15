@@ -8,6 +8,9 @@ Last updated: 2026-04-15 (session 17)
 - [x] `netwatchm_server.py` — `_build_policy_context()`: new helper that reads `suppressed.json` (currently silenced alert types) and `netwatchm.yaml` (global IP whitelist + per-type detector whitelist); appended to both `_build_device_context()` and `_build_network_context()`
 - [x] `netwatchm_server.py` — `_AI_SYSTEM_PROMPT` updated to explain the Alert Policy section: whitelisted IPs never generate alerts (intentional), suppressed alert types silenced across all devices (flag if high-risk type like BRUTE_FORCE is suppressed)
 
+### AI Chat — voice input
+- [x] `ai.html` — mic button (🎤) next to Send; uses browser Web Speech API (no server changes, no API key); real-time interim transcription while speaking; stops on silence and fills the textarea for review before sending; pulsing red indicator when listening; shows "Microphone permission denied" error if blocked; gracefully disabled on unsupported browsers (Firefox) with tooltip
+
 ### MAC OUI vendor database
 - [x] `scripts/update-oui-db.sh` — downloads IEEE MA-L OUI registry (38k+ entries), parses CSV, writes `/var/lib/netwatchm/oui.json`; sets ownership for `netwatchm` user; run once after install then periodically
 - [x] `src/netwatchm/inventory/oui_lookup.py` — `lookup(mac) -> str | None`; lazy-loads `oui.json` into memory on first call; accepts any MAC format (colon/dash/dot separated)

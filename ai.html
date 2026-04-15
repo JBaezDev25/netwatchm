@@ -116,6 +116,30 @@
   #btn-send:hover  { opacity: .9; }
   #btn-send:disabled { opacity: .4; cursor: default; }
 
+  /* ── Mic button ── */
+  #btn-mic {
+    background: var(--surface2); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; cursor: pointer; font-size: 15px;
+    flex-shrink: 0; transition: color .15s, border-color .15s, background .15s;
+  }
+  #btn-mic:hover { color: var(--accent); border-color: var(--accent); }
+  #btn-mic.listening {
+    background: #3a0a0a; border-color: var(--high); color: var(--high);
+    animation: mic-pulse 1s infinite;
+  }
+  #btn-mic.unsupported { opacity: .3; cursor: not-allowed; }
+  @keyframes mic-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  /* ── Voice status strip ── */
+  #voice-status {
+    display: none; padding: 4px 20px;
+    background: #1a0a0a; border-top: 1px solid var(--high);
+    color: var(--high); font-size: 11px; flex-shrink: 0;
+    text-align: center; letter-spacing: .5px;
+  }
+  #voice-status.active { display: block; }
+
   /* ── Suggestions ── */
   #suggestions {
     padding: 0 20px 10px; display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0;
@@ -182,8 +206,11 @@
   <button class="sug-btn" onclick="suggest('Are there any security concerns I should investigate?')">Security concerns</button>
 </div>
 
+<div id="voice-status">🎤 Listening… speak now</div>
+
 <div id="input-bar">
   <textarea id="user-input" placeholder="Ask about a device, port, or network activity…" rows="1"></textarea>
+  <button id="btn-mic" title="Voice input (Chrome/Edge)">🎤</button>
   <button id="btn-send" onclick="sendMessage()">Send</button>
 </div>
 
@@ -346,6 +373,75 @@
   ta.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
+
+  // ── Voice input ─────────────────────────────────────────────────────────
+  (function initVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const micBtn    = document.getElementById('btn-mic');
+    const voiceSts  = document.getElementById('voice-status');
+    const inputEl   = document.getElementById('user-input');
+
+    if (!SpeechRecognition) {
+      micBtn.classList.add('unsupported');
+      micBtn.title = 'Voice input not supported in this browser (use Chrome or Edge)';
+      return;
+    }
+
+    const rec = new SpeechRecognition();
+    rec.continuous      = false;   // stop after one utterance
+    rec.interimResults  = true;    // show partial transcription while speaking
+    rec.lang            = 'en-US';
+
+    let listening = false;
+    let baseText  = '';            // text already in the box before voice starts
+
+    function startListening() {
+      baseText  = inputEl.value;
+      listening = true;
+      micBtn.classList.add('listening');
+      voiceSts.classList.add('active');
+      try { rec.start(); }
+      catch(e) { stopListening(); }
+    }
+
+    function stopListening() {
+      listening = false;
+      micBtn.classList.remove('listening');
+      voiceSts.classList.remove('active');
+      try { rec.stop(); } catch(e) {}
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (listening) { stopListening(); } else { startListening(); }
+    });
+
+    rec.onresult = (e) => {
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t; else interim += t;
+      }
+      inputEl.value = baseText + (final || interim);
+      // Auto-resize textarea
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    };
+
+    rec.onend = () => {
+      stopListening();
+      // If text was captured, focus the box so user can review then press Enter
+      if (inputEl.value.trim()) inputEl.focus();
+    };
+
+    rec.onerror = (e) => {
+      stopListening();
+      if (e.error === 'not-allowed') {
+        voiceSts.textContent = '⚠ Microphone permission denied — allow it in browser settings';
+        voiceSts.style.display = 'block';
+        setTimeout(() => { voiceSts.style.display = 'none'; voiceSts.textContent = '🎤 Listening… speak now'; }, 4000);
+      }
+    };
+  })();
 
   // ── Init ────────────────────────────────────────────────────────────────
   loadDevices();
