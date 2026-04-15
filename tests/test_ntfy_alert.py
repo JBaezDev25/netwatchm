@@ -154,7 +154,7 @@ def test_request_priority_header():
 def test_request_title_header():
     handler = NtfyAlert(_make_config())
     req = _capture_request(handler, _alert(alert_type="PORT_SCAN", level=ThreatLevel.HIGH))
-    assert req.get_header("X-title") == "[HIGH] PORT_SCAN"
+    assert req.get_header("X-title") == "[HIGH] Network scan detected"
 
 
 def test_request_tag_header():

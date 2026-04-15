@@ -1,6 +1,20 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-06 (session 15)
+Last updated: 2026-04-14 (session 16)
+
+## Session 16 — 2026-04-14
+
+### Service hardening — dedicated system user
+- [x] `scripts/harden-service-user.sh` — switches `netwatchm-web` from `User=root` to a dedicated `netwatchm` system user; chowns `/var/lib/netwatchm`, `/var/log/netwatchm`, `/etc/netwatchm`; secures OpenAI API key drop-in to chmod 600; idempotent and safe to re-run. Main monitor (packet capture) stays root — tshark requires CAP_NET_RAW.
+- [x] `scripts/deploy-server.sh` — updated to create/install a system venv at `/usr/local/lib/netwatchm/venv` (independent of home dir); wrapper now points at system venv Python so `netwatchm` user can execute without home directory access
+
+### Human-readable alert notifications
+- [x] `src/netwatchm/alerts/alert_labels.py` — new module: `ALERT_TITLES` + `ALERT_SUMMARIES` maps for all 8 alert types; `get_title()` / `get_summary()` helpers
+- [x] `src/netwatchm/alerts/email_alert.py` — subject now uses plain-English title (e.g. "Network scan detected"); body includes one-sentence summary row + cleaner table layout
+- [x] `src/netwatchm/alerts/ntfy_alert.py` — `X-Title` header uses plain-English title; body prepends plain-English summary before technical detail
+- [x] `tests/test_ntfy_alert.py` — updated `test_request_title_header` assertion to match new title format
+
+---
 
 ## Session 15 — 2026-04-06
 

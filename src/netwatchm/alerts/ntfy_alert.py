@@ -9,6 +9,7 @@ from urllib.error import URLError
 
 from ..config import NtfyAlertConfig
 from ..models import Alert, ThreatLevel
+from .alert_labels import get_summary, get_title
 from .base import AlertHandler
 
 logger = logging.getLogger(__name__)
@@ -58,15 +59,17 @@ class NtfyAlert(AlertHandler):
         cfg = self._config
         url = f"{cfg.server.rstrip('/')}/{cfg.topic}"
 
-        lines = [alert.description]
+        summary = get_summary(alert.alert_type)
+        lines = [summary] if summary else []
+        lines.append(alert.description)
         if alert.src_ip:
-            lines.append(f"Src: {alert.src_ip}")
+            lines.append(f"From: {alert.src_ip}")
         if alert.dst_ip:
-            lines.append(f"Dst: {alert.dst_ip}")
+            lines.append(f"To: {alert.dst_ip}")
         body = "\n".join(lines).encode()
 
         priority = str(_PRIORITY.get(alert.level, 3))
-        title = f"[{alert.level.name}] {alert.alert_type}"
+        title = f"[{alert.level.name}] {get_title(alert.alert_type)}"
         tag = alert.alert_type.lower().replace("_", "-")
 
         headers = {

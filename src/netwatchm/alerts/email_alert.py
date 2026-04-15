@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 
 from ..config import EmailAlertConfig
 from ..models import Alert, ThreatLevel
+from .alert_labels import get_summary, get_title
 from .base import AlertHandler
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class EmailAlert(AlertHandler):
 
     def _send_sync(self, alert: Alert) -> None:
         cfg = self._config
-        subject = f"[NetWatchM] {alert.level.name} — {alert.alert_type}"
+        subject = f"[NetWatchM] {alert.level.name} — {get_title(alert.alert_type)}"
         body = self._build_html(alert)
 
         msg = MIMEMultipart("alternative")
@@ -79,15 +80,20 @@ class EmailAlert(AlertHandler):
             "CRITICAL": "#6f0000",
         }
         color = color_map.get(alert.level.name, "#333")
+        title = get_title(alert.alert_type)
+        summary = get_summary(alert.alert_type)
+        summary_row = f'<tr><td colspan="2" style="padding-top:8px;color:#ccc">{summary}</td></tr>' if summary else ""
         return f"""
-<html><body style="font-family:monospace;background:#111;color:#eee;padding:20px">
-<h2 style="color:{color}">[{alert.level.name}] {alert.alert_type}</h2>
-<table>
-  <tr><td><b>Time</b></td><td>{alert.timestamp.isoformat()}</td></tr>
-  <tr><td><b>Source IP</b></td><td>{alert.src_ip or "—"}</td></tr>
-  <tr><td><b>Destination IP</b></td><td>{alert.dst_ip or "—"}</td></tr>
-  <tr><td><b>Description</b></td><td>{alert.description}</td></tr>
+<html><body style="font-family:sans-serif;background:#111;color:#eee;padding:20px">
+<h2 style="color:{color}">{title}</h2>
+<table style="border-collapse:collapse">
+  {summary_row}
+  <tr><td style="padding:4px 12px 4px 0"><b>Severity</b></td><td>{alert.level.name}</td></tr>
+  <tr><td style="padding:4px 12px 4px 0"><b>Time</b></td><td>{alert.timestamp.strftime("%Y-%m-%d %H:%M:%S")}</td></tr>
+  <tr><td style="padding:4px 12px 4px 0"><b>Source device</b></td><td>{alert.src_ip or "—"}</td></tr>
+  <tr><td style="padding:4px 12px 4px 0"><b>Destination</b></td><td>{alert.dst_ip or "—"}</td></tr>
+  <tr><td style="padding:4px 12px 4px 0"><b>Detail</b></td><td>{alert.description}</td></tr>
 </table>
-<p style="color:#888;font-size:0.8em">Sent by NetWatchM</p>
+<p style="color:#888;font-size:0.8em;margin-top:16px">Sent by NetWatchM</p>
 </body></html>
 """
