@@ -19,7 +19,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-APP_VERSION  = "0.2.30"
+APP_VERSION  = "0.2.31"
 GITHUB_ZIP   = "https://github.com/al4nbr3/netwatchm/archive/refs/heads/master.zip"
 PROGRAMDATA  = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
 DATA_DIR     = PROGRAMDATA / "netwatchm"
