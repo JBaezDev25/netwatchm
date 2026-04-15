@@ -9,7 +9,8 @@ Last updated: 2026-04-15 (session 17)
 - [x] `netwatchm_server.py` — `_AI_SYSTEM_PROMPT` updated to explain the Alert Policy section: whitelisted IPs never generate alerts (intentional), suppressed alert types silenced across all devices (flag if high-risk type like BRUTE_FORCE is suppressed)
 
 ### AI Chat — voice input
-- [x] `ai.html` — mic button (🎤) next to Send; uses browser Web Speech API (no server changes, no API key); real-time interim transcription while speaking; stops on silence and fills the textarea for review before sending; pulsing red indicator when listening; shows "Microphone permission denied" error if blocked; gracefully disabled on unsupported browsers (Firefox) with tooltip
+- [x] `ai.html` — mic button (🎤) next to Send; uses `MediaRecorder` API to capture audio locally, sends to `/api/ai/transcribe` (OpenAI Whisper); works in Brave, Firefox, Chrome, Edge — no Google Speech dependency; pulsing red indicator + status strip while recording; auto-stops at 30s; fills textarea on transcription; shows inline errors for mic permission denied or transcription failure
+- [x] `netwatchm_server.py` — `POST /api/ai/transcribe`: accepts raw audio (webm/ogg/wav), sends to OpenAI Whisper (`whisper-1`), returns `{"text":"..."}`; reuses `OPENAI_API_KEY` env var
 
 ### MAC OUI vendor database
 - [x] `scripts/update-oui-db.sh` — downloads IEEE MA-L OUI registry (38k+ entries), parses CSV, writes `/var/lib/netwatchm/oui.json`; sets ownership for `netwatchm` user; run once after install then periodically

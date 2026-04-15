@@ -4454,6 +4454,35 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"reply": reply})
             return
 
+        if parsed.path == "/api/ai/transcribe":
+            content_length = int(self.headers.get("Content-Length", 0))
+            if not content_length:
+                self._send_json({"error": "no audio data"}, 400)
+                return
+            audio_bytes = self.rfile.read(content_length)
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+            if not api_key:
+                self._send_json({"error": "OPENAI_API_KEY not set"}, 500)
+                return
+            try:
+                from openai import OpenAI  # type: ignore
+                import io
+                client = OpenAI(api_key=api_key)
+                # Whisper accepts webm, ogg, wav, mp4, m4a, mp3, mpeg
+                content_type = self.headers.get("Content-Type", "audio/webm")
+                ext = "webm"
+                if "ogg" in content_type:   ext = "ogg"
+                elif "wav" in content_type:  ext = "wav"
+                elif "mp4" in content_type:  ext = "mp4"
+                buf = io.BytesIO(audio_bytes)
+                buf.name = f"voice.{ext}"
+                result = client.audio.transcriptions.create(model="whisper-1", file=buf)
+                self._send_json({"text": result.text})
+            except Exception as exc:
+                logger.warning("Whisper transcription failed: %s", exc)
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         if parsed.path == "/api/ai/reset":
             length = int(self.headers.get("Content-Length", 0))
             try:

@@ -133,12 +133,14 @@
 
   /* ── Voice status strip ── */
   #voice-status {
-    display: none; padding: 4px 20px;
+    display: none; padding: 5px 20px;
     background: #1a0a0a; border-top: 1px solid var(--high);
     color: var(--high); font-size: 11px; flex-shrink: 0;
     text-align: center; letter-spacing: .5px;
   }
-  #voice-status.active { display: block; }
+  #voice-status.active  { display: block; }
+  #voice-status.info    { background: #0d1f0d; border-color: var(--low); color: var(--low); }
+  #voice-status.error   { background: #1a0a0a; border-color: var(--high); color: var(--high); }
 
   /* ── Suggestions ── */
   #suggestions {
@@ -374,73 +376,114 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
 
-  // ── Voice input ─────────────────────────────────────────────────────────
+  // ── Voice input (MediaRecorder → Whisper) ───────────────────────────────
+  // Works in Brave, Firefox, Chrome, Edge — no Google Speech dependency.
+  // Records audio locally, sends to /api/ai/transcribe (OpenAI Whisper).
   (function initVoice() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const micBtn    = document.getElementById('btn-mic');
-    const voiceSts  = document.getElementById('voice-status');
-    const inputEl   = document.getElementById('user-input');
+    const micBtn   = document.getElementById('btn-mic');
+    const statusEl = document.getElementById('voice-status');
+    const inputEl  = document.getElementById('user-input');
 
-    if (!SpeechRecognition) {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
       micBtn.classList.add('unsupported');
-      micBtn.title = 'Voice input not supported in this browser (use Chrome or Edge)';
+      micBtn.title = 'Voice input not supported in this browser';
       return;
     }
 
-    const rec = new SpeechRecognition();
-    rec.continuous      = false;   // stop after one utterance
-    rec.interimResults  = true;    // show partial transcription while speaking
-    rec.lang            = 'en-US';
+    let mediaRecorder = null;
+    let chunks        = [];
+    let recording     = false;
+    const MAX_SECS    = 30;
+    let autoStopTimer = null;
 
-    let listening = false;
-    let baseText  = '';            // text already in the box before voice starts
-
-    function startListening() {
-      baseText  = inputEl.value;
-      listening = true;
-      micBtn.classList.add('listening');
-      voiceSts.classList.add('active');
-      try { rec.start(); }
-      catch(e) { stopListening(); }
+    function showStatus(msg, type = 'active') {
+      statusEl.className = 'active ' + type;
+      statusEl.textContent = msg;
+      statusEl.style.display = 'block';
     }
 
-    function stopListening() {
-      listening = false;
+    function hideStatus() {
+      statusEl.style.display = 'none';
+      statusEl.className = '';
+    }
+
+    function resizeInput() {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    }
+
+    async function startRecording() {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch(e) {
+        showStatus('⚠ Microphone permission denied — allow it in browser site settings', 'error');
+        setTimeout(hideStatus, 4000);
+        return;
+      }
+
+      // Pick a supported MIME type
+      const mime = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg']
+        .find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+      chunks = [];
+      mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        transcribe(new Blob(chunks, { type: mime || 'audio/webm' }), mime);
+      };
+
+      mediaRecorder.start();
+      recording = true;
+      micBtn.classList.add('listening');
+      showStatus(`🎤 Recording… click 🎤 again to stop  (max ${MAX_SECS}s)`);
+
+      autoStopTimer = setTimeout(stopRecording, MAX_SECS * 1000);
+    }
+
+    function stopRecording() {
+      if (!recording) return;
+      clearTimeout(autoStopTimer);
+      recording = false;
       micBtn.classList.remove('listening');
-      voiceSts.classList.remove('active');
-      try { rec.stop(); } catch(e) {}
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        showStatus('⏳ Transcribing…', 'info');
+        mediaRecorder.stop();
+      } else {
+        hideStatus();
+      }
+    }
+
+    async function transcribe(blob, mime) {
+      try {
+        const resp = await fetch('/api/ai/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': mime || 'audio/webm' },
+          body: blob,
+        });
+        const data = await resp.json();
+        if (data.text && data.text.trim()) {
+          inputEl.value = (inputEl.value ? inputEl.value + ' ' : '') + data.text.trim();
+          resizeInput();
+          inputEl.focus();
+          hideStatus();
+        } else if (data.error) {
+          showStatus('⚠ ' + data.error, 'error');
+          setTimeout(hideStatus, 4000);
+        } else {
+          showStatus('⚠ No speech detected — try again', 'error');
+          setTimeout(hideStatus, 3000);
+        }
+      } catch(e) {
+        showStatus('⚠ Transcription failed: ' + e.message, 'error');
+        setTimeout(hideStatus, 4000);
+      }
     }
 
     micBtn.addEventListener('click', () => {
-      if (listening) { stopListening(); } else { startListening(); }
+      if (recording) { stopRecording(); } else { startRecording(); }
     });
-
-    rec.onresult = (e) => {
-      let interim = '', final = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t; else interim += t;
-      }
-      inputEl.value = baseText + (final || interim);
-      // Auto-resize textarea
-      inputEl.style.height = 'auto';
-      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
-    };
-
-    rec.onend = () => {
-      stopListening();
-      // If text was captured, focus the box so user can review then press Enter
-      if (inputEl.value.trim()) inputEl.focus();
-    };
-
-    rec.onerror = (e) => {
-      stopListening();
-      if (e.error === 'not-allowed') {
-        voiceSts.textContent = '⚠ Microphone permission denied — allow it in browser settings';
-        voiceSts.style.display = 'block';
-        setTimeout(() => { voiceSts.style.display = 'none'; voiceSts.textContent = '🎤 Listening… speak now'; }, 4000);
-      }
-    };
   })();
 
   // ── Init ────────────────────────────────────────────────────────────────
