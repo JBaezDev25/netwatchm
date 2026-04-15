@@ -1,6 +1,28 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-15 (session 18)
+Last updated: 2026-04-15 (session 19)
+
+## Session 19 — 2026-04-15
+
+### Dark/Light theme — inventory + history pages
+- [x] `netwatchm_server.py` — inventory page: `[data-theme="light"]` CSS variables + ☀ toggle button in toolbar + theme JS with localStorage persistence
+- [x] `netwatchm_server.py` — history page: `[data-theme="light"]` CSS variables + ☀ toggle button in nav + theme JS with localStorage persistence
+- [x] Theme preference shared via `localStorage('nwm-theme')` — same key used by events portal, so switching theme on any page persists across all pages
+
+### Grafana — CRITICAL Exfiltration alert endpoint
+- [x] `netwatchm_server.py` — `_query_exfiltration_count()`: counts EXFILTRATION events in last 24h
+- [x] `netwatchm_server.py` — `/api/alerts/exfiltration` endpoint added to GrafanaHandler; `setup-grafana-alerts.sh` already references it — was missing server-side
+
+### Role-based access — events portal
+- [x] `netwatchm_server.py` — `GET /api/auth/whoami`: returns `{"role":"admin"|"reader"|"guest"}` based on `X-Admin-Token` / `X-Read-Token` headers
+- [x] `netwatchm_server.py` — events portal: login modal with token input; token stored in `sessionStorage` (persists page refresh, clears on tab close); calls `/api/auth/whoami` to resolve role
+- [x] `netwatchm_server.py` — role badge in topbar: 🔒 Admin (green) | 👁 Read-only (blue) | 👤 Guest (grey)
+- [x] `netwatchm_server.py` — admin-only buttons (Clear Alerts, Suppressions, Test Notify) hidden for Guest/Reader; revealed on admin login; Logout button replaces Login
+
+### Documentation
+- [x] `CHECKLIST.md` — marked Dark/Light theme done (was already in events portal; added to inventory + history); marked Grafana alert done; marked role-based access done
+
+---
 
 ## Session 18 — 2026-04-15
 
@@ -501,11 +523,11 @@ bash scripts/copy-deep-inspect-web.sh  # copy updated HTML UI
 ### Improvements / Nice to Have
 - [x] **README.md** — rewritten session 15 (2026-04-06): current feature set, all portal pages, AI assistant, architecture, scripts, 174 tests
 - [x] **Events retention setting** — already configurable: `alerts.event_store.retention_hours` in `netwatchm.yaml` (default 72); wired in `config.py` + `__main__.py` — checklist was stale
-- [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
+- [x] **Grafana alert rules** — `/api/alerts/exfiltration` endpoint added (session 19); `setup-grafana-alerts.sh` already has the rule definition
 - [x] **Events portal paging** — pagination already implemented; session 18 fix: text search now server-side (`q` param in `_query_events_paged` + SQLite LIKE); search box debounced 350ms → reloads from server; CSV export uses server-filtered results
-- [ ] **Dark/Light theme** — events portal dark-only; connection report has toggle but events portal doesn't
+- [x] **Dark/Light theme** — added to inventory + history pages (session 19); events portal already had it; theme persists via localStorage across all pages
 - [x] **Alert suppression** — already implemented: 🔒 Suppress button in every alert detail row + suppress panel in events portal header — checklist was stale
-- [ ] **Role-based access** — single admin token; no read-only vs admin distinction
+- [x] **Role-based access** — `GET /api/auth/whoami` + login modal + role badge + admin-only button visibility (session 19)
 - [ ] **Mobile-friendly** — events portal not tested on phone browser (ntfy app covers this partially)
 - [ ] **Code signing** — skipped (cert costs ~$300-500/yr); revisit if project grows
 - [ ] **SQLite schema migrations** — 3 databases (events, flows, flow-history) have no migration system

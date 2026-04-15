@@ -1762,6 +1762,19 @@ def _render_events_html() -> bytes:
   }
   .suppress-toggle:hover { color:#d29922; border-color:#d29922; }
   .suppress-toggle.active { color:#f85149; border-color:#f85149; }
+  .role-badge {
+    padding:3px 10px; border-radius:10px; font-size:11px; font-family:monospace;
+    border:1px solid var(--border); color:var(--muted); background:var(--surface2);
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .role-badge.admin   { color:#3fb950; border-color:#3fb950; background:rgba(63,185,80,.1); }
+  .role-badge.reader  { color:#58a6ff; border-color:#58a6ff; background:rgba(88,166,255,.1); }
+  .login-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .login-btn:hover { color:var(--accent); border-color:var(--accent); }
+  .admin-only { display:none; }
   #suppressPanel {
     background:var(--surface); border-bottom:1px solid var(--border);
     padding:10px 20px; display:none; flex-wrap:wrap; gap:8px; align-items:center;
@@ -1896,9 +1909,11 @@ def _render_events_html() -> bytes:
   <span class="countdown" id="countdown"></span>
   <button class="refresh-btn" onclick="loadEvents()">&#8635; Refresh</button>
   <button class="export-btn" onclick="exportCSV()">&#11123; CSV</button>
-  <button class="notify-btn" id="testNtfyBtn" onclick="testNtfy()">&#128276; Test Notify</button>
-  <button class="clear-btn" onclick="clearAlerts()">&#128465; Clear Alerts</button>
-  <button class="suppress-toggle" id="suppressToggle" onclick="toggleSuppressPanel()">&#128274; Suppressions</button>
+  <button class="notify-btn admin-only" id="testNtfyBtn" onclick="testNtfy()">&#128276; Test Notify</button>
+  <button class="clear-btn admin-only" onclick="clearAlerts()">&#128465; Clear Alerts</button>
+  <button class="suppress-toggle admin-only" id="suppressToggle" onclick="toggleSuppressPanel()">&#128274; Suppressions</button>
+  <span id="roleBadge" class="role-badge">&#128100; Guest</span>
+  <button class="login-btn" id="loginBtn" onclick="showLoginModal()">&#128273; Login</button>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">&#9788; Light</button>
 </div>
 <div id="toast"></div>
@@ -1933,6 +1948,19 @@ def _render_events_html() -> bytes:
       <button class="modal-confirm" onclick="confirmClear()">Clear</button>
       <button class="modal-cancel" onclick="closeClearModal()">Cancel</button>
     </div>
+  </div>
+</div>
+
+<div id="loginModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center">
+  <div class="modal-box">
+    <h3>&#128273; Login</h3>
+    <p>Enter your admin or read-only token to unlock features.</p>
+    <input type="password" id="loginTokenInput" placeholder="Token" onkeydown="if(event.key==='Enter')submitLogin()">
+    <div class="modal-actions">
+      <button class="modal-confirm" onclick="submitLogin()">Login</button>
+      <button class="modal-cancel" onclick="closeLoginModal()">Cancel</button>
+    </div>
+    <p id="loginError" style="color:var(--high);font-size:11px;margin-top:8px;display:none"></p>
   </div>
 </div>
 
@@ -1996,6 +2024,91 @@ function toggleTheme() {
   _applyTheme(cur === 'light' ? 'dark' : 'light');
 }
 (function(){ try { const t = localStorage.getItem('nwm-theme'); if(t) _applyTheme(t); } catch(_){} })();
+
+// ── Role-based access ────────────────────────────────────────────────────
+let _role = 'guest';   // 'guest' | 'reader' | 'admin'
+let _sessionToken = '';
+
+async function _initRole() {
+  try {
+    const stored = sessionStorage.getItem('nwm-token') || '';
+    if (stored) await _applyToken(stored);
+  } catch(_) {}
+}
+
+async function _applyToken(token) {
+  const headers = {};
+  headers['X-Admin-Token'] = token;
+  headers['X-Read-Token']  = token;
+  const r = await fetch('/api/auth/whoami', { headers }).catch(() => null);
+  const d = r ? await r.json().catch(() => ({})) : {};
+  _role = d.role || 'guest';
+  _sessionToken = (_role !== 'guest') ? token : '';
+  if (_role !== 'guest') {
+    try { sessionStorage.setItem('nwm-token', token); } catch(_) {}
+  } else {
+    try { sessionStorage.removeItem('nwm-token'); } catch(_) {}
+  }
+  _renderRole();
+}
+
+function _renderRole() {
+  const badge = document.getElementById('roleBadge');
+  const loginBtn = document.getElementById('loginBtn');
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = (_role === 'admin') ? '' : 'none';
+  });
+  if (_role === 'admin') {
+    badge.textContent = '\\u{1F512} Admin';
+    badge.className = 'role-badge admin';
+    loginBtn.textContent = '\\u{1F511} Logout';
+    loginBtn.onclick = _logout;
+  } else if (_role === 'reader') {
+    badge.textContent = '\\u{1F441} Read-only';
+    badge.className = 'role-badge reader';
+    loginBtn.textContent = '\\u{1F511} Logout';
+    loginBtn.onclick = _logout;
+  } else {
+    badge.textContent = '\\u{1F464} Guest';
+    badge.className = 'role-badge';
+    loginBtn.textContent = '\\u{1F513} Login';
+    loginBtn.onclick = showLoginModal;
+  }
+}
+
+function showLoginModal() {
+  document.getElementById('loginTokenInput').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  const m = document.getElementById('loginModal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('loginTokenInput').focus(), 80);
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').style.display = 'none';
+}
+
+async function submitLogin() {
+  const token = document.getElementById('loginTokenInput').value.trim();
+  if (!token) return;
+  await _applyToken(token);
+  if (_role === 'guest') {
+    const err = document.getElementById('loginError');
+    err.textContent = 'Invalid token';
+    err.style.display = 'block';
+  } else {
+    closeLoginModal();
+    _suppressToken = _sessionToken;  // reuse for suppress actions
+  }
+}
+
+function _logout() {
+  _role = 'guest';
+  _sessionToken = '';
+  _suppressToken = '';
+  try { sessionStorage.removeItem('nwm-token'); } catch(_) {}
+  _renderRole();
+}
 
 let _suppressed = [];
 let _suppressToken = '';
@@ -2398,8 +2511,8 @@ document.getElementById('autoRefresh').addEventListener('change', function() {
 })();
 
 setInterval(tickCountdown, 1000);
+_initRole().then(() => loadSuppressed());
 loadEvents();
-loadSuppressed();
 </script>
 </body>
 </html>"""
@@ -2416,6 +2529,7 @@ def _render_inventory_html() -> bytes:
 <title>NetWatchM — Device Inventory</title>
 <style>
   :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb}
+  [data-theme="light"]{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#1f2328;--muted:#6e7781;--blue:#0969da;--green:#1a7f37;--yellow:#9a6700;--red:#cf222e;--accent:#0550ae}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
   header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
@@ -2486,6 +2600,7 @@ def _render_inventory_html() -> bytes:
     <input type="search" id="searchBox" placeholder="Search IP, label, hostname, vendor…">
     <span class="count" id="countLabel">— devices</span>
     <button class="secondary" id="exportBtn">&#11123; Export CSV</button>
+    <button class="secondary" id="themeBtn" onclick="toggleTheme()">&#9788; Light</button>
   </div>
 </header>
 <div class="scroll">
@@ -2787,6 +2902,16 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
 });
 
 loadData();
+
+// ── Theme toggle (inventory) ─────────────────────────────────────────────
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  const nxt=cur==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme',nxt);
+  document.getElementById('themeBtn').textContent=nxt==='light'?'\\u2600 Dark':'\\u2600 Light';
+  try{localStorage.setItem('nwm-theme',nxt);}catch(_){}
+}
+(function(){try{const t=localStorage.getItem('nwm-theme');if(t){document.documentElement.setAttribute('data-theme',t);if(t==='light'){const b=document.getElementById('themeBtn');if(b)b.textContent='\\u2600 Dark';}}}catch(_){}})();
 </script>
 </body>
 </html>"""
@@ -2803,6 +2928,7 @@ def _render_history_html() -> bytes:
 <title>NetWatchM — Flow History</title>
 <style>
   :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb;--purple:#bc8cff}
+  [data-theme="light"]{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#1f2328;--muted:#6e7781;--blue:#0969da;--green:#1a7f37;--yellow:#9a6700;--red:#cf222e;--accent:#0550ae;--purple:#8250df}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
   header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
@@ -2852,6 +2978,7 @@ def _render_history_html() -> bytes:
     <a href="/events.html">Events</a>
     <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
     <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
+    <button class="btn" id="themeBtn" onclick="toggleTheme()" style="background:var(--surface);color:var(--muted);border:1px solid var(--border);padding:4px 10px;font-size:12px">&#9788; Light</button>
   </nav>
 </header>
 <div class="toolbar">
@@ -2980,6 +3107,16 @@ document.getElementById('searchBox').addEventListener('input', render);
 
 load();
 setInterval(load, 30000);
+
+// ── Theme toggle (history) ───────────────────────────────────────────────
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  const nxt=cur==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme',nxt);
+  document.getElementById('themeBtn').textContent=nxt==='light'?'\\u2600 Dark':'\\u2600 Light';
+  try{localStorage.setItem('nwm-theme',nxt);}catch(_){}
+}
+(function(){try{const t=localStorage.getItem('nwm-theme');if(t){document.documentElement.setAttribute('data-theme',t);if(t==='light'){const b=document.getElementById('themeBtn');if(b)b.textContent='\\u2600 Dark';}}}catch(_){}})();
 </script>
 </body>
 </html>"""
@@ -3705,6 +3842,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(result if isinstance(result, (list, dict)) else [])
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/auth/whoami":
+            admin_tok = self.headers.get("X-Admin-Token", "")
+            read_tok  = self.headers.get("X-Read-Token", "")
+            if admin_tok and admin_tok == ADMIN_TOKEN:
+                self._send_json({"role": "admin"})
+            elif not READ_TOKEN or read_tok in (READ_TOKEN, ADMIN_TOKEN):
+                self._send_json({"role": "reader"})
+            else:
+                self._send_json({"role": "guest"}, 403)
             return
 
         if path == "/api/events":
@@ -4664,7 +4812,6 @@ def _query_adult_domains() -> list[dict]:
 def _query_data_hog_count() -> list[dict]:
     """Return count of DATA_HOG events in the last 24 h as a single-row metric list."""
     db = Path(EVENT_DB)
-    now_ms = int(_time.time() * 1000)
     if not db.exists():
         return [{"value": 0}]
     con = sqlite3.connect(str(db))
@@ -4672,6 +4819,23 @@ def _query_data_hog_count() -> list[dict]:
         cutoff = _time.time() - 86400
         row = con.execute(
             "SELECT COUNT(*) FROM events WHERE alert_type='DATA_HOG' AND timestamp >= ?",
+            (cutoff,),
+        ).fetchone()
+        return [{"value": row[0] if row else 0}]
+    finally:
+        con.close()
+
+
+def _query_exfiltration_count() -> list[dict]:
+    """Return count of EXFILTRATION (CRITICAL) events in the last 24 h."""
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return [{"value": 0}]
+    con = sqlite3.connect(str(db))
+    try:
+        cutoff = _time.time() - 86400
+        row = con.execute(
+            "SELECT COUNT(*) FROM events WHERE alert_type='EXFILTRATION' AND timestamp >= ?",
             (cutoff,),
         ).fetchone()
         return [{"value": row[0] if row else 0}]
@@ -5057,6 +5221,13 @@ class GrafanaHandler(BaseHTTPRequestHandler):
         if path == "/api/alerts/data-hog":
             try:
                 self._send_json(_query_data_hog_count())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/alerts/exfiltration":
+            try:
+                self._send_json(_query_exfiltration_count())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, 500)
             return
