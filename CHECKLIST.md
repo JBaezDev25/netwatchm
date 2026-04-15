@@ -1,6 +1,19 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-15 (session 17)
+Last updated: 2026-04-15 (session 18)
+
+## Session 18 — 2026-04-15
+
+### Events portal — server-side text search
+- [x] `netwatchm_server.py` — `_query_events_paged()` gains `search` param; SQLite LIKE on alert_type, src_ip, dst_ip, description
+- [x] `netwatchm_server.py` — `/api/events?offset=…&q=…` passes search term server-side
+- [x] `netwatchm_server.py` — search box debounced 350ms → resets page to 0 → calls `loadEvents()`; `applyFilters()` simplified to render-only (no more client-side text filter)
+- [x] `netwatchm_server.py` — CSV export uses server-filtered paged result (respects `q` param)
+
+### Documentation
+- [x] `CHECKLIST.md` — marked alert suppression + events retention as already done (checklist was stale); marked events paging done after server-side search fix
+
+---
 
 ## Session 17 — 2026-04-15
 
@@ -487,11 +500,11 @@ bash scripts/copy-deep-inspect-web.sh  # copy updated HTML UI
 
 ### Improvements / Nice to Have
 - [x] **README.md** — rewritten session 15 (2026-04-06): current feature set, all portal pages, AI assistant, architecture, scripts, 174 tests
-- [ ] **Events retention setting** — 72h is hardcoded in `event_store.py`; expose as config option
+- [x] **Events retention setting** — already configurable: `alerts.event_store.retention_hours` in `netwatchm.yaml` (default 72); wired in `config.py` + `__main__.py` — checklist was stale
 - [ ] **Grafana alert rules** — currently only HIGH threat + DATA_HOG; add CRITICAL Exfiltration rule
-- [ ] **Events portal paging** — currently loads up to 500 events; add pagination for large datasets
+- [x] **Events portal paging** — pagination already implemented; session 18 fix: text search now server-side (`q` param in `_query_events_paged` + SQLite LIKE); search box debounced 350ms → reloads from server; CSV export uses server-filtered results
 - [ ] **Dark/Light theme** — events portal dark-only; connection report has toggle but events portal doesn't
-- [ ] **Alert suppression** — no way to silence a recurring low-value alert type (e.g. NEW_IP flood)
+- [x] **Alert suppression** — already implemented: 🔒 Suppress button in every alert detail row + suppress panel in events portal header — checklist was stale
 - [ ] **Role-based access** — single admin token; no read-only vs admin distinction
 - [ ] **Mobile-friendly** — events portal not tested on phone browser (ntfy app covers this partially)
 - [ ] **Code signing** — skipped (cert costs ~$300-500/yr); revisit if project grows

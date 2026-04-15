@@ -1477,6 +1477,7 @@ def _query_events_paged(
     alert_type: str | None = None,
     level: str | None = None,
     ip: str | None = None,
+    search: str | None = None,
 ) -> dict:
     """Paginated query — returns {events, total, offset, limit}."""
     db = Path(EVENT_DB)
@@ -1496,6 +1497,12 @@ def _query_events_paged(
         if ip:
             clauses.append("(src_ip = ? OR dst_ip = ?)")
             params.extend([ip, ip])
+        if search:
+            term = f"%{search}%"
+            clauses.append(
+                "(alert_type LIKE ? OR src_ip LIKE ? OR dst_ip LIKE ? OR description LIKE ?)"
+            )
+            params.extend([term, term, term, term])
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         total = con.execute(f"SELECT COUNT(*) FROM events {where}", params).fetchone()[
             0
@@ -1935,7 +1942,7 @@ def _render_events_html() -> bytes:
 </div>
 <div class="filterbar">
   <label>Search:</label>
-  <input type="text" id="search" placeholder="IP, type, description…" oninput="applyFilters()">
+  <input type="text" id="search" placeholder="IP, type, description…" oninput="_debouncedSearch()">
   <label>Level:</label>
   <select id="levelFilter" onchange="_pageOffset=0;loadEvents()">
     <option value="">All</option>
@@ -2124,14 +2131,22 @@ function esc(s) {
 }
 
 function _buildFilterParams() {
-  const level = document.getElementById('levelFilter').value;
-  const type  = document.getElementById('typeFilter').value;
-  const ip    = new URLSearchParams(window.location.search).get('ip') || '';
+  const level  = document.getElementById('levelFilter').value;
+  const type   = document.getElementById('typeFilter').value;
+  const ip     = new URLSearchParams(window.location.search).get('ip') || '';
+  const search = document.getElementById('search').value.trim();
   let p = '';
-  if (level) p += '&level=' + encodeURIComponent(level);
-  if (type)  p += '&type='  + encodeURIComponent(type);
-  if (ip)    p += '&ip='    + encodeURIComponent(ip);
+  if (level)  p += '&level=' + encodeURIComponent(level);
+  if (type)   p += '&type='  + encodeURIComponent(type);
+  if (ip)     p += '&ip='    + encodeURIComponent(ip);
+  if (search) p += '&q='     + encodeURIComponent(search);
   return p;
+}
+
+let _searchTimer = null;
+function _debouncedSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { _pageOffset = 0; loadEvents(); }, 350);
 }
 
 async function loadEvents() {
@@ -2188,25 +2203,10 @@ function populateTypeFilter(types) {
 }
 
 function applyFilters() {
-  const search = document.getElementById('search').value.toLowerCase();
-  const level  = document.getElementById('levelFilter').value;
-  const type   = document.getElementById('typeFilter').value;
-
-  const filtered = _allEvents.filter(e => {
-    if (level && e.level !== level) return false;
-    if (type  && e.alert_type !== type) return false;
-    if (search) {
-      const hay = [e.alert_type, e.level, e.src_ip, e.dst_ip, e.description]
-                    .join(' ').toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
-
+  // All filtering is now server-side; just render what came back.
   document.getElementById('resultCount').textContent =
-    filtered.length + ' of ' + _allEvents.length + ' events';
-
-  renderTable(filtered);
+    _allEvents.length + ' of ' + _totalEvents + ' events';
+  renderTable(_allEvents);
 }
 
 function renderTable(events) {
@@ -2350,14 +2350,11 @@ async function openLookup(ip) {
 
 async function exportCSV() {
   try {
-    const allEvts = await fetch('/api/events?limit=1000' + _buildFilterParams()).then(r => r.json());
-    const search = document.getElementById('search').value.toLowerCase();
-    const filtered = search
-      ? allEvts.filter(e => [e.alert_type,e.level,e.src_ip,e.dst_ip,e.description].join(' ').toLowerCase().includes(search))
-      : allEvts;
+    const resp = await fetch('/api/events?offset=0&limit=1000' + _buildFilterParams()).then(r => r.json());
+    const allEvts = resp.events || resp;
     const cols = ['id','timestamp','alert_type','level','src_ip','dst_ip','description'];
     const csv  = [cols.join(',')].concat(
-      filtered.map(e => cols.map(c => {
+      allEvts.map(e => cols.map(c => {
         const v = c === 'timestamp' ? fmtTime(e[c]) : (e[c] ?? '');
         return '"' + String(v).replace(/"/g,'""') + '"';
       }).join(','))
@@ -2368,6 +2365,7 @@ async function exportCSV() {
     a.click();
   } catch(e) { showToast('CSV export failed: ' + e, false); }
 }
+
 
 function resetCountdown() {
   _countdown = 15;
@@ -3724,6 +3722,7 @@ class Handler(BaseHTTPRequestHandler):
                         alert_type=qs.get("type", [None])[0] or None,
                         level=qs.get("level", [None])[0] or None,
                         ip=qs.get("ip", [None])[0] or None,
+                        search=qs.get("q", [None])[0] or None,
                     )
                     self._send_json(result)
                 else:
