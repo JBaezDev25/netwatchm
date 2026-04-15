@@ -1,6 +1,20 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-14 (session 16)
+Last updated: 2026-04-15 (session 17)
+
+## Session 17 — 2026-04-15
+
+### AI Chat — alert policy context
+- [x] `netwatchm_server.py` — `_build_policy_context()`: new helper that reads `suppressed.json` (currently silenced alert types) and `netwatchm.yaml` (global IP whitelist + per-type detector whitelist); appended to both `_build_device_context()` and `_build_network_context()`
+- [x] `netwatchm_server.py` — `_AI_SYSTEM_PROMPT` updated to explain the Alert Policy section: whitelisted IPs never generate alerts (intentional), suppressed alert types silenced across all devices (flag if high-risk type like BRUTE_FORCE is suppressed)
+
+### MAC OUI vendor database
+- [x] `scripts/update-oui-db.sh` — downloads IEEE MA-L OUI registry (38k+ entries), parses CSV, writes `/var/lib/netwatchm/oui.json`; sets ownership for `netwatchm` user; run once after install then periodically
+- [x] `src/netwatchm/inventory/oui_lookup.py` — `lookup(mac) -> str | None`; lazy-loads `oui.json` into memory on first call; accepts any MAC format (colon/dash/dot separated)
+- [x] `src/netwatchm/inventory/arp_scanner.py` — OUI lookup used as fallback vendor when arp-scan returns no vendor string
+- [x] `netwatchm_server.py` — `_build_device_context()` enriches vendor via OUI lookup when inventory has no vendor; `_build_policy_context()` lists unidentified devices (no hostname + no vendor) as highest-priority unknowns; system prompt updated
+
+---
 
 ## Session 16 — 2026-04-14
 

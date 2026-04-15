@@ -8,6 +8,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from ..models import Alert, ThreatLevel
+from . import oui_lookup
 
 if TYPE_CHECKING:
     from .store import DeviceStore
@@ -57,6 +58,9 @@ def _run_arp_scan(network: str) -> list[tuple[str, str, str | None]]:
             ip = m.group(1)
             mac = m.group(2).lower()
             vendor = m.group(3).strip() or None
+            # Fall back to OUI database when arp-scan doesn't know the vendor
+            if not vendor:
+                vendor = oui_lookup.lookup(mac)
             results.append((ip, mac, vendor))
 
     return results

@@ -3304,6 +3304,13 @@ IMPORTANT — understand the data model before analyzing:
   counts — use this as the primary indicator of active service usage.
 - Threat level is set by NetWatchM detectors (port scan, brute force, etc.), \
   NOT by port count alone.
+- "Alert policy" shows which alert types are currently suppressed (silenced) and \
+  which IPs are globally whitelisted. A whitelisted IP will NEVER generate alerts — \
+  this is intentional. A suppressed alert type is silenced across all devices — \
+  flag this if it seems risky (e.g. BRUTE_FORCE suppressed).
+- "Unidentified devices" = devices with no resolved hostname AND no vendor in the \
+  OUI database. These are the highest-priority unknowns — treat them as suspicious \
+  until the user can physically verify what they are.
 
 Your role:
 - Describe devices clearly: identity, likely role, activity patterns
@@ -3389,8 +3396,16 @@ def _build_device_context(ip: str) -> str:
     lines.append(f"Display Name: {display_name}")
     lines.append(f"Hostname    : {device.get('hostname') or 'not resolved'}")
     lines.append(f"Alias       : {alias or 'none'}")
-    lines.append(f"MAC Address : {device.get('mac') or 'unknown'}")
-    lines.append(f"Vendor      : {device.get('vendor') or 'unknown'}")
+    mac = device.get("mac") or ""
+    lines.append(f"MAC Address : {mac or 'unknown'}")
+    vendor = device.get("vendor") or ""
+    if not vendor and mac:
+        try:
+            from netwatchm.inventory import oui_lookup as _oui
+            vendor = _oui.lookup(mac) or ""
+        except Exception:
+            pass
+    lines.append(f"Vendor      : {vendor or 'unknown (not in OUI database)'}")
     lines.append(f"Verified    : {'yes' if verified.get(ip) else 'no'}")
     lines.append(f"Threat Level: {device.get('threat_level', 'unknown')}")
     lines.append(f"First Seen  : {device.get('first_seen', 'unknown')}")
@@ -3463,6 +3478,87 @@ def _build_device_context(ip: str) -> str:
     except Exception:
         pass
 
+    lines.append(_build_policy_context())
+
+    return "\n".join(lines)
+
+
+def _build_policy_context() -> str:
+    """Build a text block describing active alert suppression and IP whitelist."""
+    lines: list[str] = []
+
+    # --- Suppressed alert types ---
+    suppressed = _load_suppressed().get("types", [])
+    lines.append("\n=== ALERT POLICY ===")
+    if suppressed:
+        lines.append(f"Suppressed alert types ({len(suppressed)}) — these alerts are silenced and will NOT appear in events:")
+        for t in suppressed:
+            lines.append(f"  - {t}")
+    else:
+        lines.append("Suppressed alert types: none (all alert types are active)")
+
+    # --- IP whitelist from config YAML ---
+    try:
+        import yaml  # type: ignore
+        cfg_path = Path(NETWATCHM_CONFIG)
+        if cfg_path.exists():
+            raw = yaml.safe_load(cfg_path.read_text()) or {}
+            wl = raw.get("whitelist", {})
+            wl_enabled = wl.get("enabled", False)
+            wl_ips = wl.get("ips", [])
+            det_wl = raw.get("detector_whitelist", {})
+            if wl_enabled and wl_ips:
+                lines.append(f"\nGlobal IP whitelist (enabled) — {len(wl_ips)} IPs exempt from ALL alerts:")
+                for ip_entry in wl_ips:
+                    lines.append(f"  - {ip_entry}")
+            elif wl_ips:
+                lines.append(f"\nGlobal IP whitelist (disabled) — {len(wl_ips)} IPs defined but whitelist is off")
+            else:
+                lines.append("\nGlobal IP whitelist: not configured")
+            if det_wl:
+                lines.append(f"\nPer-type detector whitelist — IPs exempt from specific alert types:")
+                for alert_type, ips in det_wl.items():
+                    if ips:
+                        lines.append(f"  {alert_type}: {', '.join(str(i) for i in ips)}")
+    except Exception:
+        lines.append("\nWhitelist: (could not read config)")
+
+    # --- Unknown device report ---
+    try:
+        inv_path = Path(EVENT_DB).parent / "inventory.json"
+        if inv_path.exists():
+            records = json.loads(inv_path.read_text())
+            try:
+                from netwatchm.inventory import oui_lookup as _oui
+                _oui_available = True
+            except Exception:
+                _oui_available = False
+
+            unidentified = []
+            for r in records:
+                mac = r.get("mac") or ""
+                vendor = r.get("vendor") or ""
+                if not vendor and mac and _oui_available:
+                    try:
+                        from netwatchm.inventory import oui_lookup as _oui2
+                        vendor = _oui2.lookup(mac) or ""
+                    except Exception:
+                        pass
+                hostname = r.get("hostname") or ""
+                no_vendor = not vendor
+                no_hostname = not hostname
+                if no_vendor and no_hostname:
+                    unidentified.append((r.get("ip", "?"), mac or "no MAC", r.get("last_seen", "?")))
+
+            if unidentified:
+                lines.append(f"\nUnidentified devices (no hostname + no vendor) — {len(unidentified)} device(s) need investigation:")
+                for dev_ip, dev_mac, last in unidentified:
+                    lines.append(f"  {dev_ip:<18} MAC: {dev_mac:<20} Last seen: {str(last)[:19]}")
+            else:
+                lines.append("\nUnidentified devices: none — all devices have hostname or vendor info")
+    except Exception:
+        pass
+
     return "\n".join(lines)
 
 
@@ -3487,6 +3583,7 @@ def _build_network_context() -> str:
             f"{r.get('threat_level','LOW'):<10} {svc_count:<6} "
             f"{(r.get('last_seen') or '')[:19]}"
         )
+    lines.append(_build_policy_context())
     return "\n".join(lines)
 
 
