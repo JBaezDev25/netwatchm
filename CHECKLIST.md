@@ -18,6 +18,10 @@ Last updated: 2026-04-15 (session 17)
 - [x] `src/netwatchm/inventory/arp_scanner.py` — OUI lookup used as fallback vendor when arp-scan returns no vendor string
 - [x] `netwatchm_server.py` — `_build_device_context()` enriches vendor via OUI lookup when inventory has no vendor; `_build_policy_context()` lists unidentified devices (no hostname + no vendor) as highest-priority unknowns; system prompt updated
 
+### Documentation
+- [x] `README.md` — updated: MAC vendor database section, service hardening section, AI context sources table, new scripts listed, project structure updated
+- [x] `CLAUDE.md` — added `README.md auto-update` workflow rule: README must be updated alongside any feature change and tracked in CHECKLIST.md Documentation entry
+
 ---
 
 ## Session 16 — 2026-04-14
