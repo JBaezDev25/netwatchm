@@ -34,4 +34,8 @@ netwatchm-test.yaml
 # Production config (has private IPs, Twingate relays — keep local only)
 netwatchm.yaml.production
 
+# Generated installer source bundle (built in CI, not checked in)
+netwachmInstall/netwatchm-src.zip
+netwachmInstall/netwatchm-bundled/
+
 .vscode/

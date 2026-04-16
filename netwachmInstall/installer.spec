@@ -11,12 +11,18 @@ import os
 
 root = os.path.abspath(os.path.join(SPECPATH, '..'))
 
+# netwatchm-src.zip is created by CI (release.yml) before the PyInstaller build.
+# Include it when present so the installer works with a private GitHub repo.
+_src_zip = os.path.join(SPECPATH, 'netwatchm-src.zip')
+_extra_datas = [(_src_zip, '.')] if os.path.exists(_src_zip) else []
+
 a = Analysis(
     [os.path.join(SPECPATH, 'installer_gui.py')],
     pathex=[root],
     binaries=[],
     datas=[
         (os.path.join(root, 'netwatchm.yaml.example'), '.'),
+        *_extra_datas,
     ],
     hiddenimports=['tkinter', 'tkinter.ttk', 'tkinter.messagebox'],
     hookspath=[],

@@ -184,17 +184,30 @@ class InstallerApp(tk.Tk):
     def _do_install(self):
         import urllib.request, zipfile, tempfile
 
-        # ── Download source ───────────────────────────────────────────────────
-        self.after(0, self._set_step, "Downloading NetWatchM source...", 5)
+        # ── Locate source (bundled exe or download fallback) ──────────────────
         tmp_dir  = Path(tempfile.mkdtemp(prefix="netwatchm_install_"))
         zip_path = tmp_dir / "netwatchm.zip"
 
-        self.after(0, self._log_msg, f"Downloading {GITHUB_ZIP} ...")
-        try:
-            urllib.request.urlretrieve(GITHUB_ZIP, zip_path)
-        except Exception as e:
-            raise RuntimeError(f"Download failed: {e}\nCheck your internet connection.")
-        self.after(0, self._log_msg, "Download complete")
+        # When running as a PyInstaller bundle, the source zip is embedded.
+        # Fall back to a live GitHub download only in dev/unbundled mode.
+        bundled_zip = None
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            candidate = Path(sys._MEIPASS) / 'netwatchm-src.zip'
+            if candidate.exists():
+                bundled_zip = candidate
+
+        if bundled_zip:
+            self.after(0, self._set_step, "Extracting bundled source...", 5)
+            self.after(0, self._log_msg, "Using embedded source bundle")
+            shutil.copy(bundled_zip, zip_path)
+        else:
+            self.after(0, self._set_step, "Downloading NetWatchM source...", 5)
+            self.after(0, self._log_msg, f"Downloading {GITHUB_ZIP} ...")
+            try:
+                urllib.request.urlretrieve(GITHUB_ZIP, zip_path)
+            except Exception as e:
+                raise RuntimeError(f"Download failed: {e}\nCheck your internet connection.")
+            self.after(0, self._log_msg, "Download complete")
 
         self.after(0, self._log_msg, "Extracting...")
         with zipfile.ZipFile(zip_path, "r") as z:

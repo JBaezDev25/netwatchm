@@ -48,6 +48,25 @@ jobs:
           NEW_T=$(echo "$NEW" | sed 's/\./,\ /g')
           sed -i "s/(${OLD_T}, 0)/(${NEW_T}, 0)/g" netwachmInstall/installer_version.txt
 
+      # ── Bundle source into installer ─────────────────────────────────────────
+      - name: Create source bundle for installer
+        shell: pwsh
+        run: |
+          # Build netwatchm-bundled/ folder (mirrors what GitHub zip provides)
+          $bundle = 'netwachmInstall\netwatchm-bundled'
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item 'src'                  "$bundle\src"    -Recurse -Force
+          Copy-Item 'netwatchm_server.py'  "$bundle\"       -Force
+          Copy-Item 'pyproject.toml'       "$bundle\"       -Force
+          Copy-Item 'netwatchm.yaml.example' "$bundle\"     -Force
+          if (Test-Path 'assets') { Copy-Item 'assets' "$bundle\assets" -Recurse -Force }
+          # Zip it so PyInstaller can embed it
+          $zip = 'netwachmInstall\netwatchm-src.zip'
+          Compress-Archive -Path $bundle -DestinationPath $zip -Force
+          Remove-Item $bundle -Recurse -Force
+          $size = [math]::Round((Get-Item $zip).Length / 1KB, 0)
+          Write-Host "Source bundle ready: $zip ($size KB)"
+
       # ── Build exe ────────────────────────────────────────────────────────────
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
