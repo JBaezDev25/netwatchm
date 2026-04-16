@@ -1,6 +1,17 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-15 (session 19)
+Last updated: 2026-04-15 (session 20)
+
+## Session 20 — 2026-04-15
+
+### Windows installer — private repo fix (bundled source)
+- [x] `netwachmInstall/installer_gui.py` — detects PyInstaller bundle via `sys._MEIPASS`; extracts from embedded `netwatchm-src.zip` instead of downloading from GitHub (private repo = 404)
+- [x] `netwachmInstall/installer.spec` — embeds `netwatchm-src.zip` in PyInstaller bundle when the file exists (generated in CI, not committed)
+- [x] `.github/workflows/release.yml` — new step before PyInstaller build: creates `netwatchm-bundled/` with src/, netwatchm_server.py, pyproject.toml, netwatchm.yaml.example + zips to `netwatchm-src.zip`
+- [x] `.gitignore` — added `netwachmInstall/netwatchm-src.zip` and `netwachmInstall/netwatchm-bundled/` (CI-generated, not checked in)
+- [ ] **Windows install test** — download `netwatchm-setup.exe` from GitHub Releases v0.2.34, install on Windows machine, verify end-to-end
+
+---
 
 ## Session 19 — 2026-04-15
 
