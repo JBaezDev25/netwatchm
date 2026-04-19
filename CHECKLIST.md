@@ -1,8 +1,32 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-15 (session 20)
+Last updated: 2026-04-18 (session 21)
+
+## Session 21 — 2026-04-18
+
+### Email alerts — frequency + content fixes
+- [x] `src/netwatchm/alerts/email_alert.py` — cooldown key changed from `alert_type` to `(alert_type, src_ip)`: each device has its own per-type cooldown, so a busy device no longer blocks alert emails from other devices
+- [x] `src/netwatchm/alerts/email_alert.py` — default `cooldown_seconds` raised from 300s → 3600s (1 hour per device per alert type)
+- [x] `src/netwatchm/alerts/email_alert.py` — email subject now includes device alias or IP: `[NetWatchM] HIGH · My Laptop — Network scan detected`
+- [x] `src/netwatchm/alerts/email_alert.py` — email body: alert type code shown as badge (e.g. `PORT_SCAN`), device alias resolved from aliases.json, "View events for this device" portal link added
+- [x] `src/netwatchm/config.py` — `EmailAlertConfig.cooldown_seconds` default updated to 3600
+- [x] `netwatchm.yaml.example` — `email.cooldown_seconds` updated to 3600 with updated comment
+- [x] `scripts/fix-email-cooldown.sh` — updates live config cooldown to 3600 + restarts `netwatchm`
+
+### Deploy commands (session 21)
+```bash
+bash scripts/fix-email-cooldown.sh   # update live cooldown + restart netwatchm
+bash scripts/deploy-server.sh        # reinstall netwatchm package with new email code
+```
+
+---
 
 ## Session 20 — 2026-04-15
+
+### Detector whitelist — suppress monitor host false positives
+- [x] `/tmp/netwatchm-updated.yaml` — `PORT_SCAN` and `DATA_HOG` detector_whitelist entries added for `192.168.1.180`; `ADULT_DOMAIN` was already suppressed for that IP; `BRUTE_FORCE`/`EXFILTRATION`/`TOR_EXIT` remain active
+- [x] `scripts/suppress-monitor-host.sh` — backs up live config, applies update, restarts `netwatchm`
+- [x] **Run**: applied manually — `sudo cp /tmp/netwatchm-updated.yaml /etc/netwatchm/netwatchm.yaml && sudo systemctl restart netwatchm`
 
 ### Windows installer — private repo fix (bundled source)
 - [x] `netwachmInstall/installer_gui.py` — detects PyInstaller bundle via `sys._MEIPASS`; extracts from embedded `netwatchm-src.zip` instead of downloading from GitHub (private repo = 404)

@@ -104,7 +104,7 @@ class EmailAlertConfig:
     password: str = ""  # always loaded from env var NETWATCHM_EMAIL_PASSWORD
     recipient: str = ""
     min_level: str = "HIGH"
-    cooldown_seconds: int = 300
+    cooldown_seconds: int = 3600
 
 
 @dataclass

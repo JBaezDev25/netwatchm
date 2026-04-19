@@ -44,7 +44,7 @@ alerts:
     password: ""           # set via NETWATCHM_EMAIL_PASSWORD env var
     recipient: jbaez120@gmail.com
     min_level: HIGH
-    cooldown_seconds: 300  # min gap between emails for same alert type
+    cooldown_seconds: 3600  # min gap between emails per (alert_type, device) pair
   ntfy:
     enabled: false
     server: https://ntfy.sh  # or http://localhost:2586 for self-hosted
