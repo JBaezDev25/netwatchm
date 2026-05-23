@@ -23,6 +23,9 @@ NetWatchM watches every packet on your network interface and alerts you in real 
 | **Adult Domain** | DNS/TLS SNI matches Steven Black adult domain list (153k domains) |
 | **Tracker Domain** | DNS/TLS SNI matches ads/tracking/analytics domain list |
 | **Tor Exit Node** | Outbound connection to a known Tor exit node |
+| **Malware Domain** | DNS/TLS SNI matches abuse.ch URLhaus active malware/C2 host list |
+| **DNS Tunneling** | Burst of long or high-entropy DNS queries from one device (data smuggling over DNS) |
+| **Beaconing (C2)** | Periodic outbound contacts to a single external host with low jitter |
 
 Alerts are delivered via: terminal, rotating log file, sound (beep), Gmail email, and **ntfy push notifications** (Android/iOS).  
 All alert notifications use **plain-English descriptions** — no raw alert codes.
@@ -103,6 +106,51 @@ bash scripts/hotdeploy.sh      # deploy server + ai.html
 
 ---
 
+## Autonomous Agent (Phase 1 — dry-run)
+
+NetWatchM ships an opt-in autonomous agent that observes recent events every few
+minutes, asks a **local** LLM (default: `qwen3:14b` via Ollama, free / no API
+keys) what action it would take, and writes every decision to
+`/var/lib/netwatchm/agent_actions.db`. **Phase 1 is dry-run only** — no
+state-changing tools exist yet. The agent can recommend; it cannot act.
+
+Why dry-run first: a security tool reads attacker-controllable text (DNS query
+names, TLS SNI, alert descriptions). An LLM that both reads that text *and* can
+change config is a prompt-injection target. Watching the agent's recommendations
+for a week before granting it write access lets you (and us) verify the
+judgment is sound.
+
+**Read-only tools the agent can call:** `query_recent_events`,
+`query_threat_history`, `query_device_inventory`, `query_whitelist_state`,
+`query_suppression_state`. Tool arguments are validated server-side (IPs must
+parse, integers are range-checked), and the dispatcher refuses any tool not on
+the allow-list. All text from observed traffic is wrapped in `<untrusted>` tags
+in the prompt with an explicit system-prompt instruction to ignore embedded
+commands.
+
+**Enable:**
+```yaml
+# /etc/netwatchm/netwatchm.yaml
+agent:
+  enabled: true            # default false
+  dry_run: true            # leave true through Phase 1
+  model: qwen3:14b         # any Ollama tool-calling model
+  interval_seconds: 300    # 5 min between ticks
+```
+
+Then `sudo systemctl restart netwatchm`. Inspect what it would do with:
+
+```bash
+sqlite3 /var/lib/netwatchm/agent_actions.db \
+  'SELECT ts, max_severity, rationale FROM agent_decisions ORDER BY ts DESC LIMIT 10'
+```
+
+Phases 2–4 (action executor with hard guardrails, additional context sources
+like DNS history + firewall rules + OS fingerprints, and a web UI for the
+audit log) are planned but not shipped.
+
+---
+
 ## MAC Vendor Database
 
 NetWatchM includes a built-in MAC OUI → vendor lookup backed by the official IEEE registry (38,000+ entries). This fills in vendor names for devices that `arp-scan` cannot identify.
@@ -162,6 +210,9 @@ Network Interface
                     │   AdultDomain          │
                     │   TrackerDomain        │
                     │   TorExitNode          │
+                    │   MalwareDomain        │
+                    │   DnsTunneling         │
+                    │   Beaconing (C2)       │
                     └───────────────────────┘
                                             │
                     ┌───────────────────────┤
@@ -204,7 +255,8 @@ netwatchm/
 │   ├── capture.py           # tshark subprocess + NDJSON parser
 │   ├── scorer.py            # Aggregate threat level from active alerts
 │   ├── detector/            # port_scan, brute_force, exfiltration, new_ip,
-│   │                        # data_hog, adult_domain, tracker_domain, tor_exit
+│   │                        # data_hog, adult_domain, tracker_domain, tor_exit,
+│   │                        # malware_domain, dns_tunneling, beaconing
 │   ├── alerts/              # terminal, logfile, sound, email_alert, ntfy_alert,
 │   │                        # alert_labels (plain-English titles + summaries)
 │   ├── inventory/           # store, resolver, exporter, arp_scanner,

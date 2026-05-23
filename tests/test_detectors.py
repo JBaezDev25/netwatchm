@@ -8,18 +8,24 @@ import pytest
 
 from netwatchm.config import (
     AdultDomainConfig,
+    BeaconingConfig,
     BruteForceThreshold,
     DataHogConfig,
+    DnsTunnelingConfig,
     ExfiltrationThreshold,
+    MalwareDomainConfig,
     NewIPThreshold,
     PortScanThreshold,
     TorExitConfig,
     TrackerDomainConfig,
 )
 from netwatchm.detector.adult_domain import AdultDomainDetector
+from netwatchm.detector.beaconing import BeaconingDetector
 from netwatchm.detector.brute_force import BruteForceDetector
 from netwatchm.detector.data_hog import DataHogDetector
+from netwatchm.detector.dns_tunneling import DnsTunnelingDetector
 from netwatchm.detector.exfiltration import ExfiltrationDetector
+from netwatchm.detector.malware_domain import MalwareDomainDetector
 from netwatchm.detector.new_ip import NewIPDetector
 from netwatchm.detector.port_scan import PortScanDetector
 from netwatchm.detector.tor_exit import TorExitDetector
@@ -592,3 +598,316 @@ class TestDataHogDetector:
         assert alert is not None
         assert "threshold" in alert.description
         assert self.LOCAL in alert.description
+
+
+# ──────────────── Malware Domain ────────────────
+
+class TestMalwareDomainDetector:
+    MALWARE = "evil-c2.example"
+
+    def _detector(self, **kwargs) -> MalwareDomainDetector:
+        cfg = MalwareDomainConfig(**{"alert_window_seconds": 10, **kwargs})
+        return MalwareDomainDetector(cfg, domain_set={self.MALWARE})
+
+    def test_no_alert_normal_dns(self) -> None:
+        det = self._detector()
+        assert det.process(make_packet(dns_query="github.com")) is None
+
+    def test_alert_on_dns_query(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=self.MALWARE))
+        assert result is not None
+        assert result.alert_type == "MALWARE_DOMAIN"
+        assert result.level == ThreatLevel.HIGH
+        assert "DNS" in result.description
+        assert self.MALWARE in result.description
+
+    def test_alert_on_sni(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(sni=self.MALWARE))
+        assert result is not None
+        assert result.alert_type == "MALWARE_DOMAIN"
+        assert "SNI" in result.description
+
+    def test_dedup_suppresses_second(self) -> None:
+        det = self._detector()
+        first = det.process(make_packet(dns_query=self.MALWARE))
+        second = det.process(make_packet(dns_query=self.MALWARE))
+        assert first is not None
+        assert second is None
+
+    def test_dedup_per_device(self) -> None:
+        det = self._detector()
+        r1 = det.process(make_packet(src_ip="192.168.1.10", dns_query=self.MALWARE))
+        r2 = det.process(make_packet(src_ip="192.168.1.11", dns_query=self.MALWARE))
+        assert r1 is not None
+        assert r2 is not None
+
+    def test_dedup_expires_re_alerts(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        first = det.process(make_packet(dns_query=self.MALWARE))
+        assert first is not None
+        key = f"192.168.1.100:{self.MALWARE}"
+        det._alerted[key] = time.time() - 2
+        second = det.process(make_packet(dns_query=self.MALWARE))
+        assert second is not None
+
+    def test_disabled_no_alert(self) -> None:
+        det = self._detector(enabled=False)
+        assert det.process(make_packet(dns_query=self.MALWARE)) is None
+
+    def test_extra_domains_blocked(self) -> None:
+        det = MalwareDomainDetector(
+            MalwareDomainConfig(alert_window_seconds=10, extra_domains=["custom-mal.example"]),
+            domain_set=set(),
+        )
+        result = det.process(make_packet(dns_query="custom-mal.example"))
+        assert result is not None
+        assert result.alert_type == "MALWARE_DOMAIN"
+
+    def test_fqdn_trailing_dot_stripped(self) -> None:
+        det = self._detector()
+        result = det.process(make_packet(dns_query=f"{self.MALWARE}."))
+        assert result is not None
+        assert self.MALWARE in result.description
+
+    def test_flush_expired_clears_alerted(self) -> None:
+        det = self._detector(alert_window_seconds=1)
+        det.process(make_packet(dns_query=self.MALWARE))
+        key = f"192.168.1.100:{self.MALWARE}"
+        assert key in det._alerted
+        det._alerted[key] = time.time() - 2
+        det.flush_expired()
+        assert key not in det._alerted
+
+
+# ──────────────── DNS Tunneling ────────────────
+
+class TestDnsTunnelingDetector:
+    SRC = "192.168.1.50"
+    LONG_LABEL = "a" * 35  # over min_label_length=30
+    HIGH_ENTROPY = "f3a91b27c8de460f5a2d"  # 20 chars, varied — high entropy
+
+    def _detector(self, **kwargs) -> DnsTunnelingDetector:
+        cfg = DnsTunnelingConfig(
+            **{
+                "queries_per_window": 5,
+                "window_seconds": 60,
+                "alert_window_seconds": 10,
+                **kwargs,
+            }
+        )
+        return DnsTunnelingDetector(cfg)
+
+    def test_no_alert_normal_query(self) -> None:
+        det = self._detector()
+        for _ in range(20):
+            result = det.process(make_packet(src_ip=self.SRC, dns_query="example.com"))
+        assert result is None
+
+    def test_long_label_counts_as_suspicious(self) -> None:
+        det = self._detector(queries_per_window=3)
+        alert = None
+        for i in range(4):
+            r = det.process(make_packet(src_ip=self.SRC, dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+            if r:
+                alert = r
+        assert alert is not None
+        assert alert.alert_type == "DNS_TUNNELING"
+        assert alert.level == ThreatLevel.HIGH
+
+    def test_long_full_query_counts(self) -> None:
+        det = self._detector(queries_per_window=3)
+        # Full FQDN > 60 chars but no single label > 30
+        long_fqdn = ".".join(["abc"] * 20) + ".evil.com"
+        alert = None
+        for _ in range(4):
+            r = det.process(make_packet(src_ip=self.SRC, dns_query=long_fqdn))
+            if r:
+                alert = r
+        assert alert is not None
+        assert alert.alert_type == "DNS_TUNNELING"
+
+    def test_high_entropy_label_counts(self) -> None:
+        det = self._detector(queries_per_window=3, entropy_threshold=3.5)
+        alert = None
+        for i in range(4):
+            r = det.process(make_packet(src_ip=self.SRC, dns_query=f"{self.HIGH_ENTROPY}{i}.tunnel.com"))
+            if r:
+                alert = r
+        assert alert is not None
+
+    def test_below_threshold_no_alert(self) -> None:
+        det = self._detector(queries_per_window=10)
+        for _ in range(5):
+            result = det.process(make_packet(src_ip=self.SRC, dns_query=f"{self.LONG_LABEL}.evil.com"))
+        assert result is None
+
+    def test_dedup_suppresses_second_alert(self) -> None:
+        det = self._detector(queries_per_window=3)
+        alerts = []
+        for i in range(20):
+            r = det.process(make_packet(src_ip=self.SRC, dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+            if r:
+                alerts.append(r)
+        assert len(alerts) == 1
+
+    def test_different_srcs_independent(self) -> None:
+        det = self._detector(queries_per_window=3)
+        a1 = a2 = None
+        for i in range(4):
+            r = det.process(make_packet(src_ip="192.168.1.10", dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+            if r:
+                a1 = r
+        for i in range(4):
+            r = det.process(make_packet(src_ip="192.168.1.11", dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+            if r:
+                a2 = r
+        assert a1 is not None and a2 is not None
+        assert a1.src_ip != a2.src_ip
+
+    def test_disabled_no_alert(self) -> None:
+        det = self._detector(enabled=False)
+        for i in range(20):
+            result = det.process(make_packet(src_ip=self.SRC, dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+        assert result is None
+
+    def test_no_alert_without_dns_query(self) -> None:
+        det = self._detector(queries_per_window=1)
+        result = det.process(make_packet(src_ip=self.SRC, dns_query=None))
+        assert result is None
+
+    def test_flush_expired_clears_state(self) -> None:
+        det = self._detector(window_seconds=1, queries_per_window=3)
+        for i in range(2):
+            det.process(make_packet(src_ip=self.SRC, dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+        time.sleep(1.1)
+        det.flush_expired()
+        assert self.SRC not in det._suspicious
+
+
+# ──────────────── Beaconing (C2) ────────────────
+
+class TestBeaconingDetector:
+    LOCAL = "192.168.1.50"
+    EXTERNAL = "8.8.8.8"
+
+    def _detector(self, **kwargs) -> BeaconingDetector:
+        cfg = BeaconingConfig(
+            **{
+                "min_contacts": 6,
+                "min_interval_seconds": 30.0,
+                "max_interval_seconds": 3600.0,
+                "max_jitter_ratio": 0.15,
+                "window_seconds": 7200,
+                "alert_window_seconds": 10,
+                **kwargs,
+            }
+        )
+        return BeaconingDetector(cfg)
+
+    def _seed_contacts(self, det: BeaconingDetector, key: tuple[str, str], count: int, interval: float, jitter: float = 0.0) -> None:
+        """Inject `count` historical contact timestamps spaced `interval` seconds apart."""
+        from collections import deque
+        now = time.time()
+        # Seed timestamps at: now - count*interval, now - (count-1)*interval, ...
+        ts = [now - (count - i) * interval + (jitter if i % 2 else 0) for i in range(count)]
+        det._contacts[key] = deque(ts)
+
+    def test_alert_on_regular_beacon(self) -> None:
+        det = self._detector(min_contacts=6)
+        key = (self.LOCAL, self.EXTERNAL)
+        self._seed_contacts(det, key, count=5, interval=60.0)
+        # Sixth contact at "now" maintains 60s spacing
+        result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert result is not None
+        assert result.alert_type == "BEACONING"
+        assert result.level == ThreatLevel.HIGH
+        assert self.LOCAL in result.description
+        assert self.EXTERNAL in result.description
+
+    def test_no_alert_high_jitter(self) -> None:
+        det = self._detector(min_contacts=6, max_jitter_ratio=0.05)
+        key = (self.LOCAL, self.EXTERNAL)
+        # Wildly varying intervals: 10s, 100s, 5s, 200s, 30s
+        from collections import deque
+        now = time.time()
+        det._contacts[key] = deque([now - 345, now - 335, now - 235, now - 230, now - 30])
+        result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert result is None
+
+    def test_no_alert_below_min_contacts(self) -> None:
+        det = self._detector(min_contacts=6)
+        key = (self.LOCAL, self.EXTERNAL)
+        self._seed_contacts(det, key, count=3, interval=60.0)
+        result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert result is None
+
+    def test_no_alert_local_to_local(self) -> None:
+        det = self._detector(min_contacts=2)
+        for _ in range(10):
+            r = det.process(make_packet(src_ip="192.168.1.10", dst_ip="192.168.1.20"))
+            assert r is None
+
+    def test_no_alert_inbound(self) -> None:
+        det = self._detector(min_contacts=2)
+        for _ in range(10):
+            r = det.process(make_packet(src_ip=self.EXTERNAL, dst_ip=self.LOCAL))
+            assert r is None
+
+    def test_no_alert_interval_too_short(self) -> None:
+        det = self._detector(min_contacts=6, min_interval_seconds=30.0)
+        key = (self.LOCAL, self.EXTERNAL)
+        # Intervals = 5s — chatter, not beacon
+        self._seed_contacts(det, key, count=5, interval=5.0)
+        result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert result is None
+
+    def test_dedup_within_one_second(self) -> None:
+        det = self._detector(min_contacts=6)
+        key = (self.LOCAL, self.EXTERNAL)
+        self._seed_contacts(det, key, count=5, interval=60.0)
+        first = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert first is not None
+        # Second call within 1s — same connection, should not double-count
+        from collections import deque
+        prior_len = len(det._contacts[key])
+        second = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert len(det._contacts[key]) == prior_len
+        assert second is None
+
+    def test_dedup_alert_window(self) -> None:
+        det = self._detector(min_contacts=6, alert_window_seconds=600)
+        key = (self.LOCAL, self.EXTERNAL)
+        self._seed_contacts(det, key, count=5, interval=60.0)
+        first = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert first is not None
+        # Re-seed and process again — alert should be suppressed by window
+        self._seed_contacts(det, key, count=5, interval=60.0)
+        second = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert second is None
+
+    def test_disabled_no_alert(self) -> None:
+        det = self._detector(enabled=False, min_contacts=2)
+        key = (self.LOCAL, self.EXTERNAL)
+        self._seed_contacts(det, key, count=5, interval=60.0)
+        result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        assert result is None
+
+    def test_different_pairs_independent(self) -> None:
+        det = self._detector(min_contacts=6)
+        DST2 = "1.1.1.1"
+        self._seed_contacts(det, (self.LOCAL, self.EXTERNAL), count=5, interval=60.0)
+        self._seed_contacts(det, (self.LOCAL, DST2), count=5, interval=60.0)
+        a1 = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
+        a2 = det.process(make_packet(src_ip=self.LOCAL, dst_ip=DST2))
+        assert a1 is not None and a2 is not None
+        assert a1.dst_ip != a2.dst_ip
+
+    def test_flush_expired_clears_old_pairs(self) -> None:
+        det = self._detector(min_contacts=6, window_seconds=1)
+        key = (self.LOCAL, self.EXTERNAL)
+        from collections import deque
+        det._contacts[key] = deque([time.time() - 10, time.time() - 9])
+        det.flush_expired()
+        assert key not in det._contacts

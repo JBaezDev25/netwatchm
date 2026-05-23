@@ -1,6 +1,111 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-04-18 (session 21)
+Last updated: 2026-05-23 (session 25)
+
+## Session 25 — 2026-05-23
+
+### Agent doctor + LLM client — CPU-inference tuning
+- [x] `scripts/agent-doctor.sh` — added `[2b/4] Pre-warming` step that POSTs to `/api/generate` with `keep_alive=30m` so the first real inference doesn't pay the model-load tax; bumped client timeout to 600s
+- [x] `scripts/agent-doctor.sh` — default model switched `qwen3:14b` → `qwen3:8b` → `mistral:latest`. Mistral 7B is a non-thinking model that responds reliably under 60s on this Ryzen 5 5600G (CPU only), whereas Qwen3 spends most of its generation budget on hidden reasoning. Env override: `NETWATCHM_AGENT_MODEL=qwen3:14b bash scripts/agent-doctor.sh`
+- [x] `scripts/agent-doctor.sh` — smoke-test caps tightened: `context_max_events=15`, `context_prompt_char_cap=4000`, `max_tool_hops=2` so an LLM call completes in bounded time on CPU
+- [x] `src/netwatchm/agent/llm_client.py` — `OllamaClient.chat()` now sends `think: false` by default, which disables Qwen3/DeepSeek-R1 reasoning-trace mode. Without this, the model pours all output into a separate `thinking` field and leaves `content` empty, making it appear to hang from the caller's perspective
+- [x] `src/netwatchm/agent/llm_client.py` — generation capped at `max_tokens=512` (Ollama `num_predict`); production callers can pass a larger value if needed
+- [x] **All 20 agent tests still pass** (LLM is mocked, so behaviour-preserving for tests; verified against live Ollama via diagnostic curl)
+
+### Root-cause notes for future debugging
+- Ollama timing fields per response: `prompt_eval_count`/`prompt_eval_duration` = prompt processing speed; `eval_count`/`eval_duration` = generation speed. On Ryzen 5 5600G no-GPU: qwen3:8b runs at ~14 prompt-tok/s and ~3 gen-tok/s. Use these to predict whether a model can finish one tick under timeout.
+- Symptom "(no rationale text returned)" + `__llm__ status=error blocked_reason: timed out` = urllib timeout fired before Ollama responded. Either model is too slow for the prompt size, or thinking-mode is consuming the entire generation budget. Disable thinking first; switch model second; shrink prompt third.
+
+---
+
+## Session 24 — 2026-05-22
+
+### Autonomous agent — Phase 1 (dry-run, local Ollama)
+- [x] `src/netwatchm/agent/` — new package: `__init__.py`, `audit.py`, `context.py`, `llm_client.py`, `tools.py`, `agent_loop.py`
+- [x] `src/netwatchm/agent/audit.py` — append-only `agent_actions.db` (WAL mode); two tables: `agent_decisions` + `agent_tool_calls` with status field as the only mutable column
+- [x] `src/netwatchm/agent/context.py` — builds per-tick snapshot from events.db + inventory.json + aliases.json + verified.json + suppressed.json + policy; wraps all packet-derived text in `<untrusted>` tags with control-char stripping + tag-delimiter scrubbing; normalises inventory.json list-vs-dict shapes
+- [x] `src/netwatchm/agent/llm_client.py` — `OllamaClient` using stdlib urllib only; targets `/api/chat` with native tool calling
+- [x] `src/netwatchm/agent/tools.py` — 5 read-only context tools: `query_recent_events`, `query_threat_history`, `query_device_inventory`, `query_whitelist_state`, `query_suppression_state`; tool dispatcher rejects unknown names; `_require_ip` validates IPv4/IPv6 literals (blocks shell-metacharacter argument injection)
+- [x] `src/netwatchm/agent/agent_loop.py` — async dry-run loop, tool-hop limit, every decision + every tool call written to audit DB; LLM call runs via `asyncio.to_thread` so it doesn't block the main loop
+- [x] `src/netwatchm/config.py` — `AgentConfig` dataclass (defaults: `enabled=False, dry_run=True, model=qwen3:14b, interval_seconds=300, max_tool_hops=4`); YAML loader wiring
+- [x] `src/netwatchm/__main__.py` — `run_monitor()` registers the agent task when `config.agent.enabled`; resolves `NETWATCHM_EVENT_DB` / `NETWATCHM_INVENTORY_FILE` env overrides
+- [x] `netwatchm.yaml.example` — new `agent:` block with all knobs commented (disabled by default)
+- [x] `tests/test_agent.py` — 20 new tests: audit schema + status transitions, sanitiser invariants (control chars / tag delimiters / truncation / None), context summarisation + untrusted-tag wrapping, tool dispatcher rejecting unknown names + bad IPs, end-to-end dry-run tick with stubbed LLM, disabled-agent fast return, LLM-error path
+- [x] **All 225 tests pass** (was 205 → +20 new)
+
+### Safety properties enforced in Phase 1
+- Append-only audit: decisions never mutated, tool-call status the only writable field
+- Prompt-injection defence: attacker-controlled text wrapped in `<untrusted>` with delimiter scrubbing; system prompt instructs LLM to ignore embedded commands
+- Argument validation: IPs must parse via `ipaddress.ip_address()`, integers range-checked
+- Dispatcher allow-list: only the 5 declared tools execute; unknown names refused
+- Dry-run hard wired: no action tools exist yet — even a fabricated tool call would be rejected at dispatch
+
+### Verify wiring without enabling (safe, no service restart)
+- [x] `scripts/agent-doctor.sh` — pings Ollama, confirms model is pulled, runs ONE agent tick against the live `events.db`/`inventory.json`, prints the decision the agent recorded to a scratch audit DB at `/tmp/agent-doctor-audit.db`. Does not touch `/etc/netwatchm/netwatchm.yaml` or restart any service. Safe to re-run.
+
+### How to enable (manual — agent is disabled by default)
+```bash
+# 1. Ensure ollama serves qwen3:14b (already pulled — confirmed via `ollama list`)
+ollama serve &
+# 2. Flip enabled: true in /etc/netwatchm/netwatchm.yaml under the agent: block
+# 3. Restart the monitor: sudo systemctl restart netwatchm
+# 4. Watch the audit DB: sqlite3 /var/lib/netwatchm/agent_actions.db 'SELECT * FROM agent_decisions ORDER BY ts DESC LIMIT 5'
+```
+
+Note: first tick after enable will be slow (~30-60s) while Ollama loads the model into RAM on CPU. Subsequent ticks should complete in ~10-20s with qwen3:14b on this Ryzen 5 5600G (no GPU acceleration). `timeout_seconds` default is 120s.
+
+### Pending — promote to live actions only after dry-run review
+- [ ] Phase 2 — guardrails module + action executor + ntfy action buttons (whitelist mod, suppress, scan, notify)
+- [ ] Phase 3 — additional context sources (DNS query history, ufw firewall rules, nmap -O OS fingerprints, per-IP bandwidth aggregator)
+- [ ] Phase 4 — web UI tab for agent audit log + manual override + one-click rollback
+
+---
+
+## Session 23 — 2026-05-08
+
+### Three new detectors: DNS Tunneling, C2 Beaconing, Malware Domain
+- [x] `src/netwatchm/config.py` — added `MalwareDomainConfig`, `DnsTunnelingConfig`, `BeaconingConfig` dataclasses + YAML loader wiring (defaults: malware refresh every 6h, dns_tunneling 10 queries/60s, beaconing 6 contacts with <15% jitter)
+- [x] `src/netwatchm/detector/malware_domain.py` — `MalwareDomainDetector` (HIGH). Clones the AdultDomain pattern; default feed = abuse.ch URLhaus host file; per-(src_ip, domain) dedup with 30-min cooldown; `domain_set` test injection
+- [x] `src/netwatchm/detector/dns_tunneling.py` — `DnsTunnelingDetector` (HIGH). Per-src_ip sliding window of suspicious queries; suspicious = long FQDN OR long leftmost label OR high Shannon entropy in leftmost label; alerts after N suspicious queries within window
+- [x] `src/netwatchm/detector/beaconing.py` — `BeaconingDetector` (HIGH). Per-(src_ip, dst_ip) outbound contact log; computes mean interval + coefficient of variation; alerts when ≥min_contacts, mean in `[min_interval, max_interval]`, and CoV < max_jitter_ratio. 1s connection-folding so a single TCP flow doesn't inflate contact count
+- [x] `src/netwatchm/detector/__init__.py` — exports new detectors
+- [x] `src/netwatchm/__main__.py` — instantiates the three new detectors in `run_monitor()` after the existing domain detectors
+- [x] `tests/conftest.py` — imports of new config dataclasses
+- [x] `tests/test_detectors.py` — 31 new tests across `TestMalwareDomainDetector` (10), `TestDnsTunnelingDetector` (10), `TestBeaconingDetector` (11). Beaconing tests inject historical timestamps directly into `_contacts[key]` to avoid waiting real wall-clock minutes
+- [x] `netwatchm.yaml.example` — three new `thresholds.*` sections + new alert types listed in `detector_whitelist` comment
+- [x] **All 205 tests pass** (was 174 → +31 new)
+
+### Coverage added (mapped to user categories)
+- **Malware Indicators** → `MALWARE_DOMAIN` alert via URLhaus feed
+- **DNS Tunneling** → `DNS_TUNNELING` alert (long/high-entropy DNS query bursts)
+- **C2 Server Connection** → `BEACONING` alert (periodic outbound contacts)
+
+### Deploy command (session 23)
+```bash
+bash scripts/deploy-server.sh   # reinstall netwatchm package with new detectors + restart
+```
+
+### Evidence-gathering script for 192.168.1.180 → 142.251.163.83 investigation
+- [x] `scripts/investigate-192-168-1-180.sh` — gathers events, flows, inventory, DNS/WHOIS, log slice + runs deep-inspect into `/tmp/investigate-192.168.1.180/`. Self-sudoing where needed.
+- [x] **Investigation result** — destination `142.251.163.83` (PTR `wv-in-f83.1e100.net`) is benign Google service traffic. The 5 BEACONING alerts on 2026-05-08 19:30-19:54 from 192.168.1.180 fan out to Google + Cloudflare/Discord (`162.159.140.33`) + AWS CloudFront — ~45s heartbeat fingerprint of desktop SaaS apps (Discord, Workspace, etc.), not C2.
+
+### Detector tuning — silence monitor-host self-noise from new detectors
+- [x] `scripts/whitelist-monitor-beacon.sh` — programmatically adds `192.168.1.180` to `detector_whitelist.BEACONING` and `detector_whitelist.TRACKER_DOMAIN` in live config (`/etc/netwatchm/netwatchm.yaml`), shows a diff, prompts before applying, backs up, and restarts `netwatchm`. Uses the system venv's PyYAML for safe in-place YAML edit.
+
+---
+
+## Session 22 — 2026-04-23
+
+### Fix `ModuleNotFoundError: No module named 'netwatchm'` in system venv
+- [x] **Root cause** — `scripts/deploy-server.sh` step 2 used `pip install -e "$REPO"` for the system venv at `/usr/local/lib/netwatchm/venv`. The editable install dropped a `.pth` file pointing at `/home/jbaez120/ai-projects/netwatchm/src`. After session 16 hardening switched the service to the `netwatchm` system user, that user cannot traverse `/home/jbaez120` (mode `0750`, `netwatchm` not in `jbaez120` group) — so `import netwatchm` fails inside the venv CLI script.
+- [x] `scripts/deploy-server.sh` — step 2 now uninstalls any prior `netwatchm` install in the system venv and runs a non-editable `pip install "$REPO"`, which copies the package into `site-packages/` so the `netwatchm` user can read it without home-dir access. Added an explanatory comment so this regression doesn't return.
+
+### Deploy command (session 22)
+```bash
+bash scripts/deploy-server.sh   # reinstalls netwatchm into system venv non-editably + restart
+```
+
+---
 
 ## Session 21 — 2026-04-18
 

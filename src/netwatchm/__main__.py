@@ -22,9 +22,12 @@ from .capture import capture_packets
 from .config import Config, load_config
 from .detector import (
     AdultDomainDetector,
+    BeaconingDetector,
     BruteForceDetector,
     DataHogDetector,
+    DnsTunnelingDetector,
     ExfiltrationDetector,
+    MalwareDomainDetector,
     NewIPDetector,
     PortScanDetector,
     TorExitDetector,
@@ -90,6 +93,9 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
         TorExitDetector(config.thresholds.tor_exit),
         AdultDomainDetector(config.thresholds.adult_domain),
         TrackerDomainDetector(config.thresholds.tracker_domain),
+        MalwareDomainDetector(config.thresholds.malware_domain),
+        DnsTunnelingDetector(config.thresholds.dns_tunneling),
+        BeaconingDetector(config.thresholds.beaconing),
         DataHogDetector(config.thresholds.data_hog),
     ]
 
@@ -327,6 +333,31 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
                     name="arp_scanner",
                 )
             )
+
+    if config.agent.enabled:
+        from .agent.agent_loop import run_agent_loop
+        from .alerts.event_store import DEFAULT_DB as DEFAULT_EVENTS_DB
+        data_dir = (
+            str(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "netwatchm")
+            if sys.platform == "win32"
+            else "/var/lib/netwatchm"
+        )
+        tasks.append(
+            asyncio.create_task(
+                run_agent_loop(
+                    agent_cfg=config.agent,
+                    config=config,
+                    stop_event=stop_event,
+                    events_db_path=os.environ.get("NETWATCHM_EVENT_DB", DEFAULT_EVENTS_DB),
+                    inventory_path=os.environ.get(
+                        "NETWATCHM_INVENTORY_FILE",
+                        str(Path(data_dir) / "inventory.json"),
+                    ),
+                    data_dir=data_dir,
+                ),
+                name="agent",
+            )
+        )
 
     try:
         await asyncio.gather(*tasks)

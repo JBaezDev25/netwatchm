@@ -24,6 +24,28 @@ thresholds:
     # list_url: ...  # Steven Black unified adware+malware list (default)
     alert_window_seconds: 3600
     extra_domains: []  # e.g. [api.segment.io, www.google-analytics.com]
+  malware_domain:
+    enabled: true
+    # list_url: https://urlhaus.abuse.ch/downloads/hostfile/  (default)
+    refresh_hours: 6
+    alert_window_seconds: 1800
+    extra_domains: []  # add custom IOC domains here
+  dns_tunneling:
+    enabled: true
+    queries_per_window: 10        # suspicious DNS queries needed to fire
+    window_seconds: 60
+    min_label_length: 30          # leftmost label longer than this = suspicious
+    min_query_length: 60          # full FQDN longer than this = suspicious
+    entropy_threshold: 4.0        # Shannon entropy of leftmost label
+    alert_window_seconds: 600
+  beaconing:
+    enabled: true
+    min_contacts: 6               # contacts to a single dst before scoring
+    min_interval_seconds: 30      # ignore intervals shorter than this
+    max_interval_seconds: 3600
+    max_jitter_ratio: 0.15        # CoV; below = regular beacon
+    window_seconds: 7200          # how long contact history is kept
+    alert_window_seconds: 1800
 
 alerts:
   terminal: true
@@ -81,8 +103,30 @@ detector_whitelist:
   # Suppress specific alert types from specific IPs only.
   # Does NOT suppress other alert types from these IPs.
   # Key = alert type (PORT_SCAN, BRUTE_FORCE, EXFILTRATION, NEW_IP,
-  #                   TOR_EXIT, ADULT_DOMAIN, TRACKER_DOMAIN, DATA_HOG)
+  #                   TOR_EXIT, ADULT_DOMAIN, TRACKER_DOMAIN, DATA_HOG,
+  #                   MALWARE_DOMAIN, DNS_TUNNELING, BEACONING)
   # Value = list of src_ip addresses to suppress for that type
   PORT_SCAN: []          # e.g. [192.168.1.180]  — suppress port scan from your own machine
   BRUTE_FORCE: []        # e.g. [192.168.1.50]   — suppress brute force from a scanner
   TRACKER_DOMAIN: []     # e.g. [192.168.1.10]   — suppress tracker alerts from a specific device
+  MALWARE_DOMAIN: []     # rarely needed — only suppress for confirmed false positives
+  DNS_TUNNELING: []      # e.g. [192.168.1.10]   — suppress for known long-DNS apps (some VPNs)
+  BEACONING: []          # e.g. [192.168.1.10]   — suppress for legit periodic clients (NTP, telemetry)
+
+agent:
+  # Autonomous decision loop. Phase 1 is dry-run only — the agent observes
+  # recent events, queries the LLM for what it would do, and writes every
+  # decision to /var/lib/netwatchm/agent_actions.db. NO state-changing
+  # actions are taken yet (whitelist edits, scans, notifications come in
+  # Phase 2 once dry-run behaviour has been reviewed).
+  enabled: false                          # set true after ollama is reachable
+  dry_run: true                           # Phase 1: never set this to false
+  model: qwen3:14b                        # any tool-calling Ollama model
+  ollama_base_url: http://127.0.0.1:11434
+  interval_seconds: 300                   # 5 min between ticks
+  timeout_seconds: 120                    # per LLM call (CPU inference is slow)
+  temperature: 0.2
+  context_hours_back: 4                   # how far back to pull events each tick
+  context_max_events: 50
+  context_prompt_char_cap: 16000          # cap on JSON-serialised context in prompt
+  max_tool_hops: 4                        # max read-only tool round-trips per tick

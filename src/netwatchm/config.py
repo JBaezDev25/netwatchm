@@ -69,6 +69,38 @@ class TrackerDomainConfig:
 
 
 @dataclass
+class MalwareDomainConfig:
+    enabled: bool = True
+    # abuse.ch URLhaus active malware C2 / payload distribution hosts
+    list_url: str = "https://urlhaus.abuse.ch/downloads/hostfile/"
+    refresh_hours: int = 6
+    alert_window_seconds: int = 1800  # re-alert same (src,domain) after 30 min
+    extra_domains: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DnsTunnelingConfig:
+    enabled: bool = True
+    queries_per_window: int = 10      # suspicious queries needed to fire
+    window_seconds: int = 60
+    min_label_length: int = 30        # leftmost label longer than this = suspicious
+    min_query_length: int = 60        # full FQDN longer than this = suspicious
+    entropy_threshold: float = 4.0    # Shannon entropy of leftmost label
+    alert_window_seconds: int = 600   # re-alert same src_ip after 10 min
+
+
+@dataclass
+class BeaconingConfig:
+    enabled: bool = True
+    min_contacts: int = 6                    # need this many to compute jitter
+    min_interval_seconds: float = 30.0       # ignore intervals shorter than this
+    max_interval_seconds: float = 3600.0     # ignore intervals longer than this
+    max_jitter_ratio: float = 0.15           # CoV threshold; below = regular beacon
+    window_seconds: int = 7200               # how long timestamps are kept per pair
+    alert_window_seconds: int = 1800         # re-alert same pair after 30 min
+
+
+@dataclass
 class Thresholds:
     port_scan: PortScanThreshold = field(default_factory=PortScanThreshold)
     brute_force: BruteForceThreshold = field(default_factory=BruteForceThreshold)
@@ -77,6 +109,9 @@ class Thresholds:
     tor_exit: TorExitConfig = field(default_factory=TorExitConfig)
     adult_domain: AdultDomainConfig = field(default_factory=AdultDomainConfig)
     tracker_domain: TrackerDomainConfig = field(default_factory=TrackerDomainConfig)
+    malware_domain: MalwareDomainConfig = field(default_factory=MalwareDomainConfig)
+    dns_tunneling: DnsTunnelingConfig = field(default_factory=DnsTunnelingConfig)
+    beaconing: BeaconingConfig = field(default_factory=BeaconingConfig)
     data_hog: DataHogConfig = field(default_factory=DataHogConfig)
 
 
@@ -170,6 +205,27 @@ class DetectorWhitelistConfig:
 
 
 @dataclass
+class AgentConfig:
+    """Autonomous agent loop (Phase 1: dry-run only).
+
+    The agent observes recent events and queries the LLM for a recommended
+    action. With ``dry_run`` true (the default), no state-changing tools
+    exist — recommendations are recorded to the audit DB only.
+    """
+    enabled: bool = False
+    dry_run: bool = True
+    model: str = "qwen3:14b"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    interval_seconds: int = 300        # 5 min between ticks
+    timeout_seconds: int = 120         # per LLM call
+    temperature: float = 0.2
+    context_hours_back: int = 4
+    context_max_events: int = 50
+    context_prompt_char_cap: int = 16000
+    max_tool_hops: int = 4             # max read-only tool round-trips per tick
+
+
+@dataclass
 class Config:
     interface: str = "auto"
     baseline_period: int = 300
@@ -178,6 +234,7 @@ class Config:
     inventory: InventoryConfig = field(default_factory=InventoryConfig)
     whitelist: WhitelistConfig = field(default_factory=WhitelistConfig)
     detector_whitelist: DetectorWhitelistConfig = field(default_factory=DetectorWhitelistConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
 
     def __post_init__(self) -> None:
         # Always load email password from env var
@@ -223,6 +280,9 @@ def load_config(path: str | Path | None = None) -> Config:
     ni = thresh_raw.get("new_ip", {})
     ad = thresh_raw.get("adult_domain", {})
     td = thresh_raw.get("tracker_domain", {})
+    md = thresh_raw.get("malware_domain", {})
+    dt = thresh_raw.get("dns_tunneling", {})
+    bc = thresh_raw.get("beaconing", {})
     dh = thresh_raw.get("data_hog", {})
 
     alerts_raw = raw.get("alerts", {})
@@ -267,6 +327,31 @@ def load_config(path: str | Path | None = None) -> Config:
                 refresh_hours=td.get("refresh_hours", 24),
                 alert_window_seconds=td.get("alert_window_seconds", 3600),
                 extra_domains=td.get("extra_domains", []),
+            ),
+            malware_domain=MalwareDomainConfig(
+                enabled=md.get("enabled", True),
+                list_url=md.get("list_url", "https://urlhaus.abuse.ch/downloads/hostfile/"),
+                refresh_hours=md.get("refresh_hours", 6),
+                alert_window_seconds=md.get("alert_window_seconds", 1800),
+                extra_domains=md.get("extra_domains", []),
+            ),
+            dns_tunneling=DnsTunnelingConfig(
+                enabled=dt.get("enabled", True),
+                queries_per_window=dt.get("queries_per_window", 10),
+                window_seconds=dt.get("window_seconds", 60),
+                min_label_length=dt.get("min_label_length", 30),
+                min_query_length=dt.get("min_query_length", 60),
+                entropy_threshold=dt.get("entropy_threshold", 4.0),
+                alert_window_seconds=dt.get("alert_window_seconds", 600),
+            ),
+            beaconing=BeaconingConfig(
+                enabled=bc.get("enabled", True),
+                min_contacts=bc.get("min_contacts", 6),
+                min_interval_seconds=bc.get("min_interval_seconds", 30.0),
+                max_interval_seconds=bc.get("max_interval_seconds", 3600.0),
+                max_jitter_ratio=bc.get("max_jitter_ratio", 0.15),
+                window_seconds=bc.get("window_seconds", 7200),
+                alert_window_seconds=bc.get("alert_window_seconds", 1800),
             ),
             data_hog=DataHogConfig(
                 enabled=dh.get("enabled", True),
@@ -337,6 +422,22 @@ def load_config(path: str | Path | None = None) -> Config:
         # Normalise keys to upper-case alert type names
         config.detector_whitelist = DetectorWhitelistConfig(
             rules={k.upper(): list(v) for k, v in dwl_raw.items() if isinstance(v, list)}
+        )
+
+    ag_raw = raw.get("agent", {})
+    if ag_raw:
+        config.agent = AgentConfig(
+            enabled=ag_raw.get("enabled", False),
+            dry_run=ag_raw.get("dry_run", True),
+            model=ag_raw.get("model", "qwen3:14b"),
+            ollama_base_url=ag_raw.get("ollama_base_url", "http://127.0.0.1:11434"),
+            interval_seconds=ag_raw.get("interval_seconds", 300),
+            timeout_seconds=ag_raw.get("timeout_seconds", 120),
+            temperature=ag_raw.get("temperature", 0.2),
+            context_hours_back=ag_raw.get("context_hours_back", 4),
+            context_max_events=ag_raw.get("context_max_events", 50),
+            context_prompt_char_cap=ag_raw.get("context_prompt_char_cap", 16000),
+            max_tool_hops=ag_raw.get("max_tool_hops", 4),
         )
 
     # Post-init to load env var password

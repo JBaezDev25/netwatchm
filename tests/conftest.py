@@ -8,11 +8,14 @@ import pytest
 
 from netwatchm.config import (
     AdultDomainConfig,
+    BeaconingConfig,
     BruteForceThreshold,
     Config,
     DataHogConfig,
+    DnsTunnelingConfig,
     ExfiltrationThreshold,
     InventoryConfig,
+    MalwareDomainConfig,
     NewIPThreshold,
     PortScanThreshold,
     Thresholds,

@@ -44,8 +44,14 @@ else
 fi
 
 # --- Step 2: Install package into system venv ---
+# Non-editable install: copy the package into the system venv's site-packages.
+# An editable install (-e) would just drop a .pth pointing back into the
+# developer's home dir, which the netwatchm system user cannot read (home is
+# 0750), causing `ModuleNotFoundError: No module named 'netwatchm'` at runtime.
+# `pip uninstall -y` first scrubs any prior editable install before reinstall.
 echo "[2/5] Installing netwatchm package into system venv…"
-sudo "$SYSTEM_VENV/bin/pip" install -e "$REPO" --quiet
+sudo "$SYSTEM_VENV/bin/pip" uninstall -y netwatchm --quiet 2>/dev/null || true
+sudo "$SYSTEM_VENV/bin/pip" install "$REPO" --quiet
 
 # --- Step 3: Copy server source ---
 echo "[3/5] Copying netwatchm_server.py…"
