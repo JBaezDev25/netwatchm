@@ -159,6 +159,168 @@ def _tool_query_suppression_state(args: dict, *, data_dir: str) -> dict:
 # ---------- Tool schemas (OpenAI/Ollama tool-calling format) ----------
 
 
+ACTION_TOOL_SCHEMAS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "add_whitelist_entry",
+            "description": (
+                "Add an IP to the agent-managed whitelist so its alerts are "
+                "suppressed for ttl_hours. Use only after confirming the IP "
+                "is benign (e.g. cross-checked threat history + known service). "
+                "TTL forces the entry to expire — re-add if still valid later."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ip": {"type": "string", "description": "IPv4/IPv6 literal"},
+                    "scope": {
+                        "type": "string",
+                        "enum": ["global", "detector"],
+                        "description": "global = suppress all alerts; detector = one alert_type",
+                    },
+                    "alert_type": {
+                        "type": "string",
+                        "description": "Required when scope=detector",
+                    },
+                    "ttl_hours": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 72,
+                        "default": 24,
+                    },
+                    "reason": {"type": "string", "description": "One-sentence rationale"},
+                },
+                "required": ["ip", "scope", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_whitelist_entry",
+            "description": (
+                "Roll back an agent whitelist entry by (ip, scope, alert_type). "
+                "Use this if you decide a previously-whitelisted IP is actually "
+                "suspicious."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ip": {"type": "string"},
+                    "scope": {"type": "string", "enum": ["global", "detector"]},
+                    "alert_type": {"type": "string"},
+                },
+                "required": ["ip", "scope"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "suppress_alert_type",
+            "description": (
+                "Temporarily silence an alert type across all devices. Use "
+                "sparingly — refuses CRITICAL types. Capped at 24h duration."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alert_type": {"type": "string"},
+                    "duration_hours": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 24,
+                        "default": 1,
+                    },
+                    "reason": {"type": "string"},
+                },
+                "required": ["alert_type", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "unsuppress_alert_type",
+            "description": "Re-enable an alert type that was previously suppressed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alert_type": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["alert_type", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_active_scan",
+            "description": (
+                "Actively probe a target IP. Use after a HIGH alert to gather "
+                "evidence. Rate-capped at 10/hour."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ip": {"type": "string"},
+                    "scan_type": {
+                        "type": "string",
+                        "enum": ["nmap_ports", "deep_inspect"],
+                    },
+                    "reason": {"type": "string"},
+                },
+                "required": ["ip", "scan_type", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_ntfy_alert",
+            "description": (
+                "Push a notification to the user's phone via ntfy. Include "
+                "rollback_entry_id if this notification announces a whitelist "
+                "addition the user might want to reverse. Rate-capped at "
+                "20/day."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "severity": {
+                        "type": "string",
+                        "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                    },
+                    "headline": {
+                        "type": "string",
+                        "description": "≤ 200 chars — shown as the ntfy title",
+                    },
+                    "action_taken": {
+                        "type": "string",
+                        "description": "One short sentence describing what the agent did",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Why the agent acted",
+                    },
+                    "related_ip": {"type": "string"},
+                    "rollback_entry_id": {
+                        "type": "string",
+                        "description": (
+                            "Whitelist entry UUID returned by "
+                            "add_whitelist_entry — enables the Rollback action button"
+                        ),
+                    },
+                },
+                "required": ["severity", "headline", "action_taken", "reason"],
+            },
+        },
+    },
+]
+
+
 TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",

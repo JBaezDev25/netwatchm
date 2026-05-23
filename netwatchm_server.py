@@ -4277,6 +4277,37 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        # Agent (Phase 2) — read-only visibility into recent decisions/whitelist
+        if path == "/api/agent/decisions":
+            try:
+                from netwatchm.agent.audit import AuditLog, DEFAULT_AUDIT_DB
+                limit = int(parse_qs(parsed.query).get("limit", ["50"])[0])
+                with AuditLog(DEFAULT_AUDIT_DB) as audit:
+                    self._send_json({"decisions": audit.recent_decisions(limit=limit)})
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path.startswith("/api/agent/decisions/") and path.endswith("/calls"):
+            try:
+                d_id = int(path.removeprefix("/api/agent/decisions/").removesuffix("/calls"))
+                from netwatchm.agent.audit import AuditLog, DEFAULT_AUDIT_DB
+                with AuditLog(DEFAULT_AUDIT_DB) as audit:
+                    self._send_json({"calls": audit.calls_for_decision(d_id)})
+            except ValueError:
+                self._send_json({"error": "invalid decision id"}, 400)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+            return
+
+        if path == "/api/agent/whitelist":
+            try:
+                from netwatchm.agent.state import AgentWhitelistStore
+                self._send_json({"entries": AgentWhitelistStore().active_entries()})
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         # Static file serving — prevent path traversal
         if path in ("/", "/index.html"):
             self._send_file(SERVE_DIR / "report.html")
@@ -4640,6 +4671,34 @@ class Handler(BaseHTTPRequestHandler):
             with _ai_lock:
                 _ai_sessions.pop(session_id, None)
             self._send_json({"ok": True})
+            return
+
+        # Agent (Phase 2) — rollback a whitelist entry by id.
+        # ntfy notification action buttons POST here; no admin token required
+        # for rollback because (a) the entry was created autonomously and
+        # the user is just reversing it, and (b) the ntfy URL is the only
+        # way the entry_id ever surfaces — it's effectively a one-shot
+        # capability bearer token. Reads of /api/agent/* are gated by the
+        # existing read/admin token middleware.
+        if parsed.path.startswith("/api/agent/rollback/"):
+            entry_id = parsed.path.removeprefix("/api/agent/rollback/").strip()
+            if not entry_id or "/" in entry_id:
+                self._send_json({"error": "invalid entry id"}, 400)
+                return
+            try:
+                from netwatchm.agent.state import AgentWhitelistStore
+                store = AgentWhitelistStore()
+                ok = store.rollback_by_id(entry_id)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+                return
+            if ok:
+                self._send_json({"ok": True, "entry_id": entry_id})
+            else:
+                self._send_json(
+                    {"ok": False, "reason": "entry not found or already rolled back"},
+                    404,
+                )
             return
 
         self.send_error(404, "Not Found")

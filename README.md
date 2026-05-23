@@ -106,48 +106,93 @@ bash scripts/hotdeploy.sh      # deploy server + ai.html
 
 ---
 
-## Autonomous Agent (Phase 1 — dry-run)
+## Autonomous Agent
 
 NetWatchM ships an opt-in autonomous agent that observes recent events every few
-minutes, asks a **local** LLM (default: `qwen3:14b` via Ollama, free / no API
-keys) what action it would take, and writes every decision to
-`/var/lib/netwatchm/agent_actions.db`. **Phase 1 is dry-run only** — no
-state-changing tools exist yet. The agent can recommend; it cannot act.
+minutes, asks a **local** LLM (default: `mistral:latest` via Ollama, free / no
+API keys) what to do, and either logs the decision (dry-run) or acts on it
+(live). Every decision and every action — proposed, executed, blocked, or rolled
+back — is written to `/var/lib/netwatchm/agent_actions.db`.
 
-Why dry-run first: a security tool reads attacker-controllable text (DNS query
-names, TLS SNI, alert descriptions). An LLM that both reads that text *and* can
-change config is a prompt-injection target. Watching the agent's recommendations
-for a week before granting it write access lets you (and us) verify the
-judgment is sound.
+### Two modes
 
-**Read-only tools the agent can call:** `query_recent_events`,
-`query_threat_history`, `query_device_inventory`, `query_whitelist_state`,
-`query_suppression_state`. Tool arguments are validated server-side (IPs must
-parse, integers are range-checked), and the dispatcher refuses any tool not on
-the allow-list. All text from observed traffic is wrapped in `<untrusted>` tags
-in the prompt with an explicit system-prompt instruction to ignore embedded
-commands.
+| Mode | What it does | Recommended use |
+|---|---|---|
+| **dry-run** (Phase 1) | Reads context, asks the LLM, records rationale. Action tools are blocked at dispatch even if the model fabricates one. | First few days after enabling. Watch the audit log to verify the LLM's judgment is sound on *your* traffic. |
+| **live** (Phase 2) | Same as dry-run, plus the agent can add/remove TTL-bounded whitelist entries, suppress alert types, run nmap / deep-inspect scans, and send ntfy notifications with one-tap rollback action buttons. | Flip `agent.dry_run: false` once you trust what dry-run shows. |
 
-**Enable:**
+### Read-only tools (always available)
+
+`query_recent_events`, `query_threat_history`, `query_device_inventory`,
+`query_whitelist_state`, `query_suppression_state`.
+
+### Action tools (live mode only)
+
+`add_whitelist_entry`, `remove_whitelist_entry`, `suppress_alert_type`,
+`unsuppress_alert_type`, `run_active_scan`, `send_ntfy_alert`.
+
+### Hard guardrails
+
+Server-side Python — the LLM cannot override these:
+
+- Cannot whitelist `0.0.0.0`, multicast, reserved, or any IP that fired CRITICAL
+  in the last 24h
+- Cannot suppress CRITICAL alert types (`EXFILTRATION`, `MALWARE_DOMAIN`)
+- Whitelist entries are TTL-bounded (default 24h, hard cap 72h) and auto-expire
+- Rate caps: 5 whitelist changes/hr, 3 suppress changes/hr, 10 scans/hr, 20
+  notifications/day — enforced from the audit DB so they survive a runaway loop
+- All packet-derived text wrapped in `<untrusted>` tags in the LLM prompt; tool
+  args (IPs, integers, scan types) validated before any subprocess fires
+
+### Enable
+
 ```yaml
 # /etc/netwatchm/netwatchm.yaml
 agent:
-  enabled: true            # default false
-  dry_run: true            # leave true through Phase 1
-  model: qwen3:14b         # any Ollama tool-calling model
-  interval_seconds: 300    # 5 min between ticks
+  enabled: true             # default false
+  dry_run: true             # flip to false ONLY after audit review
+  model: mistral:latest     # fastest tool-capable CPU model
+  interval_seconds: 300     # 5 min between ticks
 ```
 
-Then `sudo systemctl restart netwatchm`. Inspect what it would do with:
+Then `bash scripts/deploy-server.sh && sudo systemctl restart netwatchm`.
+
+### Verify wiring without enabling
+
+```bash
+bash scripts/agent-doctor.sh
+```
+
+Runs **one** tick against your live `events.db`, prints the decision the agent
+records to a scratch audit DB. No service restart, no config touch.
+
+### Inspect live decisions
 
 ```bash
 sqlite3 /var/lib/netwatchm/agent_actions.db \
-  'SELECT ts, max_severity, rationale FROM agent_decisions ORDER BY ts DESC LIMIT 10'
+  'SELECT ts, mode, max_severity, rationale FROM agent_decisions ORDER BY ts DESC LIMIT 10'
+
+# tool calls (executed / blocked / rolled_back)
+sqlite3 /var/lib/netwatchm/agent_actions.db \
+  'SELECT tool_name, status, blocked_reason FROM agent_tool_calls ORDER BY ts DESC LIMIT 20'
+
+# active agent-managed whitelist entries (skipped at alert dispatch)
+curl -s https://localhost:8765/api/agent/whitelist -k -H "X-Read-Token: ..." | jq
 ```
 
-Phases 2–4 (action executor with hard guardrails, additional context sources
-like DNS history + firewall rules + OS fingerprints, and a web UI for the
-audit log) are planned but not shipped.
+### Rollback
+
+When the agent whitelists an IP, the ntfy notification arrives with an inline
+**Rollback** button (HTTP POST action — one tap, no browser round-trip).
+Equivalent CLI:
+
+```bash
+curl -X POST https://localhost:8765/api/agent/rollback/<entry_id> -k
+```
+
+Phases 3-4 (DNS history + firewall rules + OS fingerprints + bandwidth
+aggregator context tools, plus a web UI for the audit log) are planned but not
+yet shipped.
 
 ---
 

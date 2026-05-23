@@ -1,6 +1,46 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-23 (session 25)
+Last updated: 2026-05-23 (session 26)
+
+## Session 26 — 2026-05-23
+
+### Autonomous agent — Phase 2 (live action mode + guardrails)
+- [x] `src/netwatchm/agent/guardrails.py` — `Guardrails` class with `GuardrailLimits` dataclass. Hard programmatic limits the LLM cannot override: refuses whitelist of 0.0.0.0/unspecified/multicast/reserved, IPs with recent CRITICAL alerts, CIDR ranges. Refuses suppression of CRITICAL alert types (EXFILTRATION, MALWARE_DOMAIN). Caps suppression at 24h, whitelist TTL at 72h, notify headlines at 200 chars. Rate caps: 5 whitelist changes/hr, 3 suppress changes/hr, 10 scans/hr, 20 notifications/day — counted via SQLite query on `agent_tool_calls` audit table.
+- [x] `src/netwatchm/agent/state.py` — two side-car state stores:
+  - `AgentWhitelistStore` writes to `/var/lib/netwatchm/agent_whitelist.json` (TTL-bounded, soft-delete rollback, atomic file replace)
+  - `SuppressedTypesStore` extends the existing `suppressed.json` schema with a `ttl` map for agent-added entries (legacy `types` list still honoured)
+- [x] `src/netwatchm/__main__.py` — `alert_dispatch_loop` now hot-reloads `agent_whitelist.json` (5s cache, same pattern as suppressed.json) and skips alerts matching active agent whitelist entries before scoring/handlers — additions take effect without service restart
+- [x] `src/netwatchm/agent/executor.py` — `Executor` class with 6 action tools: `add_whitelist_entry`, `remove_whitelist_entry`, `suppress_alert_type`, `unsuppress_alert_type`, `run_active_scan` (nmap_ports / deep_inspect), `send_ntfy_alert`. Every action: guardrails check → mutation → structured result. Scans spawned as subprocess list (no shell, no metacharacter injection). ntfy POST includes `X-Actions` header with one-tap `Rollback` (http POST) + `Open events` (view) action buttons
+- [x] `src/netwatchm/agent/tools.py` — `ACTION_TOOL_SCHEMAS` (6 schemas) added alongside read-only `TOOL_SCHEMAS`
+- [x] `src/netwatchm/agent/agent_loop.py` — split `SYSTEM_PROMPT` into `SYSTEM_PROMPT_DRY_RUN` and `SYSTEM_PROMPT_LIVE`; the live prompt instructs the model on severity-weighted action selection (LOW → whitelist, HIGH → scan+notify, CRITICAL → deep_inspect+notify, never whitelist). `_run_one_tick` routes action tool calls through the executor when not dry-run; even fabricated action tool calls in dry-run mode are logged as `blocked`. `run_agent_loop` builds Guardrails + Executor when live mode is active
+- [x] `netwatchm_server.py` — three new endpoints:
+  - `GET /api/agent/decisions?limit=N` — recent decisions
+  - `GET /api/agent/decisions/<id>/calls` — tool calls for one decision
+  - `GET /api/agent/whitelist` — active agent whitelist entries
+  - `POST /api/agent/rollback/<entry_id>` — roll back a whitelist entry (no admin token — the entry_id is a capability bearer that only surfaces via the ntfy notification the user controls)
+- [x] `src/netwatchm/config.py` — `AgentConfig` defaults updated: `model: mistral:latest` (fastest tool-capable CPU model), `timeout_seconds: 600`
+- [x] `netwatchm.yaml.example` — `agent:` block reworded to describe both Phase 1 (dry-run) and Phase 2 (live) modes
+- [x] `tests/test_agent_phase2.py` — 31 new tests: guardrails (arg shape, recent CRITICAL block, TTL caps, banned types), rate caps (whitelist/scan/notify), state file CRUD + TTL expiry + rollback, suppression TTL cleanup, executor happy paths + blocked-by-guardrails paths + unknown-tool refusal + scan args validated before subprocess + ntfy posts with action buttons + ntfy blocked when not configured, prompt-injection regression (attacker text in description cannot bypass guardrails), schema sanity
+- [x] **All 256 tests pass** (was 225 → +31 new)
+
+### Safety invariants enforced in Phase 2
+- Guardrails are evaluated **server-side in Python** for every action — the LLM cannot bypass them by rephrasing
+- Refuses to whitelist any IP that fired CRITICAL in last 24h (configurable lookback)
+- Refuses to suppress CRITICAL severity alert types regardless of duration
+- Whitelist entries are TTL-bounded (default 24h, cap 72h) — auto-expire even if forgotten
+- Rate limits are hard, counted from the audit DB — burst protection survives a runaway loop
+- Scan subprocess spawned with list args (no shell), IP literal validated by `ipaddress.ip_address()` first
+- ntfy rollback button uses HTTP POST action type — one tap on the phone rolls back without browser round-trip
+- Even in dry-run mode, fabricated action tool calls are recorded as `blocked` (defense in depth)
+
+### How to promote from Phase 1 to Phase 2 (manual — same caveat about deploy-server.sh first)
+1. Review recent dry-run decisions: `sqlite3 /var/lib/netwatchm/agent_actions.db 'SELECT ts, max_severity, rationale FROM agent_decisions ORDER BY ts DESC LIMIT 20'`
+2. If judgment looks sound, flip `agent.dry_run: false` in `/etc/netwatchm/netwatchm.yaml`
+3. Ensure `alerts.ntfy.enabled: true` and topic configured (or notifications will be blocked)
+4. `bash scripts/deploy-server.sh && sudo systemctl restart netwatchm`
+5. Watch the audit log for the first few live actions; tap Rollback on the ntfy notification if any whitelist add looks wrong
+
+---
 
 ## Session 25 — 2026-05-23
 

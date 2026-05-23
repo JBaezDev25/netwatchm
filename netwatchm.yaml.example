@@ -114,19 +114,32 @@ detector_whitelist:
   BEACONING: []          # e.g. [192.168.1.10]   — suppress for legit periodic clients (NTP, telemetry)
 
 agent:
-  # Autonomous decision loop. Phase 1 is dry-run only — the agent observes
-  # recent events, queries the LLM for what it would do, and writes every
-  # decision to /var/lib/netwatchm/agent_actions.db. NO state-changing
-  # actions are taken yet (whitelist edits, scans, notifications come in
-  # Phase 2 once dry-run behaviour has been reviewed).
+  # Autonomous decision loop. Two modes:
+  #
+  #   dry_run: true  (Phase 1)   — agent ONLY observes; rationale and tool
+  #                                calls are written to agent_actions.db,
+  #                                but action tools are blocked at dispatch.
+  #                                Run for a few days and review the audit
+  #                                log before promoting to live.
+  #
+  #   dry_run: false (Phase 2)   — agent may also add/remove whitelist
+  #                                entries (TTL-bounded, side-car file at
+  #                                /var/lib/netwatchm/agent_whitelist.json,
+  #                                hot-reloaded into alert_dispatch_loop),
+  #                                suppress alert types (TTL-bounded), run
+  #                                nmap/deep-inspect scans, and send ntfy
+  #                                notifications with one-tap rollback
+  #                                action buttons. Hard guardrails enforce
+  #                                rate caps and refuse dangerous actions
+  #                                regardless of what the LLM says.
   enabled: false                          # set true after ollama is reachable
-  dry_run: true                           # Phase 1: never set this to false
-  model: qwen3:14b                        # any tool-calling Ollama model
+  dry_run: true                           # flip to false ONLY after audit review
+  model: mistral:latest                   # 7B non-thinking tool-capable model — fastest on CPU
   ollama_base_url: http://127.0.0.1:11434
   interval_seconds: 300                   # 5 min between ticks
-  timeout_seconds: 120                    # per LLM call (CPU inference is slow)
+  timeout_seconds: 600                    # per LLM call (CPU inference is slow)
   temperature: 0.2
   context_hours_back: 4                   # how far back to pull events each tick
   context_max_events: 50
   context_prompt_char_cap: 16000          # cap on JSON-serialised context in prompt
-  max_tool_hops: 4                        # max read-only tool round-trips per tick
+  max_tool_hops: 4                        # max tool round-trips per tick

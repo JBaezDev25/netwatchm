@@ -214,10 +214,10 @@ class AgentConfig:
     """
     enabled: bool = False
     dry_run: bool = True
-    model: str = "qwen3:14b"
+    model: str = "mistral:latest"
     ollama_base_url: str = "http://127.0.0.1:11434"
     interval_seconds: int = 300        # 5 min between ticks
-    timeout_seconds: int = 120         # per LLM call
+    timeout_seconds: int = 600         # per LLM call (CPU inference is slow)
     temperature: float = 0.2
     context_hours_back: int = 4
     context_max_events: int = 50
@@ -429,10 +429,10 @@ def load_config(path: str | Path | None = None) -> Config:
         config.agent = AgentConfig(
             enabled=ag_raw.get("enabled", False),
             dry_run=ag_raw.get("dry_run", True),
-            model=ag_raw.get("model", "qwen3:14b"),
+            model=ag_raw.get("model", "mistral:latest"),
             ollama_base_url=ag_raw.get("ollama_base_url", "http://127.0.0.1:11434"),
             interval_seconds=ag_raw.get("interval_seconds", 300),
-            timeout_seconds=ag_raw.get("timeout_seconds", 120),
+            timeout_seconds=ag_raw.get("timeout_seconds", 600),
             temperature=ag_raw.get("temperature", 0.2),
             context_hours_back=ag_raw.get("context_hours_back", 4),
             context_max_events=ag_raw.get("context_max_events", 50),

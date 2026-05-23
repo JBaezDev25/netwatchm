@@ -69,6 +69,14 @@ _get_suppressed_types.__cache: set = set()  # type: ignore[attr-defined]
 _get_suppressed_types.__cache_ts: float = 0.0  # type: ignore[attr-defined]
 
 
+def _get_agent_whitelist() -> None:
+    """Namespace for the agent_whitelist.json hot-reload cache."""
+
+_get_agent_whitelist.__store = None  # type: ignore[attr-defined]
+_get_agent_whitelist.__cache_ts: float = 0.0  # type: ignore[attr-defined]
+_get_agent_whitelist.__cached_entries: list = []  # type: ignore[attr-defined]
+
+
 async def run_monitor(config: Config, no_ui: bool = False) -> None:
     """Main monitoring coroutine."""
     interface = detect_interface(config.interface)
@@ -189,6 +197,34 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
             if config.detector_whitelist.is_suppressed(
                 alert.alert_type or "", alert.src_ip or ""
             ):
+                alert_queue.task_done()
+                continue
+
+            # Agent-managed whitelist (5s cached file read) — Phase 2 actions
+            if _get_agent_whitelist.__cache_ts + 5 < time.time():
+                _get_agent_whitelist.__cache_ts = time.time()
+                try:
+                    if _get_agent_whitelist.__store is None:
+                        from .agent.state import AgentWhitelistStore
+                        _get_agent_whitelist.__store = AgentWhitelistStore()
+                    _get_agent_whitelist.__cached_entries = (
+                        _get_agent_whitelist.__store.active_entries()
+                    )
+                except Exception:  # noqa: BLE001
+                    _get_agent_whitelist.__cached_entries = []
+            for _e in _get_agent_whitelist.__cached_entries:
+                if _e.get("ip") != alert.src_ip:
+                    continue
+                if _e.get("scope") == "global":
+                    alert.__dict__["_agent_suppressed"] = True
+                    break
+                if (
+                    _e.get("scope") == "detector"
+                    and (_e.get("alert_type") or "").upper() == (alert.alert_type or "").upper()
+                ):
+                    alert.__dict__["_agent_suppressed"] = True
+                    break
+            if alert.__dict__.get("_agent_suppressed"):
                 alert_queue.task_done()
                 continue
 
