@@ -496,6 +496,9 @@ def test_action_tool_schemas_well_formed() -> None:
         "unsuppress_alert_type",
         "run_active_scan",
         "send_ntfy_alert",
+        # Phase 5
+        "add_temporary_block",
+        "remove_block",
     }
     for s in ACTION_TOOL_SCHEMAS:
         fn = s["function"]

@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 from .audit import AuditLog, DEFAULT_AUDIT_DB
 from .context import build_context
 from .executor import Executor
-from .guardrails import Guardrails
+from .firewall import FirewallController, FirewallStore
+from .guardrails import Guardrails, detect_host_network_info
 from .llm_client import OllamaClient
 from .state import AgentWhitelistStore, SuppressedTypesStore
 from .tools import ACTION_TOOL_SCHEMAS, TOOL_SCHEMAS, run_tool
@@ -83,20 +84,27 @@ CRITICAL SAFETY RULES — these are non-negotiable:
      → add_whitelist_entry with scope=detector, TTL=24h
    - MEDIUM noise (ADULT_DOMAIN repeating)
      → suppress_alert_type for 1-4h, or detector-scoped whitelist
-   - HIGH alert from unknown IP
-     → run_active_scan(scan_type=nmap_ports), then send_ntfy_alert
+   - HIGH alert from unknown EXTERNAL IP
+     → run_active_scan(scan_type=nmap_ports), then send_ntfy_alert.
+       For repeated abuse (e.g. brute force from a public IP), you
+       MAY add_temporary_block with a 60-min TTL and a clear reason.
    - CRITICAL alert
      → do not whitelist or suppress. Run deep_inspect, then
-       send_ntfy_alert with severity=CRITICAL.
+       send_ntfy_alert with severity=CRITICAL. Consider
+       add_temporary_block for 60-240 minutes if the source is a
+       public IP and the evidence is strong.
 
-5. When you whitelist or suppress something, immediately follow up with
-   send_ntfy_alert so the user knows. Include rollback_entry_id from
-   the add_whitelist_entry result so the notification has a one-tap
-   rollback button.
+5. When you whitelist, suppress, OR block something, immediately follow
+   up with send_ntfy_alert so the user knows. Include the appropriate
+   entry id from the action result so the notification has a one-tap
+   reversal button:
+     - rollback_entry_id ← from add_whitelist_entry
+     - unblock_entry_id  ← from add_temporary_block
 
 6. Guardrails will refuse dangerous actions (whitelisting 0.0.0.0/0,
-   suppressing CRITICAL types, exceeding rate caps). A blocked tool
-   call is a hint, not an obstacle — reconsider, don't retry blindly.
+   suppressing CRITICAL types, blocking RFC1918 / the gateway / port
+   22, exceeding rate caps). A blocked tool call is a hint, not an
+   obstacle — reconsider, don't retry blindly.
 
 When you respond, end with a short JSON block:
 {"action": "tool_name_invoked_or_none", "target": "...", "rationale": "..."}
@@ -307,15 +315,24 @@ async def run_agent_loop(
     # recorded as 'blocked' even if the model fabricates one.
     executor: Executor | None = None
     if not agent_cfg.dry_run:
+        gateways, host_ips = detect_host_network_info()
+        firewall_store = FirewallStore()
+        firewall_controller = FirewallController()
         guardrails = Guardrails(
             audit_db_path=audit_db_path,
             events_db_path=events_db_path,
+            firewall_store=firewall_store,
+            global_whitelist_ips=list(getattr(config.whitelist, "ips", []) or []),
+            gateway_ips=gateways,
+            host_ips=host_ips,
         )
         executor = Executor(
             guardrails=guardrails,
             whitelist_store=AgentWhitelistStore(),
             suppressed_store=SuppressedTypesStore(),
             ntfy_config=config.alerts.ntfy if config.alerts.ntfy.enabled else None,
+            firewall_store=firewall_store,
+            firewall_controller=firewall_controller,
         )
 
     logger.info(

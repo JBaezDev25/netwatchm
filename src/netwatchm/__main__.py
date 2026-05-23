@@ -395,6 +395,29 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
             )
         )
 
+        # Firewall reaper — runs in live mode only. Removes expired ufw
+        # blocks even if the agent's LLM call is stuck, so no rule
+        # survives past its TTL.
+        if not config.agent.dry_run:
+            from .agent.audit import AuditLog, DEFAULT_AUDIT_DB
+            from .agent.firewall import (
+                FirewallController,
+                FirewallStore,
+                run_firewall_reaper,
+            )
+            tasks.append(
+                asyncio.create_task(
+                    run_firewall_reaper(
+                        store=FirewallStore(),
+                        controller=FirewallController(),
+                        audit=AuditLog(DEFAULT_AUDIT_DB).open(),
+                        stop_event=stop_event,
+                        interval_seconds=60,
+                    ),
+                    name="firewall_reaper",
+                )
+            )
+
     try:
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:

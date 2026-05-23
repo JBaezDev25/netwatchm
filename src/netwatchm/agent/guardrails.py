@@ -25,10 +25,15 @@ internet because of a malformed model response.
 from __future__ import annotations
 
 import ipaddress
+import logging
+import shutil
 import sqlite3
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger("netwatchm.agent.guardrails")
 
 
 # ---------- Caps ----------
@@ -57,6 +62,21 @@ class GuardrailLimits:
     # Tool names allowed in the scan dispatcher
     allowed_scan_types: frozenset[str] = field(
         default_factory=lambda: frozenset({"nmap_ports", "deep_inspect"})
+    )
+    # Phase 5 — firewall block caps
+    max_block_changes_per_hour: int = 5
+    max_active_blocks: int = 10
+    max_block_minutes: int = 1440           # 24 h hard cap on a single rule
+    default_block_minutes: int = 60         # 1 h default if LLM doesn't specify
+    # Ports the agent must never touch (in either direction) so SSH admin
+    # cannot be locked out by a misguided rule. Stored as int set for fast
+    # membership testing.
+    banned_block_ports: frozenset[int] = field(
+        default_factory=lambda: frozenset({22})
+    )
+    # Protocols ufw accepts; everything else refused at validation time.
+    allowed_block_protocols: frozenset[str] = field(
+        default_factory=lambda: frozenset({"tcp", "udp"})
     )
 
 
@@ -87,6 +107,90 @@ def _validate_alert_type(value: Any) -> str:
     if len(s) > 40:
         raise ValueError("alert_type too long")
     return s
+
+
+# ---------- Host network discovery (for firewall guardrails) ----------
+
+
+def _ip_route_default_gateways() -> list[str]:
+    """Parse ``ip route show default`` for default gateway IPs. Empty
+    list on any failure — guardrails treat missing data as "no gateway
+    to protect" which is the safe default in tests."""
+    ip_bin = shutil.which("ip")
+    if not ip_bin:
+        return []
+    try:
+        cp = subprocess.run(
+            [ip_bin, "route", "show", "default"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        logger.warning("ip route lookup failed: %s", exc)
+        return []
+    gateways: list[str] = []
+    for line in (cp.stdout or "").splitlines():
+        # Lines look like:  default via 192.168.1.1 dev eth0 ...
+        parts = line.split()
+        if len(parts) >= 3 and parts[0] == "default" and parts[1] == "via":
+            try:
+                ipaddress.ip_address(parts[2])
+                gateways.append(parts[2])
+            except ValueError:
+                continue
+    return gateways
+
+
+def _ip_addr_host_ips() -> list[str]:
+    """Return all globally-routable + private IPv4/IPv6 host IPs. We do
+    NOT include link-local addresses — those are auto-blocked by the
+    RFC1918/link-local refusal in :meth:`Guardrails.check_block`."""
+    ip_bin = shutil.which("ip")
+    if not ip_bin:
+        return []
+    try:
+        cp = subprocess.run(
+            [ip_bin, "-o", "addr", "show"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        logger.warning("ip addr lookup failed: %s", exc)
+        return []
+    ips: list[str] = []
+    for line in (cp.stdout or "").splitlines():
+        # Each line like:  2: eth0    inet 192.168.1.180/24 brd ...
+        parts = line.split()
+        try:
+            family_idx = parts.index("inet")
+        except ValueError:
+            try:
+                family_idx = parts.index("inet6")
+            except ValueError:
+                continue
+        if family_idx + 1 >= len(parts):
+            continue
+        cidr = parts[family_idx + 1]
+        ip_only = cidr.split("/", 1)[0]
+        try:
+            addr = ipaddress.ip_address(ip_only)
+        except ValueError:
+            continue
+        if addr.is_link_local:
+            continue
+        ips.append(ip_only)
+    return ips
+
+
+def detect_host_network_info() -> tuple[list[str], list[str]]:
+    """Return ``(gateway_ips, host_ips)`` for the running host. Safe to
+    call at startup; both lists may be empty if ``ip`` is missing or
+    times out."""
+    return _ip_route_default_gateways(), _ip_addr_host_ips()
 
 
 # ---------- Rate counter ----------
@@ -124,10 +228,20 @@ class Guardrails:
         audit_db_path: str,
         events_db_path: str,
         limits: GuardrailLimits | None = None,
+        firewall_store: Any | None = None,
+        global_whitelist_ips: list[str] | None = None,
+        gateway_ips: list[str] | None = None,
+        host_ips: list[str] | None = None,
     ) -> None:
         self.audit_db_path = audit_db_path
         self.events_db_path = events_db_path
         self.limits = limits or GuardrailLimits()
+        # Firewall context — None / empty is fine; the check_block call will
+        # still enforce the RFC1918 and structural rules even without these.
+        self.firewall_store = firewall_store
+        self.global_whitelist_ips = frozenset(global_whitelist_ips or [])
+        self.gateway_ips = frozenset(gateway_ips or [])
+        self.host_ips = frozenset(host_ips or [])
 
     # ----- whitelist add -----
 
@@ -279,6 +393,135 @@ class Guardrails:
             return False, (
                 f"notification rate cap hit: "
                 f"{recent}/{self.limits.max_notifications_per_day} per day"
+            )
+        return True, ""
+
+    # ----- firewall block (Phase 5) -----
+
+    def check_block(self, args: dict) -> tuple[bool, str]:
+        """Validate an ``add_temporary_block`` request.
+
+        Refuses, in this order, the first failing condition:
+
+        - malformed IP literal (or CIDR — only single literals accepted)
+        - IP unspecified / multicast / reserved
+        - IP in RFC1918 (10/8, 172.16/12, 192.168/16) — never block internal
+        - IP == any gateway / host-local IP — never self-block
+        - IP in the global whitelist — explicit allow wins
+        - port 22 in any direction (or any port in ``banned_block_ports``)
+        - port out of range 1..65535 (when present)
+        - protocol not in {tcp, udp} (when present)
+        - ``duration_minutes`` outside [1, ``max_block_minutes``]
+        - ``reason`` empty or whitespace
+        - active blocks ≥ ``max_active_blocks``
+        - hourly add+remove rate ≥ ``max_block_changes_per_hour``
+        """
+        # IP shape
+        try:
+            addr = _validate_target_ip(args.get("ip"))
+        except (ValueError, KeyError) as exc:
+            return False, f"invalid ip: {exc}"
+
+        if addr.is_private or addr.is_loopback or addr.is_link_local:
+            return (
+                False,
+                f"refusing to block {addr} — internal/loopback/link-local IPs are off-limits",
+            )
+
+        ip_s = str(addr)
+        if ip_s in self.gateway_ips:
+            return False, f"refusing to block gateway {ip_s}"
+        if ip_s in self.host_ips:
+            return False, f"refusing to block our own host IP {ip_s}"
+        if ip_s in self.global_whitelist_ips:
+            return False, f"refusing to block whitelisted IP {ip_s}"
+
+        # Port
+        port = args.get("port")
+        if port is not None:
+            try:
+                port_n = int(port)
+            except (TypeError, ValueError):
+                return False, f"invalid port: {port!r}"
+            if not (1 <= port_n <= 65535):
+                return False, f"port {port_n} out of range 1..65535"
+            if port_n in self.limits.banned_block_ports:
+                return False, (
+                    f"refusing to touch port {port_n} (banned to prevent admin lockout)"
+                )
+
+        # Protocol
+        proto = args.get("protocol")
+        if proto is not None:
+            proto_s = str(proto).strip().lower()
+            if proto_s not in self.limits.allowed_block_protocols:
+                return False, (
+                    f"protocol {proto_s!r} not allowed; must be one of "
+                    f"{sorted(self.limits.allowed_block_protocols)}"
+                )
+
+        # Duration
+        duration = int(args.get("duration_minutes", self.limits.default_block_minutes))
+        if duration < 1 or duration > self.limits.max_block_minutes:
+            return False, (
+                f"duration_minutes must be in [1, {self.limits.max_block_minutes}]"
+            )
+
+        # Reason (mandatory + non-empty so the audit trail isn't useless)
+        reason = str(args.get("reason") or "").strip()
+        if not reason:
+            return False, "reason is required and must not be empty"
+
+        # Active-block ceiling
+        if self.firewall_store is not None:
+            active = self.firewall_store.count_active()
+            if active >= self.limits.max_active_blocks:
+                return False, (
+                    f"refusing — {active} active blocks already "
+                    f"(ceiling = {self.limits.max_active_blocks})"
+                )
+
+        # Hourly rate cap (add+remove combined, like whitelist)
+        recent = _count_recent_successful(
+            self.audit_db_path, "add_temporary_block", time.time() - 3600
+        ) + _count_recent_successful(
+            self.audit_db_path, "remove_block", time.time() - 3600
+        )
+        if recent >= self.limits.max_block_changes_per_hour:
+            return False, (
+                f"block rate cap hit: "
+                f"{recent}/{self.limits.max_block_changes_per_hour} per hour"
+            )
+
+        return True, ""
+
+    def check_remove_block(self, args: dict) -> tuple[bool, str]:
+        """Validate a ``remove_block`` request. Same rate cap as add; IP
+        must still parse but RFC1918 etc. are allowed (so we can clean up
+        a rule that was added before the guard was tightened)."""
+        try:
+            _validate_target_ip(args.get("ip"))
+        except (ValueError, KeyError) as exc:
+            return False, f"invalid ip: {exc}"
+
+        port = args.get("port")
+        if port is not None:
+            try:
+                port_n = int(port)
+            except (TypeError, ValueError):
+                return False, f"invalid port: {port!r}"
+            if not (1 <= port_n <= 65535):
+                return False, f"port {port_n} out of range 1..65535"
+
+        recent = _count_recent_successful(
+            self.audit_db_path, "add_temporary_block", time.time() - 3600
+        ) + _count_recent_successful(
+            self.audit_db_path, "remove_block", time.time() - 3600
+        )
+        if recent >= self.limits.max_block_changes_per_hour:
+            return False, (
+                f"block rate cap hit: "
+                f"{recent}/{self.limits.max_block_changes_per_hour} per hour"
             )
         return True, ""
 

@@ -1,6 +1,83 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-23 (session 26)
+Last updated: 2026-05-23 (session 28)
+
+## Session 28 — 2026-05-23
+
+### Phase 5 — Firewall mitigation (auto-expiring ufw blocks)
+
+Built and tested. Not deployed live — promotion path is the same as Phase 2:
+review behaviour, then flip into live mode.
+
+#### New module
+- [x] `src/netwatchm/agent/firewall.py` — `BlockEntry` dataclass + `FirewallStore` (JSON sidecar at `/var/lib/netwatchm/agent_blocks.json`, append + soft-delete, atomic .tmp+rename writes) + `FirewallController` (validates IP/port in Python before subprocess, calls `sudo ufw deny from <ip> [to any port <p>]` and `sudo ufw delete deny from …`, treats "Could not delete non-existent rule" as soft success) + `run_firewall_reaper` async task that scans every 60s for expired entries, removes them from ufw, marks the store rolled-back, and audits the removal as a `__reaper__` tool call. Runs independently of the agent tick so TTLs are enforced even if the LLM call is stuck.
+
+#### Guardrails extension
+- [x] `src/netwatchm/agent/guardrails.py` — added `check_block` and `check_remove_block` methods. Hard refuses (in order): malformed IP, CIDR, RFC1918/loopback/link-local, gateway, host IPs, global whitelist, port 22, port out of range, non-tcp/udp protocol, duration outside [1, 1440] minutes, empty `reason`, active-blocks ceiling (10), hourly rate cap (5 add+remove). `Guardrails.__init__` gained `firewall_store`, `global_whitelist_ips`, `gateway_ips`, `host_ips` (all default empty/None so existing call sites keep working). New module-level helper `detect_host_network_info()` reads `ip route show default` + `ip -o addr show` via subprocess and returns gateway/host IP lists for runtime injection.
+- [x] `GuardrailLimits` gained: `max_block_changes_per_hour=5`, `max_active_blocks=10`, `max_block_minutes=1440`, `default_block_minutes=60`, `banned_block_ports=frozenset({22})`, `allowed_block_protocols=frozenset({"tcp","udp"})`.
+
+#### Executor + tools + system prompt
+- [x] `src/netwatchm/agent/executor.py` — two new dispatch entries `add_temporary_block` and `remove_block`. Guardrails check → ufw subprocess → store write → structured result. Constructor gained optional `firewall_store` + `firewall_controller`; if either is None the dispatch returns blocked with "firewall executor not configured on this host". `_send_ntfy_alert` + `_build_actions_header` now also forward `unblock_entry_id` so ntfy notifications carry both Rollback (whitelist) and Unblock (firewall) one-tap action buttons.
+- [x] `src/netwatchm/agent/tools.py` — added `add_temporary_block` and `remove_block` to `ACTION_TOOL_SCHEMAS`. `send_ntfy_alert` schema gained an `unblock_entry_id` property next to the existing `rollback_entry_id`.
+- [x] `src/netwatchm/agent/agent_loop.py` — `SYSTEM_PROMPT_LIVE` updated: severity guide now describes when to use `add_temporary_block` (HIGH external IPs, CRITICAL with strong evidence). `run_agent_loop` now constructs `FirewallStore`+`FirewallController`+`detect_host_network_info()` in live mode and passes them to Guardrails + Executor.
+
+#### Wiring + background task
+- [x] `src/netwatchm/__main__.py` — when `config.agent.enabled` AND NOT `config.agent.dry_run`, the firewall reaper is registered as a separate asyncio task alongside the agent loop. Reaper runs every 60s.
+
+#### Web UI + endpoints
+- [x] `netwatchm_server.py` — `GET /api/agent/blocks` (active blocks JSON) + `POST /api/agent/unblock/<id>` (capability-bearer pattern: the entry_id is only surfaced via ntfy notification the user controls, so possessing it = authorized; same model as `/api/agent/rollback/`). Unblock both marks the store rolled-back AND calls ufw to remove the live rule.
+- [x] `firewall.html` (new, repo root) — dark-theme SPA: active-block count, sortable table (IP, port, protocol, added, expires, TTL countdown, reason, Unblock button), 30s auto-refresh with countdown, confirmation dialog before unblock. Nav links to events/inventory/history/firewall/AI.
+- [x] `scripts/hotdeploy.sh` — extended from 3 → 4 steps so `firewall.html` is copied to `/var/lib/netwatchm/` alongside `ai.html` and `netwatchm_server.py`.
+
+#### Sudoers drop-in
+- [x] `scripts/install-firewall-sudoers.sh` — installs `/etc/sudoers.d/netwatchm-firewall` granting the `netwatchm` user NOPASSWD on **exactly five** ufw subcommand shapes: `deny from *`, `deny from * to any port *`, `delete deny from *`, `delete deny from * to any port *`, `status numbered`. Validates with `visudo -cf` against the tmp copy AND against the full system sudoers after install. Smoke-tests that `sudo -u netwatchm sudo -n ufw status numbered` works. Idempotent; rollback = `sudo rm /etc/sudoers.d/netwatchm-firewall`.
+
+#### Tests
+- [x] `tests/test_agent_firewall.py` — **40 new tests** covering: guardrails refusal cases (RFC1918, loopback, link-local, CIDR, gateway, host IP, global whitelist, port 22, port OOB, bad protocol, duration cap, empty reason, active-blocks ceiling, rate cap), guardrails clean-input acceptance, `check_remove_block` allows RFC1918 for cleanup, FirewallStore (persistence, expired_active, active_entries excludes expired+rolled_back, mark_rolled_back idempotency, corrupted-file fallback), FirewallController (subprocess argv shape add/remove with/without port, shell-injection rejection in IP, port OOB rejection, soft-ok on "Could not delete non-existent rule"), reaper (removes only expired, marks rolled_back even on ufw failure), executor dispatch (happy path, blocked-by-guardrails, ufw-failure returns error not blocked, remove happy path), tool schema sanity, ntfy schema includes `unblock_entry_id`, `detect_host_network_info` smoke test.
+- [x] Updated `tests/test_agent_phase2.py::test_action_tool_schemas_well_formed` to include the two new action tool names.
+- [x] **All 296 tests pass** (was 256 → +40 new).
+
+#### Promotion path (manual, when ready)
+```bash
+# 1. Install the sudoers drop-in (one time)
+sudo bash scripts/install-firewall-sudoers.sh
+
+# 2. Deploy the new code + UI
+bash scripts/deploy-server.sh     # netwatchm_server.py + system venv + restart web
+bash scripts/hotdeploy.sh         # also pushes firewall.html
+sudo systemctl restart netwatchm  # main monitor picks up new agent code
+
+# 3. Verify the firewall reaper task started (live mode only)
+journalctl -u netwatchm --since "1 min ago" | grep -i "firewall reaper"
+
+# 4. Visit https://localhost:8765/firewall.html — should show "No active blocks"
+```
+
+#### Out-of-scope (deliberately)
+- iptables/nftables backend (ufw only — already used by `enable-remote-access.sh`)
+- Process termination (too broad blast radius — ntfy + manual kill)
+- Service restart/isolation (same reason)
+- CIDR-scoped blocks (only single-IP literals accepted)
+- Port-only blocks without an IP target (would require a whole new policy model)
+
+---
+
+## Session 27 — 2026-05-23
+
+### Operator helper: enable agent in dry-run safely
+- [x] `scripts/enable-agent-dryrun.sh` — flips live `/etc/netwatchm/netwatchm.yaml` to `agent.enabled: true` while forcing `agent.dry_run: true`. Uses system venv's PyYAML for structured edit (preserves model/intervals/caps). Shows unified diff + y/N prompt, timestamped backup, restart `netwatchm`, then tails `journalctl` for agent/ollama lines. Refuses to run if live config already has `dry_run: false` (would be promotion to live actions — out of scope for this helper).
+- [x] Verified edit logic against `netwatchm.yaml.example` and `bash -n` syntax check.
+- [x] **State observation** — live `netwatchm` service was started 2026-05-18 (5 days before Session 26's commit), `agent_actions.db` does not exist → agent never ran. Promotion sequence: `bash scripts/deploy-server.sh` → `bash scripts/enable-agent-dryrun.sh` → watch audit DB for a day or two → only then flip `dry_run: false` separately.
+- [x] **Step 1 — `deploy-server.sh` executed** (2026-05-23 14:14 EDT). System venv refreshed to Session 26 code; `netwatchm_server.py` copied; `netwatchm-web` restarted as PID 322087. Verified `/api/agent/decisions` returns `{"decisions": []}` (route present, audit DB empty as expected). Ollama reachable on 127.0.0.1:11434 with `mistral:latest` available. **Main `netwatchm` monitor service NOT yet restarted** — that happens in step 2 via `enable-agent-dryrun.sh`.
+- [x] **Step 2 — `enable-agent-dryrun.sh` executed** (2026-05-23 14:18 EDT). Live YAML had no `agent:` block previously — PyYAML edit appended `agent: { enabled: true, dry_run: true }` (other keys fall back to AgentConfig dataclass defaults). Backup at `/etc/netwatchm/netwatchm.yaml.bak-20260523-141833`. Service restarted; journal confirms: `agent loop starting (model=mistral:latest, interval=300s, mode=dry_run, executor=off)`. First decision expected in audit DB ~14:24–14:25 EDT (5-min tick interval + CPU inference).
+- [x] **Diagnosed Ollama hang on first two ticks** — both decisions id=1,2 errored at hop 0 (`timed out` / `Remote end closed`). Root cause in `journalctl -u ollama`: `failure during GPU discovery — OLLAMA_LIBRARY_PATH=[…/cuda_v13] error="failed to finish discovery before timeout"`. Ollama deadlocked enumerating a CUDA backend that doesn't exist on this Ryzen 5 5600G (CPU-only). `sudo systemctl restart ollama` cleared it; mistral now responds in 3.3s (load_duration 2.34s + eval ~11 tok/s) — matches Session 25's CPU baseline.
+- [x] **Hardening script written** — `scripts/harden-ollama-cpu-only.sh`. Drops `Environment=OLLAMA_NUM_GPU=0` + `CUDA_VISIBLE_DEVICES=""` + `HIP_VISIBLE_DEVICES=""` into `/etc/systemd/system/ollama.service.d/no-gpu.conf`. `OLLAMA_NUM_GPU=0` alone wouldn't stop discovery (it only controls layer count); the CUDA/HIP visibility env vars are what actually hide the runtimes from Ollama's discovery code. Daemon-reloads, restarts ollama, then times a trivial chat request to confirm. Idempotent; rollback = delete the drop-in file. **Run with `sudo bash scripts/harden-ollama-cpu-only.sh`.**
+- [x] **First successful agent tick** — decision id=4 at 14:53:03 EDT completed with 1062-char rationale (~6.5 min for the tick on this CPU; `events_seen=24`, max_severity=HIGH). Mistral summarised the context but did not call any read-only tools — a known weakness of small instruct models with native tool calling. Even bare LLM reasoning is enough information for Phase 1 dry-run review.
+- [x] **Ntfy push watcher** — `scripts/agent-watcher.sh`: polls `agent_actions.db` every 30s, pushes a notification to topic `netwatchm-abc123` for each newly completed decision (one-shot per id via `/tmp/agent-watcher.last_id` state). Severity → ntfy priority map (CRITICAL=5, HIGH=4, MEDIUM=3, LOW=2). Subcommands: `--once`, `--foreground`, `--daemon` (nohup → `/tmp/agent-watcher.log`), `--status`, `--stop`. **Bug found + fixed** during dev: rationale text can contain newlines (markdown lists), which split `while read` rows; SQL now flattens `char(10)` / `char(13)` / `|` to spaces before output. Daemon started 2026-05-23 15:16 EDT (pid recorded in `/tmp/agent-watcher.pid`).
+- [ ] **Step 3 — observe dry-run decisions for a day or two** then decide whether judgment looks sound enough to flip `dry_run: false`. Each tick ~6 min on CPU; interval=300s means near-continuous ticks. If a tick errors with `events_seen` ≥ 40, drop `agent.context_max_events: 50 → 15` to stay within mistral's CPU budget (per Session 25 `agent-doctor.sh` defaults). Watch query: `sqlite3 /var/lib/netwatchm/agent_actions.db 'SELECT datetime(ts,"unixepoch","localtime"), max_severity, substr(rationale,1,80) FROM agent_decisions ORDER BY ts DESC LIMIT 20'`.
+- [ ] **Commit + push Session 27 to GitHub** — stage `scripts/enable-agent-dryrun.sh` + `CHECKLIST.md`, write a commit message (e.g. `Session 27: enable-agent-dryrun helper + Phase 2 dry-run rollout`), `git push origin master`. Hold off if you want to combine with later edits.
+
+---
 
 ## Session 26 — 2026-05-23
 

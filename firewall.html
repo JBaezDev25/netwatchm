@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Firewall Blocks</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --surface2:#21262d;
+    --border:#30363d; --text:#c9d1d9; --muted:#8b949e;
+    --accent:#58a6ff; --ok:#3fb950; --warn:#d29922;
+    --bad:#f85149; --critical:#ff7b72;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: monospace; font-size: 13px;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 20px; display: flex; align-items: center; gap: 16px;
+    height: 44px; flex-shrink: 0;
+  }
+  header h1 { color: var(--accent); font-size: 15px; white-space: nowrap; }
+  nav { display: flex; gap: 14px; align-items: center; margin-left: auto; }
+  nav a {
+    color: var(--muted); font-size: 12px; text-decoration: none;
+    padding: 4px 8px; border-radius: 4px;
+  }
+  nav a:hover { color: var(--text); }
+  nav a.active { color: var(--accent); }
+
+  main { padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px;
+  }
+  .stat .num { color: var(--accent); font-size: 18px; font-weight: bold; }
+  .stat .label { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  #btn-refresh {
+    margin-left: auto; background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; cursor: pointer; font-family: monospace; font-size: 12px;
+  }
+  #btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+
+  table {
+    width: 100%; border-collapse: collapse;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+  }
+  th, td {
+    padding: 8px 10px; text-align: left; font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background: var(--surface2); color: var(--muted); font-weight: normal; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--surface2); }
+  .mono { font-family: monospace; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill-all { color: var(--warn); border-color: var(--warn); }
+  .reason { color: var(--muted); max-width: 240px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .ttl-warn { color: var(--warn); }
+  .ttl-soon { color: var(--bad); }
+  .empty {
+    padding: 28px; text-align: center; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  button.unblock {
+    background: none; border: 1px solid var(--bad); color: var(--bad);
+    border-radius: 4px; padding: 3px 10px; cursor: pointer;
+    font-family: monospace; font-size: 11px;
+  }
+  button.unblock:hover { background: var(--bad); color: white; }
+  button.unblock:disabled { opacity: 0.5; cursor: not-allowed; }
+  #countdown { color: var(--muted); font-size: 11px; }
+  .footnote { color: var(--muted); font-size: 11px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>NetWatchM &mdash; Firewall Blocks</h1>
+  <nav>
+    <a href="/events.html">Events</a>
+    <a href="/inventory.html">Inventory</a>
+    <a href="/history.html">History</a>
+    <a href="/firewall.html" class="active">Firewall</a>
+    <a href="/ai.html">AI Chat</a>
+  </nav>
+</header>
+
+<main>
+  <div class="toolbar">
+    <div class="stat"><span class="num" id="stat-active">&middot;</span><span class="label">active blocks</span></div>
+    <span id="countdown">refreshing in 30s</span>
+    <button id="btn-refresh" onclick="load()">&#x21bb; Refresh</button>
+  </div>
+
+  <div id="content"><div class="empty">Loading&hellip;</div></div>
+
+  <p class="footnote">
+    Blocks auto-expire at their TTL. The firewall reaper sweeps every 60s and
+    removes expired rules from ufw. Unblock here cancels both the JSON entry
+    and the live ufw rule.
+  </p>
+</main>
+
+<script>
+const REFRESH_MS = 30000;
+let countdownTimer = null;
+let countdownLeft = REFRESH_MS / 1000;
+
+function fmtTime(epoch) {
+  if (!epoch) return '';
+  const d = new Date(epoch * 1000);
+  return d.toLocaleString();
+}
+
+function fmtTTL(expiresAt) {
+  const now = Date.now() / 1000;
+  const secs = Math.max(0, Math.floor(expiresAt - now));
+  if (secs < 60) return secs + 's';
+  const m = Math.floor(secs / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return h + 'h ' + rm + 'm';
+}
+
+function ttlClass(expiresAt) {
+  const now = Date.now() / 1000;
+  const mins = (expiresAt - now) / 60;
+  if (mins < 5) return 'ttl-soon';
+  if (mins < 15) return 'ttl-warn';
+  return '';
+}
+
+async function load() {
+  const root = document.getElementById('content');
+  try {
+    const r = await fetch('/api/agent/blocks');
+    const data = await r.json();
+    const entries = data.entries || [];
+    document.getElementById('stat-active').textContent = entries.length;
+    if (entries.length === 0) {
+      root.innerHTML = '<div class="empty">No active blocks.</div>';
+      return;
+    }
+    entries.sort((a, b) => a.expires_at - b.expires_at);
+    let html = '<table><thead><tr>'
+      + '<th>IP</th><th>Port</th><th>Proto</th>'
+      + '<th>Added</th><th>Expires</th><th>TTL</th>'
+      + '<th>Reason</th><th></th></tr></thead><tbody>';
+    for (const e of entries) {
+      const port = (e.port == null) ? '<span class="pill pill-all">all</span>' : e.port;
+      const proto = e.protocol || '<span class="pill">any</span>';
+      const ttlCls = ttlClass(e.expires_at);
+      html += '<tr>'
+        + '<td class="mono">' + escapeHtml(e.ip) + '</td>'
+        + '<td>' + port + '</td>'
+        + '<td>' + proto + '</td>'
+        + '<td>' + fmtTime(e.added_at) + '</td>'
+        + '<td>' + fmtTime(e.expires_at) + '</td>'
+        + '<td class="' + ttlCls + '">' + fmtTTL(e.expires_at) + '</td>'
+        + '<td class="reason" title="' + escapeAttr(e.reason || '') + '">'
+        +    escapeHtml(e.reason || '') + '</td>'
+        + '<td><button class="unblock" onclick="unblock(\'' + escapeAttr(e.id) + '\', this)">Unblock</button></td>'
+        + '</tr>';
+    }
+    html += '</tbody></table>';
+    root.innerHTML = html;
+  } catch (err) {
+    root.innerHTML = '<div class="empty" style="color:var(--bad)">Failed to load: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+async function unblock(entryId, btn) {
+  if (!confirm('Unblock entry ' + entryId + '?\n\nThis removes the ufw rule and rolls back the audit entry.')) return;
+  btn.disabled = true;
+  btn.textContent = 'Unblocking…';
+  try {
+    const r = await fetch('/api/agent/unblock/' + encodeURIComponent(entryId), {method: 'POST'});
+    const j = await r.json();
+    if (j.ok) {
+      load();
+    } else {
+      alert('Unblock failed: ' + (j.reason || j.error || 'unknown'));
+      btn.disabled = false;
+      btn.textContent = 'Unblock';
+    }
+  } catch (err) {
+    alert('Network error: ' + err);
+    btn.disabled = false;
+    btn.textContent = 'Unblock';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+function escapeAttr(s) {
+  return String(s).replace(/['"<>]/g, ch => ({
+    "'":"&#39;",'"':'&quot;','<':'&lt;','>':'&gt;'
+  }[ch]));
+}
+
+function tickCountdown() {
+  countdownLeft -= 1;
+  if (countdownLeft <= 0) {
+    countdownLeft = REFRESH_MS / 1000;
+    load();
+  }
+  document.getElementById('countdown').textContent = 'refreshing in ' + countdownLeft + 's';
+}
+
+load();
+countdownTimer = setInterval(tickCountdown, 1000);
+</script>
+</body>
+</html>

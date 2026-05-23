@@ -313,8 +313,76 @@ ACTION_TOOL_SCHEMAS: list[dict] = [
                             "add_whitelist_entry — enables the Rollback action button"
                         ),
                     },
+                    "unblock_entry_id": {
+                        "type": "string",
+                        "description": (
+                            "Firewall block entry UUID returned by "
+                            "add_temporary_block — enables the Unblock action button"
+                        ),
+                    },
                 },
                 "required": ["severity", "headline", "action_taken", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_temporary_block",
+            "description": (
+                "Drop incoming traffic from one external IP via ufw. Auto-expires "
+                "after duration_minutes (default 60, max 1440). Refuses RFC1918, "
+                "loopback, the gateway, our own host IPs, the global whitelist, "
+                "and port 22 in any direction. Active-block ceiling of 10 and "
+                "rate cap of 5/hour. ALWAYS investigate first — call "
+                "query_threat_history before blocking. Pair with send_ntfy_alert "
+                "(use unblock_entry_id) so the user gets a one-tap Unblock."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ip": {"type": "string", "description": "Public IPv4/IPv6 literal"},
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535,
+                        "description": "Optional: limit block to one port. Omit to block all ports.",
+                    },
+                    "protocol": {
+                        "type": "string",
+                        "enum": ["tcp", "udp"],
+                        "description": "Optional: limit block to one protocol.",
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1440,
+                        "default": 60,
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Required, non-empty. One-sentence justification.",
+                    },
+                },
+                "required": ["ip", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_block",
+            "description": (
+                "Remove a firewall block (regardless of TTL). Use when a block "
+                "turns out to be a false positive."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ip": {"type": "string"},
+                    "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+                },
+                "required": ["ip"],
             },
         },
     },

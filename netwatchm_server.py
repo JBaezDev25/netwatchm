@@ -4308,6 +4308,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, 500)
             return
 
+        # Agent (Phase 5) — active firewall blocks
+        if path == "/api/agent/blocks":
+            try:
+                from netwatchm.agent.firewall import FirewallStore
+                self._send_json({"entries": FirewallStore().active_entries()})
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         # Static file serving — prevent path traversal
         if path in ("/", "/index.html"):
             self._send_file(SERVE_DIR / "report.html")
@@ -4699,6 +4708,37 @@ class Handler(BaseHTTPRequestHandler):
                     {"ok": False, "reason": "entry not found or already rolled back"},
                     404,
                 )
+            return
+
+        # Agent (Phase 5) — unblock a firewall entry by id. Same capability-bearer
+        # rationale as /api/agent/rollback/: the entry_id is only surfaced via
+        # ntfy notifications the user controls, so possessing it = authorized.
+        if parsed.path.startswith("/api/agent/unblock/"):
+            entry_id = parsed.path.removeprefix("/api/agent/unblock/").strip()
+            if not entry_id or "/" in entry_id:
+                self._send_json({"error": "invalid entry id"}, 400)
+                return
+            try:
+                from netwatchm.agent.firewall import (
+                    FirewallController,
+                    FirewallStore,
+                )
+                store = FirewallStore()
+                entry = store.mark_rolled_back(entry_id)
+                if entry is None:
+                    self._send_json(
+                        {"ok": False, "reason": "entry not found or already rolled back"},
+                        404,
+                    )
+                    return
+                ip = str(entry.get("ip") or "")
+                port_raw = entry.get("port")
+                port = int(port_raw) if port_raw is not None else None
+                ufw_result = FirewallController().remove_block(ip=ip, port=port)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+                return
+            self._send_json({"ok": True, "entry_id": entry_id, "ufw": ufw_result})
             return
 
         self.send_error(404, "Not Found")

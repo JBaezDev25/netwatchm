@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import NtfyAlertConfig
+from .firewall import FirewallController, FirewallStore
 from .guardrails import Guardrails
 from .state import AgentWhitelistStore, SuppressedTypesStore
 
@@ -51,12 +52,16 @@ class Executor:
         suppressed_store: SuppressedTypesStore,
         ntfy_config: NtfyAlertConfig | None,
         portal_base_url: str = "https://localhost:8765",
+        firewall_store: FirewallStore | None = None,
+        firewall_controller: FirewallController | None = None,
     ) -> None:
         self.guardrails = guardrails
         self.whitelist = whitelist_store
         self.suppressed = suppressed_store
         self.ntfy = ntfy_config
         self.portal_base = portal_base_url.rstrip("/")
+        self.firewall_store = firewall_store
+        self.firewall_controller = firewall_controller
 
     # ----- dispatch -----
 
@@ -71,6 +76,8 @@ class Executor:
             "unsuppress_alert_type": self._unsuppress_alert_type,
             "run_active_scan": self._run_active_scan,
             "send_ntfy_alert": self._send_ntfy_alert,
+            "add_temporary_block": self._add_temporary_block,
+            "remove_block": self._remove_block,
         }
         fn = impls.get(tool_name)
         if fn is None:
@@ -199,6 +206,7 @@ class Executor:
         rationale = str(args.get("reason") or "")
         related_ip = str(args.get("related_ip") or "")
         rollback_entry_id = str(args.get("rollback_entry_id") or "")
+        unblock_entry_id = str(args.get("unblock_entry_id") or "")
 
         body = self._format_body(severity, action_taken, rationale, related_ip)
 
@@ -206,7 +214,9 @@ class Executor:
         priority = priority_map.get(severity, "3")
 
         actions_header = self._build_actions_header(
-            rollback_entry_id=rollback_entry_id, related_ip=related_ip
+            rollback_entry_id=rollback_entry_id,
+            unblock_entry_id=unblock_entry_id,
+            related_ip=related_ip,
         )
 
         headers = {
@@ -247,13 +257,14 @@ class Executor:
         return "\n".join(parts)
 
     def _build_actions_header(
-        self, *, rollback_entry_id: str, related_ip: str
+        self, *, rollback_entry_id: str, related_ip: str,
+        unblock_entry_id: str = "",
     ) -> str:
         """Build the ntfy X-Actions header for one-tap response from the
         notification.
 
-        - Rollback uses the ``http`` action type so it POSTs silently and
-          clears the notification — no browser round-trip.
+        - Rollback / Unblock use the ``http`` action type so they POST
+          silently and clear the notification — no browser round-trip.
         - 'Open events' uses ``view`` so it opens the portal in the user's
           browser for further investigation.
 
@@ -268,9 +279,96 @@ class Executor:
                 f"{self.portal_base}/api/agent/rollback/{rollback_entry_id}, "
                 f"method=POST, clear=true"
             )
+        if unblock_entry_id:
+            actions.append(
+                f"http, Unblock, "
+                f"{self.portal_base}/api/agent/unblock/{unblock_entry_id}, "
+                f"method=POST, clear=true"
+            )
         if related_ip:
             actions.append(
                 f"view, Open events, "
                 f"{self.portal_base}/events.html?q={related_ip}"
             )
         return "; ".join(actions)
+
+    # ----- firewall block (Phase 5) -----
+
+    def _add_temporary_block(self, args: dict, *, decision_id: int) -> dict:
+        ok, reason = self.guardrails.check_block(args)
+        if not ok:
+            return _result(False, blocked=True, reason=reason)
+        if self.firewall_store is None or self.firewall_controller is None:
+            return _result(
+                False, blocked=True,
+                reason="firewall executor not configured on this host",
+            )
+
+        ip = str(args["ip"]).strip()
+        port_raw = args.get("port")
+        port = int(port_raw) if port_raw is not None else None
+        proto = args.get("protocol")
+        duration_minutes = int(
+            args.get(
+                "duration_minutes", self.guardrails.limits.default_block_minutes
+            )
+        )
+        block_reason = str(args.get("reason") or "").strip()[:500]
+
+        ufw_result = self.firewall_controller.add_block(ip=ip, port=port)
+        if not ufw_result.get("ok"):
+            return _result(
+                False,
+                reason=(
+                    "ufw add failed: "
+                    f"rc={ufw_result.get('returncode')} "
+                    f"err={ufw_result.get('stderr_tail','')[:200]}"
+                ),
+                ufw=ufw_result,
+            )
+
+        entry = self.firewall_store.add(
+            ip=ip,
+            port=port,
+            protocol=proto,
+            ttl_seconds=duration_minutes * 60,
+            reason=block_reason,
+            decision_id=decision_id,
+        )
+        return _result(
+            True,
+            entry_id=entry.id,
+            ip=entry.ip,
+            port=entry.port,
+            expires_at=entry.expires_at,
+            ufw=ufw_result,
+        )
+
+    def _remove_block(self, args: dict, *, decision_id: int) -> dict:
+        ok, reason = self.guardrails.check_remove_block(args)
+        if not ok:
+            return _result(False, blocked=True, reason=reason)
+        if self.firewall_store is None or self.firewall_controller is None:
+            return _result(
+                False, blocked=True,
+                reason="firewall executor not configured on this host",
+            )
+
+        ip = str(args["ip"]).strip()
+        port_raw = args.get("port")
+        port = int(port_raw) if port_raw is not None else None
+
+        ufw_result = self.firewall_controller.remove_block(ip=ip, port=port)
+        # Mark matching active entries rolled_back in store (defensive — the
+        # LLM may have called remove for an IP we don't have a record of).
+        touched = 0
+        for e in self.firewall_store.active_entries():
+            if e.get("ip") == ip and (port_raw is None or int(e.get("port") or 0) == port):
+                if self.firewall_store.mark_rolled_back(str(e.get("id") or "")):
+                    touched += 1
+
+        return _result(
+            ufw_result.get("ok", False),
+            entries_rolled_back=touched,
+            ufw=ufw_result,
+        )
