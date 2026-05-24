@@ -72,8 +72,10 @@ alerts:
     server: https://ntfy.sh  # or http://localhost:2586 for self-hosted
     topic: ""                # your ntfy topic name (keep secret for basic privacy)
     # token: ""              # set via NETWATCHM_NTFY_TOKEN for private topics
-    min_level: HIGH
+    min_level: CRITICAL      # real-time push only for genuine threats (CRITICAL)
     cooldown_seconds: 300    # min gap between notifications for same alert type
+    exclude_types:           # never pushed in real time (still detected + stored)
+      - BEACONING            #   beacon patterns are low-signal — see the agent digest
   event_store:
     retention_hours: 72      # hours to keep alert events in database (default: 72)
 
@@ -143,6 +145,21 @@ agent:
   context_max_events: 50
   context_prompt_char_cap: 16000          # cap on JSON-serialised context in prompt
   max_tool_hops: 4                        # max tool round-trips per tick
+
+  # --- Notification mode -------------------------------------------------
+  #   reactive (default) — decide every interval_seconds; may push per tick.
+  #   digest             — stay quiet, then push ONE categorized summary
+  #                        every digest_interval_days listing each threat
+  #                        category + a recommended mitigation. Real-time
+  #                        CRITICAL pushes still come from the ntfy handler
+  #                        above (min_level: CRITICAL); beacons never push.
+  #                        Requires alerts.ntfy.enabled + a topic.
+  mode: digest
+  digest_interval_days: 5                  # how often the digest is pushed
+  digest_lookback_days: 5                  # window each digest summarizes
+  digest_max_events: 2000                  # cap on events scanned per digest
+  digest_exclude_types:                    # left out of the digest entirely
+    - BEACONING
 
 retention:
   # 15-day uniform retention sweep (Session 29).

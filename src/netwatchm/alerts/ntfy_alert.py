@@ -34,6 +34,9 @@ class NtfyAlert(AlertHandler):
         self._config = config
         self._enabled = config.enabled and bool(config.topic)
         self._min_level = ThreatLevel[config.min_level]
+        # Alert types never pushed in real time (e.g. BEACONING). Still
+        # detected + stored; surfaced in the agent's periodic digest instead.
+        self._exclude_types = {t.upper() for t in getattr(config, "exclude_types", [])}
         # alert_type -> last_sent epoch
         self._last_sent: dict[str, float] = {}
 
@@ -42,6 +45,8 @@ class NtfyAlert(AlertHandler):
 
     async def send(self, alert: Alert) -> None:
         if not self._enabled:
+            return
+        if alert.alert_type.upper() in self._exclude_types:
             return
         if alert.level < self._min_level:
             return

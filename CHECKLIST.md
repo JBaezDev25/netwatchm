@@ -1,6 +1,188 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-24 (session 29)
+Last updated: 2026-05-24 (session 30)
+
+## Session 30 — 2026-05-24
+
+### Make scripts/ runnable system-wide (all users, any directory)
+
+- [x] `scripts/install-to-path.sh` — **new**: installs a thin launcher wrapper
+      in `/usr/local/bin` for every script in `scripts/` with a shebang (48
+      installed, 2 `.ps1` skipped). Uses wrappers, NOT raw symlinks, because 17
+      scripts derive the repo path from `dirname "$0"`/`__file__` — a bare
+      symlink would resolve the repo as `/usr/local` and break them. Each
+      wrapper `exec`s the real script by absolute path, so `$0` resolution
+      stays correct and repo edits propagate immediately. `--uninstall` removes
+      only wrappers tagged with the `# NetWatchM launcher` marker.
+      Run: `sudo bash scripts/install-to-path.sh`.
+
+### Agent notification redesign: 5-day digest + threat-only real-time push
+
+Reconfigured how the agent notifies. Instead of per-tick pushes, the agent
+now (in `mode: digest`) emits ONE categorized summary every 5 days with a
+recommended mitigation per category; real-time push is reserved for genuine
+threats (CRITICAL) and beacon patterns never push. Verified end-to-end:
+mistral on GPU authored a correctly-structured digest in **1.1s**.
+
+#### Code
+- [x] `src/netwatchm/config.py` — `AgentConfig`: added `mode` (`reactive`|`digest`),
+      `digest_interval_days=5`, `digest_lookback_days=5`, `digest_max_events=2000`,
+      `digest_exclude_types=["BEACONING"]`. `NtfyAlertConfig`: added
+      `exclude_types=["BEACONING"]`. YAML loaders wire both (types upper-cased).
+- [x] `src/netwatchm/alerts/ntfy_alert.py` — `send()` now drops any alert whose
+      `alert_type` is in `exclude_types` (real-time beacon suppression), before
+      the min_level/cooldown checks.
+- [x] `src/netwatchm/agent/digest.py` — **new**: `build_digest()` aggregates
+      events.db by category over the lookback window (exact counts, top sources,
+      worst severity, beacon excluded by default), `render_fallback()` plain-text
+      digest if the LLM is down, `push_digest()` posts one notification to ntfy
+      (bypasses cooldown/min_level — a digest always goes out).
+- [x] `src/netwatchm/agent/agent_loop.py` — added `SYSTEM_PROMPT_DIGEST`,
+      `_run_digest_tick()` (single LLM call, no tools — counts are deterministic,
+      model only narrates), and a `mode == "digest"` branch in `run_agent_loop`
+      that uses a `digest_interval_days * 86400` cadence and skips the executor
+      (digest is read-only). Startup log now prints `mode=digest|reactive`.
+
+#### Config + ops
+- [x] `netwatchm.yaml.example` — documented `agent.mode`/digest knobs and
+      `alerts.ntfy.min_level: CRITICAL` + `exclude_types: [BEACONING]`.
+- [x] `scripts/configure-digest-mode.sh` — **new**: merges digest + ntfy settings
+      into the live `/etc/netwatchm/netwatchm.yaml` (prompts for the ntfy topic,
+      backs up to `.pre-digest`, validates with `load_config`, restarts
+      `netwatchm` + `netwatchm-web`). Rollback documented in the script header.
+- [x] `scripts/count-tokens.py` — **new**: reports prompt token counts via
+      Ollama `/api/chat` `prompt_eval_count` (num_predict=1). `--mode digest|reactive`
+      rebuilds the agent's real prompt from the live `events.db` (synthetic
+      fallback if unreadable); `--text`/`--file` for arbitrary input; `--model`/
+      `--host` overrides. Live measurement: **digest ≈ 782 tokens, reactive ≈ 8,985
+      tokens** (~11× heavier — another reason digest mode is lighter).
+
+#### Tests
+- [x] `tests/test_agent_digest.py` — **new, 14 tests**: aggregation counts/top
+      sources, beacon-excluded-by-default, worst-first ordering, lookback window,
+      missing-db, custom exclude list; fallback render (categories + quiet
+      period); `push_digest` posts/no-topic; ntfy excludes BEACONING + CRITICAL-only
+      min_level; digest tick pushes LLM text + records `mode=digest`, falls back
+      on LLM error.
+- [x] **320 tests pass** (was 306 → +14).
+
+#### Promotion path (when ready)
+```bash
+bash scripts/configure-digest-mode.sh   # prompts for ntfy topic, applies + restarts
+# confirm: journalctl -u netwatchm -f | grep -i digest
+```
+
+### ✅ DECISION: stay on local GPU Ollama (Anthropic swap abandoned)
+
+After seeing the GPU benchmark + the cost picture (Anthropic API bills
+separately from the $20 Claude Pro plan; ~$230/mo on Sonnet @ 5-min, and
+needs its own API credit), decided to **keep the agent on local GPU Ollama**.
+
+- [x] Session 30 Anthropic swap **stashed**, not committed: `git stash list`
+      → `stash@{0}: Session 30 Anthropic swap (abandoned — staying on local GPU Ollama)`.
+      Recover with `git stash pop` if ever revisited.
+- [x] Reverted agent files to HEAD (Ollama client, `model: mistral:latest`,
+      `ollama_base_url`). **306 tests pass.**
+- [x] No Anthropic service drop-in was ever created (`set-agent-api-key.sh`
+      not run) — nothing to undo on the systemd side.
+- [ ] **Restart the running service to pick up the reverted code** (it runs
+      from the working tree): `sudo systemctl restart netwatchm`, then confirm
+      `journalctl -u netwatchm | grep "agent loop starting"` shows
+      `model=mistral:latest`.
+
+#### ⚠️ ACTION REQUIRED: revoke the exposed Anthropic key (revoke-only now)
+
+The active key `~/ai-projects/uigen/.env` (`ANTHROPIC_API_Key=sk-ant-api03-lntT5…`)
+printed into a session transcript (masking regex failed) and was already
+flagged "Active — REVOKE" in `api-keys-audit`. Since the agent no longer
+uses Anthropic, **no replacement is needed** — just revoke it.
+
+- [ ] **Revoke the key** at console.anthropic.com → API Keys (no new key required)
+- [ ] Optionally remove the now-unused `scripts/set-agent-api-key.sh` and the
+      exposed key line from `~/ai-projects/uigen/.env`
+
+### Agent backend benchmark + GPU finding (investigation)
+
+The "Mistral times out on CPU" problem (Session 29) that drove the Anthropic
+swap was a **self-inflicted CPU-only config**, not a hardware limit: this host
+has an idle **NVIDIA RTX 3090 Ti (24 GB)**, but Ollama was pinned CPU-only by
+`scripts/harden-ollama-cpu-only.sh` (`/etc/systemd/system/ollama.service.d/no-gpu.conf`).
+A CPU-only benchmark of `mistral:latest` confirmed it timed out at 600s.
+
+New scripts:
+- [x] `scripts/bench-ollama.py` — tokens/sec benchmark (exact from API `eval_count`/`eval_duration`) with background CPU + GPU sampling
+- [x] `scripts/enable-ollama-gpu.sh` — removes the CPU-only drop-in, restarts, verifies GPU offload (run, then re-run the benchmark for GPU numbers)
+- [x] `scripts/stop-ollama.sh` — stop + disable Ollama (models on disk kept)
+- [x] `scripts/set-agent-api-key.sh` — reads the key from `uigen/.env`, writes a 0600 root drop-in into the `netwatchm` unit, restarts, tails the agent log
+
+GPU benchmark results (after enabling GPU, 200 tokens, RTX 3090 Ti 24 GB,
+Ryzen 5 5600G 6c/12t, 125 GiB RAM):
+- [x] `mistral:latest`  — **165.7 gen tok/s**, prompt 2518 tok/s, 2.5s wall (warm), GPU 96% pk, CPU ~18%
+- [x] `llama3.2:latest` — 286.6 gen tok/s, prompt 5168 tok/s, ~20s wall (cold load), GPU 73% pk
+- [x] `qwen3:8b`        — 137.9 gen tok/s, prompt 1727 tok/s, ~20s wall (cold load), GPU 91% pk
+
+Same `mistral:latest` that **timed out at 600s CPU-only** does a full 200-token
+decision in **2.5s on GPU** (~240× faster). CPU stays ~18%, RAM ~4/125 GiB.
+
+Decision: on performance grounds the Anthropic swap is **no longer required** —
+GPU-local Ollama is free, on-box (no event/inventory egress, no key to rotate),
+and 2.5s/tick is trivial at the 5-min cadence. Re-pointing `agent.model` back to
+a local model is a config-only change. (Anthropic remains a valid option if
+hosted reliability is preferred over keeping inference local.)
+
+### Swap agent backend: Ollama → Anthropic (Sonnet 4.6)
+
+Mistral on local CPU was timing out at 600s on 94% of ticks (Session 29
+diagnosis). The agent now uses Anthropic's API. Sonnet 4.6 returns in
+~3–8s with reliable tool-call behaviour; the trade-off is ~$0.027/tick
+≈ $230/month at the default 5-min cadence, and network egress of event
++ inventory data to Anthropic per tick.
+
+#### Code changes
+- [x] `src/netwatchm/agent/llm_client.py` — **replaced** `OllamaClient` with `AnthropicClient`. Translation layer maps OpenAI/Ollama-style tool calls ↔ Anthropic's `tool_use`/`tool_result` content blocks so the rest of the agent (`agent_loop.py`, audit log, dispatcher) is untouched. Constructor is **lazy** — never imports the SDK nor reads `ANTHROPIC_API_KEY` until first `.chat()` call, so tests that patch `chat` can instantiate freely without the SDK installed or a key set.
+- [x] `src/netwatchm/agent/agent_loop.py` — `OllamaClient` → `AnthropicClient`; client instantiated with `model + timeout + max_tokens` (no more `ollama_base_url`).
+- [x] `src/netwatchm/config.py` — `AgentConfig`: dropped `ollama_base_url`; default `model: mistral:latest → claude-sonnet-4-6`; default `timeout_seconds: 600 → 120` (Claude is fast); added `max_tokens: int = 1024`. YAML loader updated.
+- [x] `netwatchm.yaml.example` — `agent:` block rewritten to describe the Anthropic backend, the API key requirement, the cost trade-off, and the Haiku 4.5 alternative for cheaper deployment.
+- [x] `scripts/agent-doctor.sh` — **rewritten** for Anthropic. Checks `ANTHROPIC_API_KEY`, calls the API with a trivial `"say ok"` to confirm key + model resolve, then runs one synthetic agent tick against the live `events.db` + `inventory.json` writing to a scratch audit DB. Reports decision id + rationale snippet.
+- [x] `tests/test_agent.py` — `OllamaClient` → `AnthropicClient` (find-and-replace; mocks `chat()` so no API key needed).
+- [x] **All 306 tests still pass** — the translation layer + lazy-init constructor mean no test changes beyond the rename.
+
+#### Promotion path
+```bash
+# 1. Set the API key for the system service (drop-in is simplest).
+sudo mkdir -p /etc/systemd/system/netwatchm.service.d
+sudo tee /etc/systemd/system/netwatchm.service.d/anthropic-env.conf >/dev/null <<'EOF'
+[Service]
+Environment=ANTHROPIC_API_KEY=sk-ant-…
+EOF
+sudo chmod 600 /etc/systemd/system/netwatchm.service.d/anthropic-env.conf
+sudo systemctl daemon-reload
+
+# 2. Verify the key works (no service touched yet)
+export ANTHROPIC_API_KEY=sk-ant-…
+bash scripts/agent-doctor.sh
+
+# 3. Deploy + restart
+sudo bash scripts/deploy-server.sh
+sudo systemctl restart netwatchm
+
+# 4. Confirm
+journalctl -u netwatchm --since "1 min ago" | grep -i "agent loop starting"
+# expect: "agent loop starting (model=claude-sonnet-4-6, interval=300s, mode=dry_run, executor=off)"
+```
+
+#### Cost callout
+- Sonnet 4.6 at 5-min ticks: ~$0.027/tick × ~288/day = **~$7.78/day ≈ $230/mo**
+- Haiku 4.5 at same cadence: ~$0.007/tick = **~$2.07/day ≈ $62/mo** — change `model:` in YAML to `claude-haiku-4-5` to switch, no code change needed
+- Bump `interval_seconds: 300 → 600` (10 min) to halve the cost; bump to `1800` (30 min) for ~$40/mo on Sonnet
+
+#### Privacy callout
+Every tick now ships ~6500 tokens of event + inventory context to Anthropic. Per their commercial terms they don't train on API traffic, but the data does transit their infrastructure. Decision is deliberate, not accidental.
+
+#### Ollama is no longer used BY THE AGENT
+The Ollama service can still be running on the box for other purposes (it isn't queried by NetWatchM anymore). To stop spending CPU on background ollama workers: `sudo systemctl stop ollama && sudo systemctl disable ollama`. The hardening drop-in (`/etc/systemd/system/ollama.service.d/no-gpu.conf`) is harmless to leave in place if you ever turn ollama back on.
+
+---
 
 ## Session 29 — 2026-05-24
 

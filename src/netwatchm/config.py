@@ -150,6 +150,9 @@ class NtfyAlertConfig:
     token: str = ""  # always loaded from env var NETWATCHM_NTFY_TOKEN
     min_level: str = "HIGH"
     cooldown_seconds: int = 300
+    # Alert types never pushed in real time (still detected + stored).
+    # Beacon patterns are noisy/low-signal, so they go to the digest instead.
+    exclude_types: list = field(default_factory=lambda: ["BEACONING"])
 
 
 @dataclass
@@ -216,13 +219,22 @@ class AgentConfig:
     dry_run: bool = True
     model: str = "mistral:latest"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    interval_seconds: int = 300        # 5 min between ticks
+    interval_seconds: int = 300        # 5 min between ticks (reactive mode)
     timeout_seconds: int = 600         # per LLM call (CPU inference is slow)
     temperature: float = 0.2
     context_hours_back: int = 4
     context_max_events: int = 50
     context_prompt_char_cap: int = 16000
     max_tool_hops: int = 4             # max read-only tool round-trips per tick
+    # "reactive" = decide every interval_seconds (per-tick notifications).
+    # "digest"   = stay quiet, emit ONE categorized summary every
+    #              digest_interval_days with recommended mitigations.
+    mode: str = "reactive"
+    digest_interval_days: int = 5      # how often the digest is pushed
+    digest_lookback_days: int = 5      # window the digest summarizes
+    digest_max_events: int = 2000      # cap on events scanned per digest
+    # Alert types left out of the digest entirely (still detected + stored).
+    digest_exclude_types: list = field(default_factory=lambda: ["BEACONING"])
 
 
 @dataclass
@@ -406,6 +418,10 @@ def load_config(path: str | Path | None = None) -> Config:
                 token=ntfy_raw.get("token", ""),
                 min_level=ntfy_raw.get("min_level", "HIGH"),
                 cooldown_seconds=ntfy_raw.get("cooldown_seconds", 300),
+                exclude_types=[
+                    str(t).upper()
+                    for t in ntfy_raw.get("exclude_types", ["BEACONING"])
+                ],
             ),
             event_store=EventStoreConfig(
                 retention_hours=es_raw.get("retention_hours", 360),
@@ -454,6 +470,14 @@ def load_config(path: str | Path | None = None) -> Config:
             context_max_events=ag_raw.get("context_max_events", 50),
             context_prompt_char_cap=ag_raw.get("context_prompt_char_cap", 16000),
             max_tool_hops=ag_raw.get("max_tool_hops", 4),
+            mode=ag_raw.get("mode", "reactive"),
+            digest_interval_days=ag_raw.get("digest_interval_days", 5),
+            digest_lookback_days=ag_raw.get("digest_lookback_days", 5),
+            digest_max_events=ag_raw.get("digest_max_events", 2000),
+            digest_exclude_types=[
+                str(t).upper()
+                for t in ag_raw.get("digest_exclude_types", ["BEACONING"])
+            ],
         )
 
     ret_raw = raw.get("retention", {})

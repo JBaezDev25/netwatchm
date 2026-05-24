@@ -121,6 +121,21 @@ back — is written to `/var/lib/netwatchm/agent_actions.db`.
 | **dry-run** (Phase 1) | Reads context, asks the LLM, records rationale. Action tools are blocked at dispatch even if the model fabricates one. | First few days after enabling. Watch the audit log to verify the LLM's judgment is sound on *your* traffic. |
 | **live** (Phase 2) | Same as dry-run, plus the agent can add/remove TTL-bounded whitelist entries, suppress alert types, run nmap / deep-inspect scans, and send ntfy notifications with one-tap rollback action buttons. | Flip `agent.dry_run: false` once you trust what dry-run shows. |
 
+### Notification mode (reactive vs digest)
+
+A separate axis from dry-run/live, set by `agent.mode`:
+
+| Mode | Notifications |
+|---|---|
+| **reactive** (default) | The agent decides every `interval_seconds` and may push per tick. |
+| **digest** | The agent stays quiet, then pushes **one categorized summary every `digest_interval_days`** (default 5) — each threat category with its count, top source, and a recommended mitigation. Real-time push is still sent for genuine threats via the ntfy handler (`alerts.ntfy.min_level: CRITICAL`). |
+
+Beacon patterns (`BEACONING`) are **never pushed** in either mode — they're still
+detected and stored in `events.db`, and rolled into the digest only if you remove
+them from `digest_exclude_types`. Configure the live host with
+`bash scripts/configure-digest-mode.sh` (prompts for your ntfy topic, backs up the
+config, validates, and restarts).
+
 ### Read-only tools (always available)
 
 `query_recent_events`, `query_threat_history`, `query_device_inventory`,
@@ -152,7 +167,9 @@ agent:
   enabled: true             # default false
   dry_run: true             # flip to false ONLY after audit review
   model: mistral:latest     # fastest tool-capable CPU model
-  interval_seconds: 300     # 5 min between ticks
+  interval_seconds: 300     # 5 min between ticks (reactive mode)
+  mode: digest              # reactive | digest
+  digest_interval_days: 5   # one categorized summary every 5 days
 ```
 
 Then `bash scripts/deploy-server.sh && sudo systemctl restart netwatchm`.
