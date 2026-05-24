@@ -679,6 +679,7 @@ def render_html(
     <a href="/reports" target="_blank" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4C1; History</a>
     <a href="/inventory.html" style="background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F4F1; Inventory</a>
     <a href="/history.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x23F1; History</a>
+    <a href="/firewall.html" style="background:rgba(248,81,73,.08);color:#f85149;border:1px solid rgba(248,81,73,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F6E1; Firewall</a>
     <a href="/ai.html" style="background:rgba(88,166,255,.08);color:#58a6ff;border:1px solid rgba(88,166,255,.25);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">&#x1F916; AI Chat</a>
     <button id="refresh-btn" onclick="triggerRefresh()" style="background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.35)">&#x21BB; Refresh</button>
     <select id="auto-refresh" onchange="setAutoRefresh(this.value)">

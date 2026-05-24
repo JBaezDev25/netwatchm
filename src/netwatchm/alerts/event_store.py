@@ -19,7 +19,7 @@ def _default_db() -> str:
 
 
 DEFAULT_DB = _default_db()
-RETENTION_HOURS = 72  # backward-compat alias
+RETENTION_HOURS = 360  # 15 days — uniform retention policy (was 72 = 3d pre-Session-29)
 
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS events (

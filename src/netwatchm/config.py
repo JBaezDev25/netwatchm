@@ -154,7 +154,7 @@ class NtfyAlertConfig:
 
 @dataclass
 class EventStoreConfig:
-    retention_hours: int = 72
+    retention_hours: int = 360  # 15 days — Session 29 uniform retention
 
 
 @dataclass
@@ -226,6 +226,21 @@ class AgentConfig:
 
 
 @dataclass
+class RetentionConfig:
+    """15-day uniform retention sweep (Session 29).
+
+    Controls the background ``run_retention_loop`` that prunes the agent
+    audit DB and compacts the JSON sidecar stores. Text-log retention
+    is handled separately by the logrotate drop-in installed via
+    ``scripts/install-log-retention.sh`` (so it works even when the
+    netwatchm service is down).
+    """
+    enabled: bool = True
+    retention_days: int = 15
+    interval_seconds: int = 86400      # daily sweep
+
+
+@dataclass
 class Config:
     interface: str = "auto"
     baseline_period: int = 300
@@ -235,6 +250,7 @@ class Config:
     whitelist: WhitelistConfig = field(default_factory=WhitelistConfig)
     detector_whitelist: DetectorWhitelistConfig = field(default_factory=DetectorWhitelistConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
+    retention: RetentionConfig = field(default_factory=RetentionConfig)
 
     def __post_init__(self) -> None:
         # Always load email password from env var
@@ -392,7 +408,7 @@ def load_config(path: str | Path | None = None) -> Config:
                 cooldown_seconds=ntfy_raw.get("cooldown_seconds", 300),
             ),
             event_store=EventStoreConfig(
-                retention_hours=es_raw.get("retention_hours", 72),
+                retention_hours=es_raw.get("retention_hours", 360),
             ),
         ),
         inventory=InventoryConfig(
@@ -438,6 +454,14 @@ def load_config(path: str | Path | None = None) -> Config:
             context_max_events=ag_raw.get("context_max_events", 50),
             context_prompt_char_cap=ag_raw.get("context_prompt_char_cap", 16000),
             max_tool_hops=ag_raw.get("max_tool_hops", 4),
+        )
+
+    ret_raw = raw.get("retention", {})
+    if ret_raw:
+        config.retention = RetentionConfig(
+            enabled=ret_raw.get("enabled", True),
+            retention_days=ret_raw.get("retention_days", 15),
+            interval_seconds=ret_raw.get("interval_seconds", 86400),
         )
 
     # Post-init to load env var password

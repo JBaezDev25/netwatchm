@@ -1,6 +1,62 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-23 (session 28)
+Last updated: 2026-05-24 (session 29)
+
+## Session 29 — 2026-05-24
+
+### Uniform 15-day retention sweep
+
+A background task plus a logrotate drop-in. The text log is rotated by the
+OS even when netwatchm is down; everything else is pruned in-process while
+the service runs.
+
+#### New module
+- [x] `src/netwatchm/retention.py` — `prune_audit_db()` (DELETE + cascade-DELETE + VACUUM on `agent_actions.db`), `compact_whitelist_store()` and `compact_blocks_store()` (rewrite JSON sidecar without rolled-back / expired entries older than retention), `run_retention_loop()` async task (initial sweep at startup + daily cadence), `_sweep_once()` isolates each target so a failure in one doesn't skip the others.
+
+#### Updated existing retention defaults to 15 days
+- [x] `src/netwatchm/alerts/event_store.py` — `RETENTION_HOURS: 72 → 360`
+- [x] `src/netwatchm/reports/flow_store.py` — `_RETENTION_HOURS: 72 → 360`
+- [x] `netwatchm_server.py` — `_RETENTION_DAYS: 30 → 15` (flow-history; pinned entries still kept forever)
+- [x] `src/netwatchm/config.py` — `EventStoreConfig.retention_hours: 72 → 360` (dataclass default + YAML loader default)
+
+#### New config knob
+- [x] `src/netwatchm/config.py` — new `RetentionConfig` dataclass: `enabled=True`, `retention_days=15`, `interval_seconds=86400`. YAML loader wires it.
+- [x] `netwatchm.yaml.example` — new `retention:` block with all three knobs documented (and a note that text-log retention lives in logrotate, not here).
+
+#### Wiring
+- [x] `src/netwatchm/__main__.py` — registers `run_retention_loop` as a background task when `config.retention.enabled`. **Always-on**, not gated on `agent.enabled` — retention applies to everyone's logs.
+
+#### Logrotate drop-in
+- [x] `scripts/install-log-retention.sh` — installs `/etc/logrotate.d/netwatchm`: daily rotation, `rotate 15`, `compress`, `delaycompress`, `copytruncate` (so the running service keeps its open file descriptor valid through rotation — no SIGHUP needed), runs as `netwatchm:netwatchm`. Script auto-creates `/var/log/netwatchm/` if missing, validates the drop-in with `logrotate --debug`, and idempotently overwrites on re-run. Rollback: `sudo rm /etc/logrotate.d/netwatchm`.
+
+#### Tests
+- [x] `tests/test_retention.py` — 10 new tests: audit prune removes old + cascades tool calls, prune is a no-op when nothing old, prune handles missing file; whitelist compact removes old rolled-back, keeps old-but-active, handles missing file; blocks compact removes old rolled-back + old expired; `run_retention_loop` does initial sweep at startup and stops cleanly; defaults are 15 days.
+- [x] **306 tests pass** (was 296 → +10 new).
+
+#### Promotion path (manual, when ready)
+```bash
+# 1. Install the logrotate drop-in (one-time, system-level)
+sudo bash scripts/install-log-retention.sh
+
+# 2. Deploy the code so the in-process retention task starts running
+bash scripts/deploy-server.sh        # system venv update
+sudo systemctl restart netwatchm     # main monitor picks up retention loop
+sudo systemctl restart netwatchm-web # web server picks up new retention defaults
+
+# 3. Verify the retention loop registered
+journalctl -u netwatchm --since "1 min ago" | grep -i "retention"
+# expect: "retention loop starting (retention=15d, interval=86400s)"
+
+# 4. (Optional) Force the first sweep without waiting 24h by restarting
+# the service — the loop always sweeps once at startup.
+```
+
+#### What this does NOT touch
+- `inventory.json` — keeps its 48 h stale-device cleanup (different semantic from log retention).
+- ntfy notifications history (server-side at ntfy.sh, out of our control).
+- The OS journal (`journalctl -u netwatchm`) — already managed by systemd's own `journald` config.
+
+---
 
 ## Session 28 — 2026-05-23
 
@@ -52,6 +108,13 @@ journalctl -u netwatchm --since "1 min ago" | grep -i "firewall reaper"
 
 # 4. Visit https://localhost:8765/firewall.html — should show "No active blocks"
 ```
+
+#### Code-only deploy executed 2026-05-23 19:40 EDT
+- [x] Sudoers drop-in installed (`/etc/sudoers.d/netwatchm-firewall`, visudo OK, `netwatchm` user smoke-test passed).
+- [x] `deploy-server.sh` ran — system venv updated with Phase 5 agent code, `netwatchm-web` restarted (pid 429281 → 429310 after hotdeploy).
+- [x] `hotdeploy.sh` ran — `firewall.html` copied to `/var/lib/netwatchm/`.
+- [x] `netwatchm` main monitor restarted at 19:40:10 (pid 429321). Agent loop log: `agent loop starting (model=mistral:latest, interval=300s, mode=dry_run, executor=off)`. **No import errors / tracebacks** — Phase 5 imports work.
+- [x] Verified: `GET /api/agent/blocks` returns `{"entries": []}`; `/firewall.html` serves the SPA; firewall reaper task NOT registered (correct — `dry_run` is still true); decision id=29 in flight on first post-restart tick.
 
 #### Out-of-scope (deliberately)
 - iptables/nftables backend (ufw only — already used by `enable-remote-access.sh`)
@@ -172,9 +235,9 @@ ollama serve &
 Note: first tick after enable will be slow (~30-60s) while Ollama loads the model into RAM on CPU. Subsequent ticks should complete in ~10-20s with qwen3:14b on this Ryzen 5 5600G (no GPU acceleration). `timeout_seconds` default is 120s.
 
 ### Pending — promote to live actions only after dry-run review
-- [ ] Phase 2 — guardrails module + action executor + ntfy action buttons (whitelist mod, suppress, scan, notify)
+- [x] Phase 2 — guardrails module + action executor + ntfy action buttons (whitelist mod, suppress, scan, notify) → **delivered in Session 26**
 - [ ] Phase 3 — additional context sources (DNS query history, ufw firewall rules, nmap -O OS fingerprints, per-IP bandwidth aggregator)
-- [ ] Phase 4 — web UI tab for agent audit log + manual override + one-click rollback
+- [ ] Phase 4 — `/agent.html` decisions history page. The override + one-click rollback portion of the original Phase 4 is **already covered**: `/firewall.html` (Session 28) lists active blocks with Unblock buttons, and the ntfy notifications carry Rollback actions for whitelist entries (Session 26). Only the historical-decisions viewer over `agent_decisions` is still missing.
 
 ---
 

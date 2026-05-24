@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_src_ip      ON flows (src_ip);
 CREATE INDEX IF NOT EXISTS idx_dst_ip      ON flows (dst_ip);
 """
 
-_RETENTION_HOURS = 72
+_RETENTION_HOURS = 360  # 15 days — Session 29 uniform retention (was 72 = 3d)
 
 
 class FlowStore:

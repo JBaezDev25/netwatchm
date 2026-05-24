@@ -418,6 +418,30 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
                 )
             )
 
+    # Retention sweep — runs always (not gated on agent.enabled). Prunes
+    # agent_actions.db rows + compacts JSON sidecars older than the
+    # configured retention window. Text-log rotation is handled by the
+    # logrotate drop-in (scripts/install-log-retention.sh), so it works
+    # even when this service is down.
+    if config.retention.enabled:
+        from .retention import run_retention_loop
+        from .agent.audit import DEFAULT_AUDIT_DB
+        from .agent.state import AgentWhitelistStore
+        from .agent.firewall import FirewallStore as _FirewallStore
+        tasks.append(
+            asyncio.create_task(
+                run_retention_loop(
+                    audit_db_path=DEFAULT_AUDIT_DB,
+                    whitelist_store=AgentWhitelistStore(),
+                    blocks_store=_FirewallStore(),
+                    stop_event=stop_event,
+                    retention_days=config.retention.retention_days,
+                    interval_seconds=config.retention.interval_seconds,
+                ),
+                name="retention",
+            )
+        )
+
     try:
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:

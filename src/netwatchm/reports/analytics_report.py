@@ -171,6 +171,7 @@ def render_analytics_html(data: dict, output_path: str) -> None:
   <a href="/inventory.html">Inventory</a>
   <a href="/events.html">Events</a>
   <a href="/history.html">History</a>
+  <a href="/firewall.html">&#128737; Firewall</a>
   <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
 </nav>
 

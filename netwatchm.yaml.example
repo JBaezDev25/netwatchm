@@ -143,3 +143,21 @@ agent:
   context_max_events: 50
   context_prompt_char_cap: 16000          # cap on JSON-serialised context in prompt
   max_tool_hops: 4                        # max tool round-trips per tick
+
+retention:
+  # 15-day uniform retention sweep (Session 29).
+  #
+  # In-process daily task that:
+  #   - prunes agent_actions.db rows older than retention_days
+  #   - compacts rolled-back / expired entries out of
+  #     agent_whitelist.json + agent_blocks.json
+  #
+  # Existing pruners (events.db, flows.db, flow-history.db) keep using
+  # their own retention knobs — those defaults are also 15 days now.
+  #
+  # Text-log retention is handled by /etc/logrotate.d/netwatchm
+  # (installed via scripts/install-log-retention.sh) so it works even
+  # when the netwatchm service is down. Do not duplicate it here.
+  enabled: true
+  retention_days: 15
+  interval_seconds: 86400                 # 24 h between sweeps

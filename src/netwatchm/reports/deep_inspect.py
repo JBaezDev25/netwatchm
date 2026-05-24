@@ -548,6 +548,7 @@ def render_deep_inspect_html(result: InspectionResult, output_path: str) -> None
 <div class="navbar">
   <a href="/inventory.html">&#8592; Inventory</a>
   <a href="/events.html?q={result.target}">&#9888; Events</a>
+  <a href="/firewall.html">&#128737; Firewall</a>
   <a href="javascript:void(0)" onclick="window.open('http://'+location.hostname+':3000/d/netwatchm-inventory/','_blank')" target="_blank">&#128202; Dashboard</a>
 </div>
 <h1>Deep Inspect: {result.target}</h1>

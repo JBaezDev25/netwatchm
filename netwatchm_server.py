@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS flow_history (
 CREATE INDEX IF NOT EXISTS idx_fh_expires ON flow_history (expires_at);
 CREATE INDEX IF NOT EXISTS idx_fh_dst     ON flow_history (dst_ip);
 """
-_RETENTION_DAYS = 30
+_RETENTION_DAYS = 15  # Session 29 uniform retention (was 30; pinned entries kept forever)
 
 
 def _fh_conn() -> sqlite3.Connection:
@@ -1202,6 +1202,7 @@ def _render_reports_index() -> bytes:
   <a class="back" href="/connection-report.html" style="margin:0">← Back to Live Report</a>
   <a class="back" href="/inventory.html" style="margin:0">Inventory</a>
   <a class="back" href="/events.html" style="margin:0">Events</a>
+  <a class="back" href="/firewall.html" style="margin:0">&#128737; Firewall</a>
   <a href="/ai.html" style="color:#58a6ff;font-size:12px;font-weight:bold;text-decoration:none">&#129302; AI Chat</a>
 </div>
 <h1>NetWatchM — Report History</h1>
@@ -1901,6 +1902,7 @@ def _render_events_html() -> bytes:
   <a href="/analytics.html">Analytics</a>
   <a href="javascript:void(0)" onclick="window.open('http://'+location.hostname+':3000/d/netwatchm-inventory/')" target="_blank">&#128202; Dashboard</a>
   <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+  <a href="/firewall.html">&#128737; Firewall</a>
   <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   <div class="spacer"></div>
   <label class="auto-toggle">
@@ -2594,6 +2596,7 @@ def _render_inventory_html() -> bytes:
     <a href="/events.html">Events</a>
     <a href="/analytics.html">Analytics</a>
     <a href="/pcap.html">&#128202; Pcap</a>
+    <a href="/firewall.html">&#128737; Firewall</a>
     <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   </nav>
   <div class="toolbar">
@@ -2977,6 +2980,7 @@ def _render_history_html() -> bytes:
     <a href="/inventory.html">Inventory</a>
     <a href="/events.html">Events</a>
     <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/firewall.html">&#128737; Firewall</a>
     <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
     <button class="btn" id="themeBtn" onclick="toggleTheme()" style="background:var(--surface);color:var(--muted);border:1px solid var(--border);padding:4px 10px;font-size:12px">&#9788; Light</button>
   </nav>
@@ -3191,6 +3195,7 @@ def _render_pcap_html() -> bytes:
     <a href="/events.html">Events</a>
     <a href="/connection-report.html">Report</a>
     <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/firewall.html">&#128737; Firewall</a>
     <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
   </nav>
 </header>
