@@ -4,6 +4,16 @@ Last updated: 2026-05-24 (session 30)
 
 ## Session 30 — 2026-05-24
 
+### CI: keep uv.lock in sync with the auto-bumped version
+
+- [x] `.github/workflows/release.yml` — the auto-version job `sed`-bumped
+      `pyproject.toml` but never relocked, so `uv.lock`'s netwatchm version
+      drifted behind every release. Added a **"Sync uv.lock to bumped version"**
+      step (`pip install uv && uv lock`) after Python setup, and added `uv.lock`
+      to the bump commit's `git add`. Future bump commits now carry a matching
+      lock. (The drift was cosmetic — editable install — but this removes the
+      recurring skew seen rebasing Session 30 over the v0.2.39/40 bumps.)
+
 ### Make scripts/ runnable system-wide (all users, any directory)
 
 - [x] `scripts/install-to-path.sh` — **new**: installs a thin launcher wrapper
