@@ -1,6 +1,33 @@
 """Small shared formatting helpers."""
 from __future__ import annotations
 
+# Common typographic characters mapped to ASCII so they survive an HTTP header
+# value. http.client encodes header values as latin-1, so non-latin-1 chars
+# (em-dash, arrows, curly quotes) otherwise raise a UnicodeEncodeError.
+_HEADER_TRANSLATIONS = {
+    "—": "-",    # em dash —
+    "–": "-",    # en dash –
+    "‘": "'",    # left single quote ‘
+    "’": "'",    # right single quote ’
+    "“": '"',    # left double quote “
+    "”": '"',    # right double quote ”
+    "…": "...",  # ellipsis …
+    "→": "->",   # right arrow → (used in beacon/agent descriptions)
+    "·": "-",    # middle dot ·
+}
+
+
+def ascii_header(value: str) -> str:
+    """Return a string safe to use as an HTTP header value.
+
+    Replaces common typographic characters with ASCII equivalents, then drops
+    any remaining non-ASCII characters. Used for ntfy ``X-Title``/``X-Tags``
+    headers, which must be latin-1/ASCII encodable.
+    """
+    for bad, good in _HEADER_TRANSLATIONS.items():
+        value = value.replace(bad, good)
+    return value.encode("ascii", "ignore").decode("ascii")
+
 
 def format_bytes(
     n: float,

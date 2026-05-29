@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.error import URLError
 
 from .context import _safe
+from ..util import ascii_header
 
 logger = logging.getLogger("netwatchm.agent")
 
@@ -150,15 +151,15 @@ def push_digest(ntfy_cfg, title: str, body: str) -> bool:
         return False
     url = f"{ntfy_cfg.server.rstrip('/')}/{ntfy_cfg.topic}"
     headers = {
-        "X-Title": title,
+        "X-Title": ascii_header(title),
         "X-Priority": "3",
         "X-Tags": "netwatchm,digest",
-        "Content-Type": "text/plain",
+        "Content-Type": "text/plain; charset=utf-8",
     }
     if getattr(ntfy_cfg, "token", ""):
         headers["Authorization"] = f"Bearer {ntfy_cfg.token}"
     req = urllib.request.Request(
-        url, data=body.encode()[:4000], headers=headers, method="POST"
+        url, data=body[:4000].encode("utf-8"), headers=headers, method="POST"
     )
     try:
         with urllib.request.urlopen(req, timeout=10):

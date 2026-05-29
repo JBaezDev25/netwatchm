@@ -9,6 +9,7 @@ from urllib.error import URLError
 
 from ..config import NtfyAlertConfig
 from ..models import Alert, ThreatLevel
+from ..util import ascii_header
 from .alert_labels import get_summary, get_title
 from .base import AlertHandler
 
@@ -78,10 +79,10 @@ class NtfyAlert(AlertHandler):
         tag = alert.alert_type.lower().replace("_", "-")
 
         headers = {
-            "X-Title": title,
+            "X-Title": ascii_header(title),
             "X-Priority": priority,
-            "X-Tags": tag,
-            "Content-Type": "text/plain",
+            "X-Tags": ascii_header(tag),
+            "Content-Type": "text/plain; charset=utf-8",
         }
         if cfg.token:
             headers["Authorization"] = f"Bearer {cfg.token}"

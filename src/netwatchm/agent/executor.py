@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import NtfyAlertConfig
+from ..util import ascii_header
 from .firewall import FirewallController, FirewallStore
 from .guardrails import Guardrails
 from .state import AgentWhitelistStore, SuppressedTypesStore
@@ -220,19 +221,19 @@ class Executor:
         )
 
         headers = {
-            "X-Title": f"[{severity}] NetWatchM agent · {headline[:100]}",
+            "X-Title": ascii_header(f"[{severity}] NetWatchM agent - {headline[:100]}"),
             "X-Priority": priority,
             "X-Tags": "robot",
-            "Content-Type": "text/plain",
+            "Content-Type": "text/plain; charset=utf-8",
         }
         if actions_header:
-            headers["X-Actions"] = actions_header
+            headers["X-Actions"] = ascii_header(actions_header)
         if self.ntfy.token:
             headers["Authorization"] = f"Bearer {self.ntfy.token}"
 
         url = f"{self.ntfy.server.rstrip('/')}/{self.ntfy.topic}"
         req = urllib.request.Request(
-            url, data=body.encode(), headers=headers, method="POST"
+            url, data=body.encode("utf-8"), headers=headers, method="POST"
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310

@@ -120,9 +120,23 @@ remaining gaps the operator asked about.
       Full suite 358 passing.
 - [x] `scripts/restart-monitor.sh` — restart the `netwatchm` monitor service
       (runs from repo editable .venv, so source edits go live on restart).
-- [ ] **Apply** (operator): `bash scripts/restart-monitor.sh` to load the fix.
-      Existing 58 historical beaconing alerts for .9 age out via 15-day
-      retention; GRC 13.1 clears for .9/.249 once they do.
+- [x] **Applied** (operator): `bash scripts/restart-monitor.sh` — monitor
+      restarted (capture on enp6s0), beaconing fix live. `deploy-server.sh` also
+      run; GRC owned-scoping live (owned_devices=39). Existing 58 historical
+      beaconing alerts for .9 age out via 15-day retention.
+
+### ntfy header encoding fix (found in restart logs)
+- [x] Restart logs showed `digest push unexpected error: 'latin-1' codec can't
+      encode '—'` → digest pushes silently failed (pushed=False) whenever
+      the title contained an em-dash. HTTP header values are latin-1-only.
+- [x] `util.py` — `ascii_header()`: maps typographic chars (em/en dash, curly
+      quotes, ellipsis, arrow, middle dot) to ASCII, drops remaining non-ASCII.
+- [x] Applied to ntfy `X-Title`/`X-Tags`/`X-Actions` in `agent/digest.py`,
+      `agent/executor.py`, `alerts/ntfy_alert.py`; bodies now
+      `text/plain; charset=utf-8`, string-sliced before encode.
+- [x] `tests/test_ascii_header.py` — 4 tests. Full suite 362 passing.
+- [ ] **Apply** (operator): `bash scripts/restart-monitor.sh` to load the
+      digest/ntfy fix into the running monitor.
 
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 
