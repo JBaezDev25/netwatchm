@@ -27,6 +27,12 @@ ${USER} ALL=(ALL) NOPASSWD: /bin/systemctl status netwatchm
 ${USER} ALL=(ALL) NOPASSWD: /bin/mkdir -p /etc/systemd/system/grafana-server.service.d
 ${USER} ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/systemd/system/grafana-server.service.d/netwatchm-smtp.conf
 ${USER} ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/netwatchm/netwatchm.yaml
+# apply-agent-model.sh — config apply with backup + journal confirm.
+# Exact paths only (no wildcards): sudoers '*' matches '/', so a wildcarded
+# destination would be a path-escape escalation. Backup is a fixed .bak path.
+${USER} ALL=(ALL) NOPASSWD: /usr/bin/cp -a /etc/netwatchm/netwatchm.yaml /etc/netwatchm/netwatchm.yaml.bak
+${USER} ALL=(ALL) NOPASSWD: /usr/bin/cp /tmp/netwatchm.yaml /etc/netwatchm/netwatchm.yaml
+${USER} ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u netwatchm *
 EOF
 
 chmod 0440 "${DROPIN}"

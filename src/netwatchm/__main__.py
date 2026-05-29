@@ -15,6 +15,7 @@ from rich.console import Console
 from .alerts.email_alert import EmailAlert
 from .alerts.ntfy_alert import NtfyAlert
 from .alerts.event_handler import EventStoreHandler
+from .alerts.forensic_handler import ForensicHandler
 from .alerts.logfile import LogFileAlert
 from .alerts.sound import SoundAlert
 from .alerts.terminal import TerminalAlert
@@ -39,6 +40,7 @@ from .inventory.resolver import DNSResolver
 from .inventory.store import DeviceStore
 from .models import Alert, Packet, ThreatLevel
 from .scorer import ThreatScorer
+from .util import format_bytes
 from .whitelist import WhitelistChecker
 
 logger = logging.getLogger("netwatchm")
@@ -130,6 +132,8 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
     if config.alerts.ntfy.enabled:
         handlers.append(NtfyAlert(config.alerts.ntfy))
     handlers.append(EventStoreHandler(retention_hours=config.alerts.event_store.retention_hours))
+    if config.alerts.forensics.enabled:
+        handlers.append(ForensicHandler(config.alerts.forensics, interface=interface))
 
     # --- UI ---
     dashboard = None
@@ -533,11 +537,7 @@ def _inventory_subcommand(args: argparse.Namespace, config: Config) -> None:
 
 
 def _fmt_bytes(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024:
-            return f"{n:.0f} {unit}"
-        n //= 1024
-    return f"{n:.0f} TB"
+    return format_bytes(n, precision=0)
 
 
 def _deep_inspect_subcommand(args: argparse.Namespace, _config: Config) -> None:

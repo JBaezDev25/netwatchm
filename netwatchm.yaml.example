@@ -78,6 +78,23 @@ alerts:
       - BEACONING            #   beacon patterns are low-signal — see the agent digest
   event_store:
     retention_hours: 72      # hours to keep alert events in database (default: 72)
+  forensics:                 # auto incident response: pcap + threat-intel on alert
+    enabled: false           # opt-in; needs tshark running as the service
+    min_level: HIGH          # open a case for alerts at/above this level
+    cooldown_seconds: 600    # per-IP gap between cases (avoid case floods)
+    capture_enabled: true    # short-burst pcap of the offending IP
+    capture_seconds: 10      # capture duration (bounded; also packet-capped)
+    capture_interface: auto  # "auto" reuses the monitor interface
+    capture_dir: /var/lib/netwatchm/forensics
+    db_path: /var/lib/netwatchm/forensics.db
+    retention_days: 15       # prune incidents older than this
+    intel_enabled: true      # reputation lookups on external IPs
+    greynoise: true          # community endpoint — no key needed
+    abuseipdb: true          # needs NETWATCHM_ABUSEIPDB_KEY env var
+    virustotal: true         # needs NETWATCHM_VT_KEY env var
+    intel_timeout: 8         # per-provider HTTP timeout (seconds)
+    # API keys are read from env vars ONLY, never from this file:
+    #   NETWATCHM_ABUSEIPDB_KEY, NETWATCHM_VT_KEY, NETWATCHM_GREYNOISE_KEY
 
 inventory:
   enabled: true

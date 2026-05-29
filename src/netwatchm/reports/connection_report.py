@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
+from ..util import format_bytes
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -397,11 +399,7 @@ def capture_flows(
 # ---------------------------------------------------------------------------
 
 def _fmt_bytes(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024:
-            return f"{n:.1f} {unit}"
-        n //= 1024
-    return f"{n:.1f} TB"
+    return format_bytes(n)
 
 
 def _fmt_ts(ts: float) -> str:

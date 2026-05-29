@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatchM — Threat Events</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --surface2:#21262d; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff;
+    --low:#3fb950; --medium:#d29922; --high:#f85149; --critical:#ff7b72;
+  }
+  [data-theme="light"] {
+    --bg:#ffffff; --surface:#f6f8fa; --surface2:#eaeef2; --border:#d0d7de;
+    --text:#1f2328; --muted:#6e7781; --accent:#0969da;
+    --low:#1a7f37; --medium:#9a6700; --high:#cf222e; --critical:#a40e26;
+  }
+  [data-theme="light"] .badge-LOW      { background:#dcfce7; color:var(--low); }
+  [data-theme="light"] .badge-MEDIUM   { background:#fef9c3; color:var(--medium); }
+  [data-theme="light"] .badge-HIGH     { background:#fee2e2; color:var(--high); }
+  [data-theme="light"] .badge-CRITICAL { background:#ffe4e6; color:var(--critical); }
+  [data-theme="light"] .modal-box      { background:#ffffff; border-color:#d0d7de; }
+  [data-theme="light"] .modal-box input { background:#f6f8fa; border-color:#d0d7de; color:#1f2328; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:monospace; font-size:13px; }
+  /* ── Top bar ── */
+  .topbar {
+    display:flex; align-items:center; gap:12px; padding:12px 20px;
+    background:var(--surface); border-bottom:1px solid var(--border);
+    flex-wrap:wrap;
+  }
+  .topbar h1 { color:var(--accent); font-size:16px; white-space:nowrap; margin-right:8px; }
+  .topbar a { color:var(--muted); font-size:12px; text-decoration:none; }
+  .topbar a:hover { color:var(--accent); }
+  .spacer { flex:1; }
+  .refresh-btn {
+    background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .refresh-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .countdown { color:var(--muted); font-size:11px; white-space:nowrap; }
+  /* ── Filter bar ── */
+  .filterbar {
+    display:flex; align-items:center; gap:8px; padding:10px 20px;
+    background:var(--surface); border-bottom:1px solid var(--border); flex-wrap:wrap;
+  }
+  .filterbar input, .filterbar select {
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    padding:5px 10px; border-radius:4px; font-family:monospace; font-size:12px;
+  }
+  .filterbar input { width:220px; }
+  .filterbar input:focus, .filterbar select:focus {
+    outline:none; border-color:var(--accent);
+  }
+  .filterbar label { color:var(--muted); font-size:12px; }
+  .result-count { color:var(--muted); font-size:12px; margin-left:auto; }
+  /* ── Table ── */
+  .table-wrap { overflow-x:auto; }
+  .pagination { display:flex; align-items:center; gap:8px; padding:10px 20px;
+    background:var(--surface); border-top:1px solid var(--border); flex-wrap:wrap; }
+  .page-btn { background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    padding:4px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px; }
+  .page-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .page-btn:disabled { opacity:0.4; cursor:default; pointer-events:none; }
+  .page-info { color:var(--muted); font-size:12px; }
+  .page-size { background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    padding:4px 8px; border-radius:4px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; }
+  thead th {
+    background:var(--surface); color:var(--muted); text-transform:uppercase;
+    font-size:11px; padding:8px 12px; text-align:left;
+    border-bottom:2px solid var(--border); white-space:nowrap; position:sticky; top:0;
+  }
+  tbody tr { border-bottom:1px solid var(--border); cursor:pointer; }
+  tbody tr:hover td { background:var(--surface2); }
+  tbody tr.expanded td { background:var(--surface2); }
+  td { padding:8px 12px; vertical-align:top; white-space:nowrap; max-width:280px; overflow:hidden; text-overflow:ellipsis; }
+  td.desc { white-space:normal; color:var(--muted); font-size:12px; }
+  /* ── Detail row ── */
+  .detail-row td {
+    background:var(--surface); border-bottom:2px solid var(--accent);
+    padding:14px 20px; cursor:default; white-space:normal;
+  }
+  .detail-grid { display:flex; gap:24px; flex-wrap:wrap; }
+  .detail-field { display:flex; flex-direction:column; gap:3px; }
+  .detail-label { color:var(--muted); font-size:11px; text-transform:uppercase; }
+  .detail-value { color:var(--text); font-size:13px; }
+  .detail-desc { margin-top:10px; color:var(--text); font-size:13px; line-height:1.5; word-break:break-word; }
+  .deep-btn {
+    display:inline-block; margin-top:10px; background:var(--accent); color:#0d1117;
+    padding:5px 14px; border-radius:4px; font-family:monospace; font-size:12px;
+    text-decoration:none; font-weight:bold;
+  }
+  .deep-btn:hover { opacity:0.85; }
+  /* ── Level badges ── */
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:3px;
+    font-size:11px; font-weight:bold; text-transform:uppercase;
+  }
+  .badge-LOW      { background:#1a3a22; color:var(--low); }
+  .badge-MEDIUM   { background:#3a2f0e; color:var(--medium); }
+  .badge-HIGH     { background:#3a1214; color:var(--high); }
+  .badge-CRITICAL { background:#3a0f0f; color:var(--critical); }
+  /* ── Empty state ── */
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty .big { font-size:32px; margin-bottom:12px; }
+  /* ── Export btn ── */
+  .export-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .export-btn:hover { color:var(--accent); border-color:var(--accent); }
+  /* ── Test notify btn ── */
+  .notify-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .notify-btn:hover { color:#3fb950; border-color:#3fb950; }
+  .notify-btn:disabled { opacity:0.5; cursor:default; }
+  .clear-btn {
+    background:var(--surface2); color:#f85149; border:1px solid #f85149;
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .clear-btn:hover { background:#f85149; color:#fff; }
+  .theme-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .theme-btn:hover { color:var(--accent); border-color:var(--accent); }
+  .suppress-toggle {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .suppress-toggle:hover { color:#d29922; border-color:#d29922; }
+  .suppress-toggle.active { color:#f85149; border-color:#f85149; }
+  .role-badge {
+    padding:3px 10px; border-radius:10px; font-size:11px; font-family:monospace;
+    border:1px solid var(--border); color:var(--muted); background:var(--surface2);
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .role-badge.admin   { color:#3fb950; border-color:#3fb950; background:rgba(63,185,80,.1); }
+  .role-badge.reader  { color:#58a6ff; border-color:#58a6ff; background:rgba(88,166,255,.1); }
+  .login-btn {
+    background:var(--surface2); color:var(--muted); border:1px solid var(--border);
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-family:monospace; font-size:12px;
+  }
+  .login-btn:hover { color:var(--accent); border-color:var(--accent); }
+  .admin-only { display:none; }
+  #suppressPanel {
+    background:var(--surface); border-bottom:1px solid var(--border);
+    padding:10px 20px; display:none; flex-wrap:wrap; gap:8px; align-items:center;
+  }
+  #suppressPanel span { color:var(--muted); font-size:12px; }
+  .sup-tag {
+    display:inline-flex; align-items:center; gap:5px;
+    background:var(--surface2); border:1px solid #f85149;
+    padding:2px 8px; border-radius:20px; font-size:11px; color:#f85149;
+  }
+  .sup-tag button { background:none; border:none; color:#f85149; cursor:pointer; font-size:13px; padding:0 2px; }
+  .sup-btn {
+    background:none; border:1px solid var(--border); color:var(--muted);
+    padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:monospace;
+  }
+  .sup-btn:hover { border-color:#d29922; color:#d29922; }
+  .lookup-btn {
+    background:none; border:1px solid #58a6ff; color:#58a6ff;
+    padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:monospace;
+    margin-top:8px;
+  }
+  .lookup-btn:hover { background:#58a6ff22; }
+  /* ── IP Lookup modal ── */
+  #lookupModal {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+    z-index:1000; align-items:center; justify-content:center;
+  }
+  #lookupModal.open { display:flex; }
+  .lookup-box {
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    width:min(700px,96vw); max-height:85vh; display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .lookup-hdr {
+    display:flex; align-items:center; padding:12px 16px;
+    border-bottom:1px solid var(--border); gap:10px;
+  }
+  .lookup-hdr h2 { flex:1; font-size:14px; color:var(--accent); margin:0; }
+  .lookup-hdr button { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; }
+  .lookup-tabs {
+    display:flex; border-bottom:1px solid var(--border); padding:0 16px;
+  }
+  .lookup-tab {
+    padding:8px 14px; font-size:12px; cursor:pointer; border:none; background:none;
+    color:var(--muted); border-bottom:2px solid transparent; font-family:monospace;
+  }
+  .lookup-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .lookup-body { flex:1; overflow-y:auto; padding:16px; }
+  .lookup-panel { display:none; }
+  .lookup-panel.active { display:block; }
+  .lk-row { display:flex; gap:8px; margin-bottom:8px; font-size:13px; }
+  .lk-label { color:var(--muted); width:130px; flex-shrink:0; }
+  .lk-val { color:var(--text); word-break:break-all; }
+  .lk-pre { font-family:monospace; font-size:11px; white-space:pre-wrap; word-break:break-all;
+    color:#7ee787; background:var(--bg); padding:10px; border-radius:4px;
+    border:1px solid var(--border); margin-top:8px; max-height:300px; overflow-y:auto; }
+  .lk-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .lk-badge.CRITICAL { background:#f8514933; color:#f85149; }
+  .lk-badge.HIGH     { background:#ff990033; color:#ff9900; }
+  .lk-badge.MEDIUM   { background:#d2992233; color:#d29922; }
+  .lk-badge.LOW      { background:#3fb95033; color:#3fb950; }
+  .lk-badge.CLEAN    { background:#3fb95033; color:#3fb950; }
+  .lk-badge.UNKNOWN  { background:#8b949e33; color:#8b949e; }
+  /* ── Clear modal ── */
+  #clearModal {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,.75); z-index:999; align-items:center; justify-content:center;
+  }
+  .modal-box {
+    background:#1e1e2e; border:1px solid #444; border-radius:8px;
+    padding:28px 32px; min-width:320px; text-align:center;
+  }
+  .modal-box h3 { color:#f85149; margin:0 0 8px; }
+  .modal-box p  { color:#888; font-size:13px; margin:0 0 16px; }
+  .modal-box input {
+    width:100%; padding:8px 10px; background:#2a2a3e; border:1px solid #555;
+    border-radius:4px; color:#e6e6e6; font-size:14px; box-sizing:border-box; margin-bottom:14px;
+  }
+  .modal-actions { display:flex; gap:10px; justify-content:center; }
+  .modal-actions button { padding:8px 22px; border:none; border-radius:4px; cursor:pointer; font-size:14px; }
+  .modal-confirm { background:#f85149; color:#fff; }
+  .modal-cancel  { background:#333; color:#e6e6e6; }
+  /* ── Toast ── */
+  #toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+    padding:10px 20px; font-size:13px; z-index:999; display:none;
+    box-shadow:0 4px 16px rgba(0,0,0,0.5);
+  }
+  #toast.ok  { border-color:#3fb950; color:#3fb950; }
+  #toast.err { border-color:#f85149; color:#f85149; }
+  /* ── Auto-refresh toggle ── */
+  .auto-toggle {
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    color:var(--muted); font-size:12px; user-select:none;
+  }
+  .auto-toggle input { accent-color:var(--accent); }
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .topbar { flex-wrap:wrap; padding:8px 12px; gap:6px; }
+    .topbar h1 { font-size:13px; width:100%; }
+    .filterbar { flex-direction:column; align-items:flex-start; padding:8px 12px; gap:6px; }
+    .filterbar input, .filterbar select { width:100%; }
+    .result-count { margin-left:0; }
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    td, th { padding:5px 6px; font-size:11px; }
+    thead th:nth-child(5), tbody td:nth-child(5) { display:none; }
+    .pagination { flex-wrap:wrap; padding:8px 12px; }
+    .refresh-btn, .export-btn, .notify-btn, .clear-btn,
+    .theme-btn, .suppress-toggle, .page-btn {
+      padding:7px 12px; min-height:38px;
+    }
+    .detail-grid { flex-direction:column; }
+    #suppressPanel { flex-direction:column; align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>&#9888; NetWatchM &mdash; Threat Events</h1>
+  <a href="/connection-report.html">&#8592; Report</a>
+  <a href="/inventory.html">Inventory</a>
+  <a href="/analytics.html">Analytics</a>
+  <a href="javascript:void(0)" onclick="window.open('http://'+location.hostname+':3000/d/netwatchm-inventory/')" target="_blank">&#128202; Dashboard</a>
+  <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+  <a href="/incidents.html">&#128737; Incidents</a>
+  <a href="/firewall.html">&#128737; Firewall</a>
+  <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
+  <div class="spacer"></div>
+  <label class="auto-toggle">
+    <input type="checkbox" id="autoRefresh" checked> Auto-refresh
+  </label>
+  <span class="countdown" id="countdown"></span>
+  <button class="refresh-btn" onclick="loadEvents()">&#8635; Refresh</button>
+  <button class="export-btn" onclick="exportCSV()">&#11123; CSV</button>
+  <button class="notify-btn admin-only" id="testNtfyBtn" onclick="testNtfy()">&#128276; Test Notify</button>
+  <button class="clear-btn admin-only" onclick="clearAlerts()">&#128465; Clear Alerts</button>
+  <button class="suppress-toggle admin-only" id="suppressToggle" onclick="toggleSuppressPanel()">&#128274; Suppressions</button>
+  <span id="roleBadge" class="role-badge">&#128100; Guest</span>
+  <button class="login-btn" id="loginBtn" onclick="showLoginModal()">&#128273; Login</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">&#9788; Light</button>
+</div>
+<div id="toast"></div>
+
+<div id="lookupModal">
+  <div class="lookup-box">
+    <div class="lookup-hdr">
+      <h2 id="lookupTitle">&#127758; IP Lookup</h2>
+      <button onclick="closeLookup()">&#10005;</button>
+    </div>
+    <div class="lookup-tabs">
+      <button class="lookup-tab active" onclick="switchLkTab('geo')">&#127758; GeoIP</button>
+      <button class="lookup-tab" onclick="switchLkTab('dns')">&#128269; DNS</button>
+      <button class="lookup-tab" onclick="switchLkTab('security')">&#128737; Security</button>
+      <button class="lookup-tab" onclick="switchLkTab('whois')">&#128196; WHOIS</button>
+    </div>
+    <div class="lookup-body" id="lookupBody">
+      <div class="lookup-panel active" id="lk-geo"><p style="color:var(--muted)">Loading…</p></div>
+      <div class="lookup-panel" id="lk-dns"></div>
+      <div class="lookup-panel" id="lk-security"></div>
+      <div class="lookup-panel" id="lk-whois"></div>
+    </div>
+  </div>
+</div>
+
+<div id="clearModal">
+  <div class="modal-box">
+    <h3>&#9888; Clear All Alerts?</h3>
+    <p>This permanently deletes all events from the database.<br>Enter your admin token to confirm.</p>
+    <input type="password" id="adminToken" placeholder="Admin token" onkeydown="if(event.key==='Enter')confirmClear()">
+    <div class="modal-actions">
+      <button class="modal-confirm" onclick="confirmClear()">Clear</button>
+      <button class="modal-cancel" onclick="closeClearModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="loginModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center">
+  <div class="modal-box">
+    <h3>&#128273; Login</h3>
+    <p>Enter your admin or read-only token to unlock features.</p>
+    <input type="password" id="loginTokenInput" placeholder="Token" onkeydown="if(event.key==='Enter')submitLogin()">
+    <div class="modal-actions">
+      <button class="modal-confirm" onclick="submitLogin()">Login</button>
+      <button class="modal-cancel" onclick="closeLoginModal()">Cancel</button>
+    </div>
+    <p id="loginError" style="color:var(--high);font-size:11px;margin-top:8px;display:none"></p>
+  </div>
+</div>
+
+<div id="suppressPanel">
+  <span>&#128274; Suppressed types (new alerts of these types will be silenced):</span>
+  <div id="suppressTags"></div>
+</div>
+<div class="filterbar">
+  <label>Search:</label>
+  <input type="text" id="search" placeholder="IP, type, description…" oninput="_debouncedSearch()">
+  <label>Level:</label>
+  <select id="levelFilter" onchange="_pageOffset=0;loadEvents()">
+    <option value="">All</option>
+    <option value="LOW">LOW</option>
+    <option value="MEDIUM">MEDIUM</option>
+    <option value="HIGH">HIGH</option>
+    <option value="CRITICAL">CRITICAL</option>
+  </select>
+  <label>Type:</label>
+  <select id="typeFilter" onchange="_pageOffset=0;loadEvents()">
+    <option value="">All</option>
+  </select>
+  <span class="result-count" id="resultCount"></span>
+</div>
+
+<div class="table-wrap">
+<table id="eventsTable">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Type</th>
+      <th>Level</th>
+      <th>Source IP</th>
+      <th>Dest IP</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+</div>
+<div class="pagination" id="pagination" style="display:none">
+  <button class="page-btn" id="prevBtn" onclick="changePage(-1)">&#8592; Prev</button>
+  <span class="page-info" id="pageInfo"></span>
+  <button class="page-btn" id="nextBtn" onclick="changePage(1)">Next &#8594;</button>
+  <select class="page-size" id="pageSizeSelect" onchange="changePageSize()">
+    <option value="50">50 / page</option>
+    <option value="100">100 / page</option>
+    <option value="200">200 / page</option>
+  </select>
+</div>
+
+<script>
+function _applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = theme === 'light' ? '\u2600 Dark' : '\u2600 Light';
+  try { localStorage.setItem('nwm-theme', theme); } catch(_) {}
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  _applyTheme(cur === 'light' ? 'dark' : 'light');
+}
+(function(){ try { const t = localStorage.getItem('nwm-theme'); if(t) _applyTheme(t); } catch(_){} })();
+
+// ── Role-based access ────────────────────────────────────────────────────
+let _role = 'guest';   // 'guest' | 'reader' | 'admin'
+let _sessionToken = '';
+
+async function _initRole() {
+  try {
+    const stored = sessionStorage.getItem('nwm-token') || '';
+    if (stored) await _applyToken(stored);
+  } catch(_) {}
+}
+
+async function _applyToken(token) {
+  const headers = {};
+  headers['X-Admin-Token'] = token;
+  headers['X-Read-Token']  = token;
+  const r = await fetch('/api/auth/whoami', { headers }).catch(() => null);
+  const d = r ? await r.json().catch(() => ({})) : {};
+  _role = d.role || 'guest';
+  _sessionToken = (_role !== 'guest') ? token : '';
+  if (_role !== 'guest') {
+    try { sessionStorage.setItem('nwm-token', token); } catch(_) {}
+  } else {
+    try { sessionStorage.removeItem('nwm-token'); } catch(_) {}
+  }
+  _renderRole();
+}
+
+function _renderRole() {
+  const badge = document.getElementById('roleBadge');
+  const loginBtn = document.getElementById('loginBtn');
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = (_role === 'admin') ? '' : 'none';
+  });
+  if (_role === 'admin') {
+    badge.textContent = '\u{1F512} Admin';
+    badge.className = 'role-badge admin';
+    loginBtn.textContent = '\u{1F511} Logout';
+    loginBtn.onclick = _logout;
+  } else if (_role === 'reader') {
+    badge.textContent = '\u{1F441} Read-only';
+    badge.className = 'role-badge reader';
+    loginBtn.textContent = '\u{1F511} Logout';
+    loginBtn.onclick = _logout;
+  } else {
+    badge.textContent = '\u{1F464} Guest';
+    badge.className = 'role-badge';
+    loginBtn.textContent = '\u{1F513} Login';
+    loginBtn.onclick = showLoginModal;
+  }
+}
+
+function showLoginModal() {
+  document.getElementById('loginTokenInput').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  const m = document.getElementById('loginModal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('loginTokenInput').focus(), 80);
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').style.display = 'none';
+}
+
+async function submitLogin() {
+  const token = document.getElementById('loginTokenInput').value.trim();
+  if (!token) return;
+  await _applyToken(token);
+  if (_role === 'guest') {
+    const err = document.getElementById('loginError');
+    err.textContent = 'Invalid token';
+    err.style.display = 'block';
+  } else {
+    closeLoginModal();
+    _suppressToken = _sessionToken;  // reuse for suppress actions
+  }
+}
+
+function _logout() {
+  _role = 'guest';
+  _sessionToken = '';
+  _suppressToken = '';
+  try { sessionStorage.removeItem('nwm-token'); } catch(_) {}
+  _renderRole();
+}
+
+let _suppressed = [];
+let _suppressToken = '';
+
+async function loadSuppressed() {
+  try {
+    const d = await fetch('/api/suppressed').then(r => r.json());
+    _suppressed = d.types || [];
+    _renderSuppressPanel();
+  } catch(_) {}
+}
+function _renderSuppressPanel() {
+  const btn = document.getElementById('suppressToggle');
+  btn.classList.toggle('active', _suppressed.length > 0);
+  const tags = document.getElementById('suppressTags');
+  tags.innerHTML = _suppressed.length === 0
+    ? '<em style="color:var(--muted);font-size:11px">None</em>'
+    : _suppressed.map(t =>
+        `<span class="sup-tag">${esc(t)}<button title="Unsuppress" onclick="unsuppress('${esc(t)}')">&#215;</button></span>`
+      ).join('');
+}
+function toggleSuppressPanel() {
+  const p = document.getElementById('suppressPanel');
+  p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+}
+async function _getAdminToken() {
+  if (_suppressToken) return _suppressToken;
+  _suppressToken = prompt('Enter admin token:') || '';
+  return _suppressToken;
+}
+async function suppress(alertType) {
+  const token = await _getAdminToken(); if (!token) return;
+  try {
+    const r = await fetch('/api/suppressed', {
+      method:'POST', headers:{'Content-Type':'application/json','X-Admin-Token':token},
+      body: JSON.stringify({type: alertType})
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) { showToast('Suppressed: ' + alertType, true); await loadSuppressed(); }
+    else { _suppressToken=''; showToast(d.error || 'Failed', false); }
+  } catch(e) { showToast('Request failed', false); }
+}
+async function unsuppress(alertType) {
+  const token = await _getAdminToken(); if (!token) return;
+  try {
+    const r = await fetch('/api/suppressed', {
+      method:'DELETE', headers:{'Content-Type':'application/json','X-Admin-Token':token},
+      body: JSON.stringify({type: alertType})
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) { showToast('Unsuppressed: ' + alertType, true); await loadSuppressed(); }
+    else { _suppressToken=''; showToast(d.error || 'Failed', false); }
+  } catch(e) { showToast('Request failed', false); }
+}
+
+let _allEvents = [];
+let _pageOffset = 0;
+let _pageLimit = 50;
+let _totalEvents = 0;
+let _expandedId = null;
+let _autoTimer = null;
+let _countdown = 15;
+
+function showToast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = ok ? 'ok' : 'err';
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+async function testNtfy() {
+  const btn = document.getElementById('testNtfyBtn');
+  btn.disabled = true;
+  btn.textContent = '… Sending';
+  try {
+    const r = await fetch('/api/test-ntfy', {method:'POST'});
+    const d = await r.json();
+    showToast(d.message, d.ok);
+  } catch(e) {
+    showToast('Request failed: ' + e, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '\u{1F514} Test Notify';
+  }
+}
+
+function clearAlerts() {
+  document.getElementById('adminToken').value = '';
+  const m = document.getElementById('clearModal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('adminToken').focus(), 80);
+}
+function closeClearModal() {
+  document.getElementById('clearModal').style.display = 'none';
+}
+async function confirmClear() {
+  const token = document.getElementById('adminToken').value.trim();
+  if (!token) { showToast('Admin token required', false); return; }
+  try {
+    const r = await fetch('/api/events', {
+      method: 'DELETE',
+      headers: {'X-Admin-Token': token}
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      closeClearModal();
+      showToast('All alerts cleared', true);
+      loadEvents();
+    } else {
+      showToast(d.error || 'Failed — check token', false);
+    }
+  } catch(e) {
+    showToast('Request failed: ' + e, false);
+  }
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())
+    +' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+}
+
+function badge(level) {
+  return `<span class="badge badge-${level}">${level}</span>`;
+}
+
+function esc(s) {
+  if (!s) return '—';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _buildFilterParams() {
+  const level  = document.getElementById('levelFilter').value;
+  const type   = document.getElementById('typeFilter').value;
+  const ip     = new URLSearchParams(window.location.search).get('ip') || '';
+  const search = document.getElementById('search').value.trim();
+  let p = '';
+  if (level)  p += '&level=' + encodeURIComponent(level);
+  if (type)   p += '&type='  + encodeURIComponent(type);
+  if (ip)     p += '&ip='    + encodeURIComponent(ip);
+  if (search) p += '&q='     + encodeURIComponent(search);
+  return p;
+}
+
+let _searchTimer = null;
+function _debouncedSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { _pageOffset = 0; loadEvents(); }, 350);
+}
+
+async function loadEvents() {
+  resetCountdown();
+  try {
+    const url = '/api/events?offset=' + _pageOffset + '&limit=' + _pageLimit + _buildFilterParams();
+    const [paged, types] = await Promise.all([
+      fetch(url).then(r => r.json()),
+      fetch('/api/events/types').then(r => r.json()),
+    ]);
+    _allEvents = paged.events;
+    _totalEvents = paged.total;
+    _expandedId = null;
+    populateTypeFilter(types);
+    applyFilters();
+    _updatePagination();
+  } catch(e) {
+    document.getElementById('tbody').innerHTML =
+      '<tr><td colspan="6" style="color:var(--high);padding:20px">Failed to load events: '+esc(String(e))+'</td></tr>';
+  }
+}
+
+function _updatePagination() {
+  const totalPages = Math.ceil(_totalEvents / _pageLimit) || 1;
+  const currentPage = Math.floor(_pageOffset / _pageLimit) + 1;
+  document.getElementById('pageInfo').textContent =
+    'Page ' + currentPage + ' of ' + totalPages + ' (' + _totalEvents + ' total)';
+  document.getElementById('prevBtn').disabled = _pageOffset === 0;
+  document.getElementById('nextBtn').disabled = (_pageOffset + _pageLimit) >= _totalEvents;
+  document.getElementById('pagination').style.display = _totalEvents > 0 ? 'flex' : 'none';
+}
+
+function changePage(dir) {
+  _pageOffset = Math.max(0, _pageOffset + dir * _pageLimit);
+  loadEvents();
+}
+
+function changePageSize() {
+  _pageLimit = parseInt(document.getElementById('pageSizeSelect').value);
+  _pageOffset = 0;
+  loadEvents();
+}
+
+function populateTypeFilter(types) {
+  const sel = document.getElementById('typeFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  types.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    if (t === cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function applyFilters() {
+  // All filtering is now server-side; just render what came back.
+  document.getElementById('resultCount').textContent =
+    _allEvents.length + ' of ' + _totalEvents + ' events';
+  renderTable(_allEvents);
+}
+
+function renderTable(events) {
+  const tbody = document.getElementById('tbody');
+  if (events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">'
+      + '<div class="big">&#128268;</div>No events match your filters.</div></td></tr>';
+    return;
+  }
+  const rows = [];
+  events.forEach(e => {
+    const expanded = e.id === _expandedId;
+    rows.push(
+      `<tr class="${expanded?'expanded':''}" onclick="toggleDetail(${e.id})" data-id="${e.id}">
+        <td>${fmtTime(e.timestamp)}</td>
+        <td>${esc(e.alert_type)}</td>
+        <td>${badge(e.level)}</td>
+        <td>${esc(e.src_ip)}</td>
+        <td>${esc(e.dst_ip)}</td>
+        <td class="desc" title="${esc(e.description)}">${esc(e.description)}</td>
+      </tr>`
+    );
+    if (expanded) {
+      rows.push(buildDetailRow(e));
+    }
+  });
+  tbody.innerHTML = rows.join('');
+}
+
+function _isPrivate(ip) {
+  if (!ip || ip === '—') return true;
+  return ip.startsWith('10.') || ip.startsWith('192.168.') ||
+    ip.startsWith('127.') || ip.startsWith('169.254.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip);
+}
+function buildDetailRow(e) {
+  const srcExt = e.src_ip && !_isPrivate(e.src_ip);
+  const dstExt = e.dst_ip && !_isPrivate(e.dst_ip);
+  const inspectIp = srcExt ? e.src_ip : (dstExt ? e.dst_ip : (e.src_ip && e.src_ip !== '—' ? e.src_ip : e.dst_ip || ''));
+  const inspectLabel = srcExt ? e.src_ip : (dstExt ? `dst: ${e.dst_ip}` : e.src_ip || e.dst_ip || '');
+  const deepLink = inspectIp
+    ? `<a class="deep-btn" href="/inspect/${esc(inspectIp)}" target="_blank">&#128269; Deep Inspect ${esc(inspectLabel)}</a>`
+    : '';
+  return `<tr class="detail-row" onclick="event.stopPropagation()">
+    <td colspan="6">
+      <div class="detail-grid">
+        <div class="detail-field"><span class="detail-label">ID</span><span class="detail-value">${e.id}</span></div>
+        <div class="detail-field"><span class="detail-label">Time</span><span class="detail-value">${fmtTime(e.timestamp)}</span></div>
+        <div class="detail-field"><span class="detail-label">Type</span><span class="detail-value">${esc(e.alert_type)}</span></div>
+        <div class="detail-field"><span class="detail-label">Level</span><span class="detail-value">${badge(e.level)}</span></div>
+        <div class="detail-field"><span class="detail-label">Source IP</span><span class="detail-value">${esc(e.src_ip)}</span></div>
+        <div class="detail-field"><span class="detail-label">Dest IP</span><span class="detail-value">${esc(e.dst_ip)}</span></div>
+      </div>
+      <div class="detail-desc">${esc(e.description)}</div>
+      ${deepLink}
+      <button class="sup-btn" onclick="event.stopPropagation();suppress('${esc(e.alert_type)}')" style="margin-top:8px">&#128274; Suppress ${esc(e.alert_type)}</button>
+      ${inspectIp ? `<button class="lookup-btn" onclick="event.stopPropagation();openLookup('${esc(inspectIp)}')">&#127758; IP Lookup ${esc(inspectIp)}</button>` : ''}
+    </td>
+  </tr>`;
+}
+
+function toggleDetail(id) {
+  _expandedId = (_expandedId === id) ? null : id;
+  applyFilters();
+}
+
+// ── IP Lookup modal ───────────────────────────────────────────────────────
+function switchLkTab(name) {
+  document.querySelectorAll('.lookup-tab').forEach((t,i) => {
+    const names = ['geo','dns','security','whois'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.lookup-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('lk-' + name).classList.add('active');
+}
+
+function closeLookup() {
+  document.getElementById('lookupModal').classList.remove('open');
+}
+document.getElementById('lookupModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('lookupModal')) closeLookup();
+});
+
+function _lkRow(label, val) {
+  return `<div class="lk-row"><span class="lk-label">${label}</span><span class="lk-val">${val || '—'}</span></div>`;
+}
+
+async function openLookup(ip) {
+  document.getElementById('lookupTitle').textContent = '\u{1F30E} IP Lookup — ' + ip;
+  ['geo','dns','security','whois'].forEach(t =>
+    document.getElementById('lk-' + t).innerHTML = '<p style="color:var(--muted)">Loading…</p>'
+  );
+  switchLkTab('geo');
+  document.getElementById('lookupModal').classList.add('open');
+  try {
+    const d = await fetch('/api/ip-lookup?ip=' + encodeURIComponent(ip)).then(r => r.json());
+    if (d.error) {
+      ['geo','dns','security','whois'].forEach(t =>
+        document.getElementById('lk-' + t).innerHTML = '<p style="color:#f85149">Error: ' + d.error + '</p>'
+      );
+      return;
+    }
+    // GeoIP
+    const g = d.geo || {};
+    document.getElementById('lk-geo').innerHTML =
+      _lkRow('Country', g.country_code ? g.country + ' (' + g.country_code + ')' : g.country) +
+      _lkRow('City', g.city) +
+      _lkRow('Region', g.region) +
+      _lkRow('Coordinates', g.lat && g.lon ? g.lat + ', ' + g.lon : '') +
+      _lkRow('Timezone', g.timezone) +
+      _lkRow('Org / ISP', g.org);
+    // DNS
+    const dns = d.dns || {};
+    document.getElementById('lk-dns').innerHTML =
+      _lkRow('Reverse DNS (PTR)', dns.ptr) +
+      _lkRow('Forward (A)', dns.forward);
+    // Security
+    const sec = d.security || {};
+    const lvl = sec.threat_level || 'UNKNOWN';
+    let secHtml = _lkRow('Private IP', sec.is_private ? 'Yes (LAN)' : 'No (Public)') +
+      _lkRow('Tor Exit Node', sec.is_tor_exit ? '⚠ YES' : 'No') +
+      _lkRow('Threat Level', '<span class="lk-badge ' + lvl + '">' + lvl + '</span>') +
+      _lkRow('Total Alerts', sec.alert_count);
+    if (sec.alert_types && sec.alert_types.length) {
+      secHtml += '<div style="margin-top:10px;font-size:12px;color:var(--muted)">Alert breakdown:</div>';
+      sec.alert_types.forEach(a => {
+        secHtml += _lkRow(a.type, '<span class="lk-badge ' + a.level + '">' + a.level + '</span> &times;' + a.count);
+      });
+    }
+    document.getElementById('lk-security').innerHTML = secHtml;
+    // WHOIS
+    const w = d.whois || {};
+    const parsed = w.parsed || {};
+    let whoisHtml = Object.entries(parsed).map(([k,v]) => _lkRow(k, v)).join('');
+    if (w.raw) whoisHtml += '<div class="lk-pre">' + w.raw.replace(/</g,'&lt;') + '</div>';
+    document.getElementById('lk-whois').innerHTML = whoisHtml || '<p style="color:var(--muted)">No data</p>';
+  } catch(err) {
+    document.getElementById('lk-geo').innerHTML = '<p style="color:#f85149">Error: ' + err.message + '</p>';
+  }
+}
+
+async function exportCSV() {
+  try {
+    const resp = await fetch('/api/events?offset=0&limit=1000' + _buildFilterParams()).then(r => r.json());
+    const allEvts = resp.events || resp;
+    const cols = ['id','timestamp','alert_type','level','src_ip','dst_ip','description'];
+    const csv  = [cols.join(',')].concat(
+      allEvts.map(e => cols.map(c => {
+        const v = c === 'timestamp' ? fmtTime(e[c]) : (e[c] ?? '');
+        return '"' + String(v).replace(/"/g,'""') + '"';
+      }).join(','))
+    ).join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'netwatchm-events.csv';
+    a.click();
+  } catch(e) { showToast('CSV export failed: ' + e, false); }
+}
+
+
+function resetCountdown() {
+  _countdown = 15;
+  document.getElementById('countdown').textContent = '';
+}
+
+function tickCountdown() {
+  if (!document.getElementById('autoRefresh').checked) {
+    document.getElementById('countdown').textContent = '';
+    return;
+  }
+  _countdown--;
+  if (_countdown <= 0) {
+    loadEvents();
+  } else {
+    document.getElementById('countdown').textContent = 'Next refresh in ' + _countdown + 's';
+  }
+}
+
+document.getElementById('autoRefresh').addEventListener('change', function() {
+  if (this.checked) { resetCountdown(); }
+  else { document.getElementById('countdown').textContent = ''; }
+});
+
+// Pre-fill search from ?ip=, ?search=, or ?q= URL param (e.g. from Grafana data links)
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const ip = p.get('ip') || p.get('search') || p.get('q');
+  if (ip) document.getElementById('search').value = ip;
+})();
+
+setInterval(tickCountdown, 1000);
+_initRole().then(() => loadSuppressed());
+loadEvents();
+</script>
+</body>
+</html>

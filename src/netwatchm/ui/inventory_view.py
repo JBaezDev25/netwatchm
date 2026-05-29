@@ -15,6 +15,7 @@ from rich.text import Text
 from ..inventory.exporter import _load_aliases, export_inventory
 from ..inventory.store import DeviceStore
 from ..models import DeviceRecord, ThreatLevel
+from ..util import format_bytes
 
 _LEVEL_STYLE = {
     ThreatLevel.LOW: "green",
@@ -165,8 +166,4 @@ class InventoryView:
 
 
 def _fmt_bytes(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024:
-            return f"{n:.0f} {unit}"
-        n //= 1024
-    return f"{n:.0f} TB"
+    return format_bytes(n, precision=0)

@@ -7,7 +7,8 @@ from collections import defaultdict, deque
 
 from ..config import DataHogConfig
 from ..models import Alert, Packet, ThreatLevel
-from .base import Detector
+from ..util import format_bytes
+from .base import Detector, trim_pairs
 
 log = logging.getLogger("netwatchm.data_hog")
 
@@ -23,11 +24,7 @@ def _is_local(ip: str) -> bool:
 
 
 def _fmt_bytes(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024:
-            return f"{n:.1f} {unit}"
-        n //= 1024
-    return f"{n:.1f} PB"
+    return format_bytes(n, units=("B", "KB", "MB", "GB", "TB"), overflow="PB")
 
 
 class DataHogDetector(Detector):
@@ -50,9 +47,7 @@ class DataHogDetector(Detector):
     # ------------------------------------------------------------------
 
     def _trim(self, dq: deque[tuple[float, int]], now: float) -> None:
-        cutoff = now - self._config.window_seconds
-        while dq and dq[0][0] < cutoff:
-            dq.popleft()
+        trim_pairs(dq, now - self._config.window_seconds)
 
     def _check_ip(self, ip: str, length: int, now: float, packet: Packet) -> Alert | None:
         """Accumulate bytes for ``ip`` and return an alert if threshold crossed."""

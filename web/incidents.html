@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Incident Response</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb;--purple:#bc8cff}
+  [data-theme="light"]{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#1f2328;--muted:#6e7781;--blue:#0969da;--green:#1a7f37;--yellow:#9a6700;--red:#cf222e;--accent:#0550ae;--purple:#8250df}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;color:var(--blue)}
+  nav{display:flex;gap:16px;align-items:center;margin-left:auto}
+  nav a{color:var(--muted);font-size:13px;text-decoration:none}
+  nav a:hover{color:var(--text)}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--surface)}
+  input[type=search],input[type=password],select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px}
+  input[type=search]{width:240px}
+  input:focus,select:focus{outline:none;border-color:var(--blue)}
+  .btn{background:var(--accent);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+  .btn:hover{opacity:.85}
+  .count{color:var(--muted);font-size:12px;margin-left:auto}
+  .tbl-wrap{overflow-x:auto;padding:0 20px 20px}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  tbody tr.main{border-bottom:1px solid rgba(48,54,61,.5);cursor:pointer}
+  tbody tr.main:hover{background:rgba(255,255,255,.02)}
+  td{padding:7px 10px;vertical-align:middle}
+  .mono{font-family:monospace;font-size:11px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .v-malicious{background:rgba(248,81,73,.18);color:var(--red)}
+  .v-suspicious{background:rgba(210,153,34,.18);color:var(--yellow)}
+  .v-benign{background:rgba(63,185,80,.15);color:var(--green)}
+  .v-unknown{background:rgba(139,148,158,.18);color:var(--muted)}
+  .lvl-CRITICAL{color:var(--red);font-weight:700}
+  .lvl-HIGH{color:var(--red)}
+  .lvl-MEDIUM{color:var(--yellow)}
+  .lvl-LOW{color:var(--green)}
+  .st{font-size:11px}
+  .detail{background:rgba(255,255,255,.02)}
+  .detail td{padding:14px 20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .card h4{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;letter-spacing:.05em}
+  .card .kv{display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:11px}
+  .card .kv span:first-child{color:var(--muted)}
+  .pcap-link{color:var(--blue);text-decoration:none}
+  .pcap-link:hover{text-decoration:underline}
+  .empty{text-align:center;padding:60px;color:var(--muted)}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:#000;padding:8px 16px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1}
+  .actions a,.actions button{margin-right:6px}
+  .small{font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128737; Incident Response</h1>
+  <nav>
+    <a href="/events.html">&#8592; Events</a>
+    <a href="/inventory.html">Inventory</a>
+    <a href="/connection-report.html">Report</a>
+    <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/firewall.html">&#128737; Firewall</a>
+    <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
+    <button class="btn" id="themeBtn" onclick="toggleTheme()" style="background:var(--surface);color:var(--muted);border:1px solid var(--border);padding:4px 10px">&#9788; Light</button>
+  </nav>
+</header>
+<div class="toolbar">
+  <input type="search" id="searchBox" placeholder="Search IP, type, verdict…">
+  <select id="statusFilter">
+    <option value="">All statuses</option>
+    <option value="open">Open</option>
+    <option value="reviewed">Reviewed</option>
+    <option value="false_positive">False positive</option>
+  </select>
+  <input type="password" id="adminTok" placeholder="Admin token (to change status)" style="width:200px">
+  <span class="count" id="countLabel">—</span>
+</div>
+<div class="tbl-wrap">
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th style="width:130px">Time</th>
+        <th>Type</th>
+        <th>Level</th>
+        <th>Source</th>
+        <th>Destination</th>
+        <th>Verdict</th>
+        <th>Intel</th>
+        <th>PCAP</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="emptyState" style="display:none">No incidents yet.<br><span class="small" style="margin-top:6px;display:block">Cases open automatically when an alert at/above the configured level fires (forensics must be enabled).</span></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let _rows = [];
+let _open = null;
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg, ok=true){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.style.background=ok?'#3fb950':'#f85149';
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200);
+}
+function fmtTime(epoch){ if(!epoch) return '—'; const d=new Date(epoch*1000); return isNaN(d)?'—':d.toLocaleString(); }
+function fmtBytes(n){ if(!n) return '—'; const u=['B','KB','MB','GB']; let i=0,v=n; while(v>=1024&&i<u.length-1){v/=1024;i++;} return v.toFixed(i?1:0)+' '+u[i]; }
+function vClass(v){ return 'v-'+(v||'unknown'); }
+
+async function load(){
+  const status = document.getElementById('statusFilter').value;
+  const url = '/api/incidents' + (status ? ('?status='+encodeURIComponent(status)) : '');
+  const r = await fetch(url).then(r=>r.json()).catch(()=>({}));
+  _rows = Array.isArray(r.incidents) ? r.incidents : [];
+  render();
+}
+
+function render(){
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  const filtered = q ? _rows.filter(r =>
+    (r.src_ip||'').includes(q) || (r.dst_ip||'').includes(q) ||
+    (r.alert_type||'').toLowerCase().includes(q) ||
+    (r.verdict||'').toLowerCase().includes(q) ||
+    (r.description||'').toLowerCase().includes(q)
+  ) : _rows;
+  document.getElementById('countLabel').textContent = filtered.length + ' incident' + (filtered.length!==1?'s':'');
+  document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
+  document.getElementById('tbl').style.display = filtered.length ? '' : 'none';
+  const tb = document.getElementById('tbody');
+  tb.innerHTML = filtered.map(r => rowHTML(r)).join('');
+}
+
+function rowHTML(r){
+  const pcap = r.pcap_bytes
+    ? `<a class="pcap-link" href="/api/incidents/${r.id}/pcap" onclick="event.stopPropagation()">&#11015; ${fmtBytes(r.pcap_bytes)}</a>`
+    : '<span class="small">none</span>';
+  const sel = ['open','reviewed','false_positive'].map(s =>
+    `<option value="${s}" ${r.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('');
+  let detail = '';
+  if(_open === r.id){
+    detail = `<tr class="detail"><td colspan="9">${detailHTML(r)}</td></tr>`;
+  }
+  return `<tr class="main" onclick="toggle(${r.id})">
+    <td class="small">${fmtTime(r.created_at)}</td>
+    <td>${esc(r.alert_type)}</td>
+    <td class="lvl-${esc(r.level)}">${esc(r.level)}</td>
+    <td class="mono">${esc(r.src_ip)||'—'}</td>
+    <td class="mono">${esc(r.dst_ip)||'—'}</td>
+    <td><span class="badge ${vClass(r.verdict)}">${esc(r.verdict)}${r.score?(' '+r.score):''}</span></td>
+    <td class="small">${esc(r.intel_summary)||'—'}</td>
+    <td>${pcap}</td>
+    <td onclick="event.stopPropagation()"><select class="st" onchange="setStatus(${r.id}, this.value)">${sel}</select></td>
+  </tr>${detail}`;
+}
+
+function detailHTML(r){
+  const intel = r.intel || {};
+  const providers = intel.providers || {};
+  let cards = '';
+  for(const [name, data] of Object.entries(providers)){
+    let kv = '';
+    for(const [k,v] of Object.entries(data)){
+      kv += `<div class="kv"><span>${esc(k)}</span><span>${esc(typeof v==='object'?JSON.stringify(v):v)}</span></div>`;
+    }
+    cards += `<div class="card"><h4>${esc(name)}</h4>${kv||'<span class="small">no data</span>'}</div>`;
+  }
+  const geo = [intel.geo_city, intel.geo_country].filter(Boolean).join(', ');
+  const geoCard = `<div class="card"><h4>GeoIP</h4>
+    <div class="kv"><span>location</span><span>${esc(geo)||'—'}</span></div>
+    <div class="kv"><span>ASN</span><span>${esc(intel.geo_asn)||'—'}</span></div>
+    <div class="kv"><span>private</span><span>${intel.is_private?'yes':'no'}</span></div></div>`;
+  const ip = intel.ip || r.dst_ip || r.src_ip || '';
+  const links = `<div class="actions" style="margin-top:12px">
+    <a class="btn" href="/events.html?q=${encodeURIComponent(ip)}" target="_blank" style="text-decoration:none">&#9888; Events for ${esc(ip)}</a>
+    <a class="btn" href="/deep-inspect-web.html?ip=${encodeURIComponent(ip)}" target="_blank" style="text-decoration:none;background:var(--surface);color:var(--text);border:1px solid var(--border)">&#128269; Deep Inspect</a>
+  </div>`;
+  return `<div style="margin-bottom:10px">${esc(r.description)}</div>
+    <div class="grid">${geoCard}${cards}</div>${links}`;
+}
+
+function toggle(id){ _open = (_open===id ? null : id); render(); }
+
+async function setStatus(id, status){
+  const tok = document.getElementById('adminTok').value.trim();
+  if(!tok){ toast('Admin token required to change status', false); return; }
+  const r = await fetch('/api/incidents/'+id+'/status', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Admin-Token':tok},
+    body:JSON.stringify({status})
+  }).then(r=>r.json()).catch(()=>({}));
+  if(r.ok){
+    const row=_rows.find(x=>x.id===id); if(row) row.status=status;
+    toast('Status → '+status.replace('_',' '));
+  } else { toast(r.error||'Failed', false); load(); }
+}
+
+document.getElementById('searchBox').addEventListener('input', render);
+document.getElementById('statusFilter').addEventListener('change', load);
+
+const _q = new URLSearchParams(location.search).get('ip') || new URLSearchParams(location.search).get('q');
+if(_q){ document.getElementById('searchBox').value = _q; }
+
+load();
+setInterval(load, 20000);
+
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  const nxt=cur==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme',nxt);
+  document.getElementById('themeBtn').textContent=nxt==='light'?'☀ Dark':'☀ Light';
+  try{localStorage.setItem('nwm-theme',nxt);}catch(_){}
+}
+(function(){try{const t=localStorage.getItem('nwm-theme');if(t){document.documentElement.setAttribute('data-theme',t);if(t==='light'){const b=document.getElementById('themeBtn');if(b)b.textContent='☀ Dark';}}}catch(_){}})();
+</script>
+</body>
+</html>

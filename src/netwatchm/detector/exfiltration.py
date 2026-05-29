@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 
 from ..config import ExfiltrationThreshold
 from ..models import Alert, Packet, ThreatLevel
-from .base import Detector
+from .base import Detector, trim_pairs
 
 
 class ExfiltrationDetector(Detector):
@@ -77,6 +77,4 @@ class ExfiltrationDetector(Detector):
                 self._alerted.discard(key)
 
     def _trim(self, dq: deque[tuple[float, int]], now: float) -> None:
-        cutoff = now - self._threshold.window_seconds
-        while dq and dq[0][0] < cutoff:
-            dq.popleft()
+        trim_pairs(dq, now - self._threshold.window_seconds)

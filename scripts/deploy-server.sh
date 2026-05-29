@@ -53,9 +53,11 @@ echo "[2/5] Installing netwatchm package into system venv…"
 sudo "$SYSTEM_VENV/bin/pip" uninstall -y netwatchm --quiet 2>/dev/null || true
 sudo "$SYSTEM_VENV/bin/pip" install "$REPO" --quiet
 
-# --- Step 3: Copy server source ---
-echo "[3/5] Copying netwatchm_server.py…"
+# --- Step 3: Copy server source + portal templates ---
+echo "[3/5] Copying netwatchm_server.py + web/ templates…"
 sudo cp "$REPO/netwatchm_server.py" /usr/local/lib/netwatchm/netwatchm_server.py
+sudo mkdir -p /usr/local/lib/netwatchm/web
+sudo cp "$REPO"/web/*.html /usr/local/lib/netwatchm/web/
 
 # --- Step 4: Write wrapper pointing at system venv ---
 echo "[4/5] Writing /usr/local/bin/netwatchm-server wrapper…"

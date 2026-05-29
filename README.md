@@ -30,6 +30,24 @@ NetWatchM watches every packet on your network interface and alerts you in real 
 Alerts are delivered via: terminal, rotating log file, sound (beep), Gmail email, and **ntfy push notifications** (Android/iOS).  
 All alert notifications use **plain-English descriptions** — no raw alert codes.
 
+### Incident Response (forensics + threat-intel enrichment)
+
+When `alerts.forensics.enabled: true`, an alert at/above the configured level
+(default `HIGH`) automatically opens an **incident case**:
+
+- a **short-burst pcap** of the offending IP is captured for evidence (bounded by
+  duration and packet count) — downloadable from the portal,
+- the external IP is **enriched against GreyNoise, AbuseIPDB, VirusTotal** and the
+  local GeoLite2 DB, folded into a single verdict (`malicious` / `suspicious` /
+  `benign`) + score,
+- the case lands in **`/incidents.html`** with a status workflow
+  (open → reviewed / false positive).
+
+Capture + lookups run off the alert path (per-IP cooldown), so detection is never
+blocked. Threat-intel API keys come from env vars only —
+`NETWATCHM_ABUSEIPDB_KEY`, `NETWATCHM_VT_KEY`, `NETWATCHM_GREYNOISE_KEY`
+(GreyNoise community works with no key).
+
 ---
 
 ## Quick Start
@@ -63,6 +81,7 @@ https://netwatch.local:8765/events.html
 | Page | URL | Description |
 |------|-----|-------------|
 | Events | `/events.html` | Live security alert feed — search, filter, export CSV |
+| Incidents | `/incidents.html` | Auto incident cases — pcap evidence + threat-intel verdict, status workflow |
 | Inventory | `/inventory.html` | All discovered devices — friendly names, nmap scan, verify |
 | Analytics | `/analytics.html` | Flow data charts — device traffic, destinations, protocols, hourly |
 | Connection Report | `/connection-report.html` | Per-flow breakdown with GeoIP, risk scoring, deep inspect |
@@ -288,11 +307,13 @@ Network Interface
 
 netwatchm_server.py (port 8765, TLS)
   ├── /events.html       — live SPA (SQLite events.db)
+  ├── /incidents.html    — incident cases SPA (SQLite forensics.db)
   ├── /inventory.html    — device SPA (inventory.json + aliases.json)
   ├── /history.html      — flow history SPA (flow-history.db)
   ├── /pcap.html         — pcap upload analyzer
   ├── /ai.html           — AI chat UI (OpenAI gpt-4o-mini)
   ├── /api/ai            — AI query endpoint
+  ├── /api/incidents     — incident cases list / detail / pcap download / status
   ├── /api/deep-inspect  — async GeoIP + nmap + SSH/SMB/HTTP inspection
   ├── /api/analytics     — async Chart.js analytics page generator
   ├── /api/aliases       — friendly device names CRUD
@@ -320,15 +341,19 @@ netwatchm/
 │   │                        # data_hog, adult_domain, tracker_domain, tor_exit,
 │   │                        # malware_domain, dns_tunneling, beaconing
 │   ├── alerts/              # terminal, logfile, sound, email_alert, ntfy_alert,
+│   │                        # forensic_handler (incident cases),
 │   │                        # alert_labels (plain-English titles + summaries)
+│   ├── enrich/             # reputation (GreyNoise/AbuseIPDB/VirusTotal + GeoIP)
+│   ├── forensics/          # store (incidents.db), capture (short-burst pcap)
 │   ├── inventory/           # store, resolver, exporter, arp_scanner,
 │   │                        # oui_lookup (IEEE MAC vendor database)
 │   ├── reports/             # connection_report, analytics_report, deep_inspect,
 │   │                        # flow_store, flow_history
 │   ├── ui/                  # dashboard, inventory_view, input_handler
+│   ├── util.py              # shared helpers (format_bytes)
 │   └── service/             # linux.py (systemd), windows.py (pywin32)
 ├── scripts/
-│   ├── hotdeploy.sh             # Fast deploy: copy server + ai.html + restart
+│   ├── hotdeploy.sh             # Fast deploy: copy server + web/ + ai.html + restart
 │   ├── deploy-server.sh         # Full deploy: system venv + server + restart
 │   ├── harden-service-user.sh   # Switch netwatchm-web to dedicated non-root user
 │   ├── update-oui-db.sh         # Download IEEE OUI registry → oui.json
@@ -343,6 +368,7 @@ netwatchm/
 │   └── install.ps1          # Windows installer (GUI progress, upgrade/uninstall)
 ├── tests/                   # 174 pytest tests (all passing)
 ├── ai.html                  # AI Chat web UI
+├── web/                      # static portal SPAs (events, inventory, history, pcap)
 ├── netwatchm_server.py      # Combined HTTPS server (8765) + Grafana API (8766)
 ├── netwatchm.yaml.example   # Annotated config template
 └── install.sh               # Linux one-shot installer

@@ -161,6 +161,40 @@ class EventStoreConfig:
 
 
 @dataclass
+class ForensicsConfig:
+    """Automatic incident forensics + threat-intel enrichment.
+
+    When an alert at or above ``min_level`` fires, the ForensicHandler opens
+    an incident case: a short bounded tshark capture of the offending IP is
+    saved as a pcap, external IPs are enriched against GreyNoise / AbuseIPDB /
+    VirusTotal (and the local GeoLite2 DB), and the result is written to
+    ``forensics.db`` for the /incidents.html portal.
+
+    API keys are NEVER read from YAML — they come from env vars:
+    NETWATCHM_ABUSEIPDB_KEY, NETWATCHM_VT_KEY, NETWATCHM_GREYNOISE_KEY.
+    """
+    enabled: bool = False
+    min_level: str = "HIGH"
+    cooldown_seconds: int = 600          # per-IP cooldown between cases
+    capture_enabled: bool = True
+    capture_seconds: int = 10            # short-burst pcap duration
+    capture_interface: str = "auto"      # "auto" = reuse monitor interface
+    capture_dir: str = "/var/lib/netwatchm/forensics"
+    db_path: str = "/var/lib/netwatchm/forensics.db"
+    retention_days: int = 15
+    # Threat-intel providers (keys via env vars). GreyNoise community needs
+    # no key; AbuseIPDB and VirusTotal are skipped unless their key is set.
+    intel_enabled: bool = True
+    greynoise: bool = True
+    abuseipdb: bool = True
+    virustotal: bool = True
+    abuseipdb_key: str = ""              # from NETWATCHM_ABUSEIPDB_KEY
+    virustotal_key: str = ""            # from NETWATCHM_VT_KEY
+    greynoise_key: str = ""            # from NETWATCHM_GREYNOISE_KEY (optional)
+    intel_timeout: int = 8
+
+
+@dataclass
 class AlertsConfig:
     terminal: bool = True
     log: LogAlertConfig = field(default_factory=LogAlertConfig)
@@ -168,6 +202,7 @@ class AlertsConfig:
     email: EmailAlertConfig = field(default_factory=EmailAlertConfig)
     ntfy: NtfyAlertConfig = field(default_factory=NtfyAlertConfig)
     event_store: EventStoreConfig = field(default_factory=EventStoreConfig)
+    forensics: ForensicsConfig = field(default_factory=ForensicsConfig)
 
 
 @dataclass
@@ -273,6 +308,10 @@ class Config:
         env_token = os.environ.get("NETWATCHM_NTFY_TOKEN", "")
         if env_token:
             self.alerts.ntfy.token = env_token
+        # Threat-intel API keys: env vars only, never from YAML
+        self.alerts.forensics.abuseipdb_key = os.environ.get("NETWATCHM_ABUSEIPDB_KEY", "")
+        self.alerts.forensics.virustotal_key = os.environ.get("NETWATCHM_VT_KEY", "")
+        self.alerts.forensics.greynoise_key = os.environ.get("NETWATCHM_GREYNOISE_KEY", "")
 
 
 def _merge(base: Any, override: Any) -> Any:
@@ -319,6 +358,7 @@ def load_config(path: str | Path | None = None) -> Config:
     email_raw = alerts_raw.get("email", {})
     ntfy_raw = alerts_raw.get("ntfy", {})
     es_raw = alerts_raw.get("event_store", {})
+    fx_raw = alerts_raw.get("forensics", {})
 
     inv_raw = raw.get("inventory", {})
 
@@ -425,6 +465,22 @@ def load_config(path: str | Path | None = None) -> Config:
             ),
             event_store=EventStoreConfig(
                 retention_hours=es_raw.get("retention_hours", 360),
+            ),
+            forensics=ForensicsConfig(
+                enabled=fx_raw.get("enabled", False),
+                min_level=fx_raw.get("min_level", "HIGH"),
+                cooldown_seconds=fx_raw.get("cooldown_seconds", 600),
+                capture_enabled=fx_raw.get("capture_enabled", True),
+                capture_seconds=fx_raw.get("capture_seconds", 10),
+                capture_interface=fx_raw.get("capture_interface", "auto"),
+                capture_dir=fx_raw.get("capture_dir", "/var/lib/netwatchm/forensics"),
+                db_path=fx_raw.get("db_path", "/var/lib/netwatchm/forensics.db"),
+                retention_days=fx_raw.get("retention_days", 15),
+                intel_enabled=fx_raw.get("intel_enabled", True),
+                greynoise=fx_raw.get("greynoise", True),
+                abuseipdb=fx_raw.get("abuseipdb", True),
+                virustotal=fx_raw.get("virustotal", True),
+                intel_timeout=fx_raw.get("intel_timeout", 8),
             ),
         ),
         inventory=InventoryConfig(

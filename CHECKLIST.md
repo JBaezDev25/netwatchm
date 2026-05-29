@@ -1,6 +1,137 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-24 (session 30)
+Last updated: 2026-05-28 (session 32)
+
+## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
+
+### Backend — auto incident cases on alert
+- [x] `src/netwatchm/config.py` — new `ForensicsConfig` dataclass (enabled,
+      min_level, cooldown_seconds, capture_*, db_path, retention_days, intel
+      provider flags + timeout). Added `forensics:` parsing under `alerts:` and
+      `forensics` field on `AlertsConfig`. API keys loaded from env vars ONLY in
+      `Config.__post_init__` (`NETWATCHM_ABUSEIPDB_KEY`, `NETWATCHM_VT_KEY`,
+      `NETWATCHM_GREYNOISE_KEY`) — never from YAML.
+- [x] `src/netwatchm/enrich/reputation.py` — threat-intel clients (GreyNoise
+      community [no key], AbuseIPDB, VirusTotal) + local GeoLite2 lookup; folds
+      per-provider signals into one verdict (malicious/suspicious/benign/unknown)
+      + 0-100 score. Dependency-light (urllib); every call best-effort. Private
+      IPs short-circuit to benign.
+- [x] `src/netwatchm/forensics/store.py` — `IncidentStore` (SQLite `forensics.db`,
+      15-day retention): insert case, update_artifacts (verdict/pcap), set_status
+      (open/reviewed/false_positive), query/get with status+ip filters.
+- [x] `src/netwatchm/forensics/capture.py` — short-burst `tshark` capture filtered
+      to the offending IP, bounded by duration AND packet count; returns
+      (path, bytes). Empty captures cleaned up.
+- [x] `src/netwatchm/alerts/forensic_handler.py` — `ForensicHandler` AlertHandler:
+      min_level + per-IP cooldown gate → insert case immediately → background task
+      runs pcap capture + reputation enrichment off the event loop → folds
+      artifacts back into the case. Picks the external IP (dst preferred, src
+      fallback for inbound scans).
+- [x] `src/netwatchm/__main__.py` — registers `ForensicHandler` in `handlers[]`
+      when `config.alerts.forensics.enabled`, passing the monitor interface.
+
+### Web UI — /incidents.html portal
+- [x] `web/incidents.html` — SPA: incident table (time, type, level, src/dst,
+      verdict badge, intel summary, pcap download, status dropdown), expandable
+      rows with per-provider GeoIP/intel cards + Events/Deep-Inspect links,
+      search + status filter, 20s auto-refresh, theme toggle. `?ip=`/`?q=`
+      pre-fills search.
+- [x] `netwatchm_server.py` — `FORENSICS_DB` const (env `NETWATCHM_FORENSICS_DB`);
+      helpers `_query_incidents` / `_get_incident` / `_set_incident_status`;
+      routes `GET /incidents.html`, `GET /api/incidents`, `GET /api/incidents/{id}`,
+      `GET /api/incidents/{id}/pcap` (serves only the DB-recorded path — no
+      traversal), `POST /api/incidents/{id}/status` (admin-token gated).
+- [x] `web/events.html` — added "Incidents" nav link.
+
+### Agent revert cleanup (helper)
+- [x] `scripts/restart-agent-service.sh` — restarts `netwatchm` and greps the
+      journal to confirm the agent loop came up on `model=mistral:latest` (picks
+      up the reverted Ollama code). Awaiting manual run by operator.
+- [ ] **Run** `bash scripts/restart-agent-service.sh` to apply the revert (sudo).
+- [ ] **Revoke** the exposed Anthropic key `sk-ant-api03-lntT…` (line 4 of
+      `~/ai-projects/uigen/.env`) at console.anthropic.com — console-only action.
+
+### Agent model switch → qwen2.5-coder:7b
+- [x] `scripts/apply-agent-model.sh` — sets live `agent.model: qwen2.5-coder:7b`
+      (+ explicit `ollama_base_url`) from staged `/tmp/netwatchm.yaml`; verifies
+      the model exists in Ollama, backs up the live config (timestamped), copies,
+      restarts `netwatchm`, and prints the rollback command. Local Ollama — no
+      API key. Awaiting manual run by operator.
+- [x] `scripts/apply-agent-model.sh` — backup switched to a **fixed** `.bak` path
+      (was timestamped) so the sudoers rule is exact — sudoers `*` matches `/`, so
+      a wildcarded backup dest would be a path-escape escalation.
+- [x] `scripts/setup-sudoers.sh` — extended with 3 wildcard-free NOPASSWD rules
+      for `apply-agent-model.sh`: `cp -a …yaml …yaml.bak`, `cp /tmp/netwatchm.yaml
+      …yaml`, `journalctl -u netwatchm *` (restart `netwatchm` already granted).
+      Validated with `visudo -cf`.
+- [x] Re-ran `sudo bash scripts/setup-sudoers.sh` (rules installed) and applied
+      the switch — journal confirms `agent loop starting (model=qwen2.5-coder:7b,
+      mode=digest, run_mode=dry_run, executor=off)`. Backup at
+      `/etc/netwatchm/netwatchm.yaml.bak`.
+
+### Config + tests + docs
+- [x] `netwatchm.yaml.example` — documented `alerts.forensics` block.
+- [x] `tests/test_forensics.py` — 12 tests (store CRUD/status/filters, verdict
+      folding, intel-disabled path, handler gating/cooldown/target selection).
+      Full suite: **332 passed**.
+
+## Session 31 — 2026-05-24 — Behavior-preserving refactor
+
+## Session 31 — 2026-05-24 — Behavior-preserving refactor
+
+### Extract static portal HTML out of netwatchm_server.py
+
+- [x] `netwatchm_server.py` shrank from **5407 → ~3580 lines**. The four static
+      SPA generators (`_render_events_html`, `_render_inventory_html`,
+      `_render_history_html`, `_render_pcap_html`) were ~1900 lines of inline
+      HTML returned verbatim. Extracted their **evaluated** string values (via
+      AST, to preserve escape processing in the non-raw `"""` events/inventory
+      strings) into `web/events.html`, `web/inventory.html`, `web/history.html`,
+      `web/pcap.html` — byte-identical to the old output.
+- [x] Added `WEB_DIR` (defaults to `Path(__file__).parent/"web"`, override via
+      `NETWATCHM_WEB_DIR`) and a `Handler._send_static_page()` helper; the four
+      `do_GET` routes now serve from disk with the same no-cache headers.
+- [x] `scripts/hotdeploy.sh` + `scripts/deploy-server.sh` — now also copy
+      `web/*.html` to `/usr/local/lib/netwatchm/web/` (where `WEB_DIR` resolves
+      in production). **Both must run after this change or the portals 404.**
+
+### Consolidate detector duplication
+
+- [x] `detector/base.py` — added `RemoteListDetector` (shared lifecycle: initial
+      fetch, daemon refresh loop, per-key dedup `_should_alert`, `flush_expired`)
+      and `DomainListDetector` (hosts-file `_parse` + DNS/SNI match `process`,
+      parameterized by `alert_type`/`level`/`description_prefix`). Also added a
+      `trim_pairs()` helper for sliding-window `(ts, value)` deques.
+- [x] `adult_domain.py`, `tracker_domain.py` now ~30-line subclasses of
+      `DomainListDetector`; `malware_domain.py` likewise but overrides `_parse`
+      (bare-domain fallback). `tor_exit.py` extends `RemoteListDetector` with its
+      own IP-match `process`. Net: ~270 lines of duplicated refresh/dedup logic
+      removed. Test-facing kwargs (`domain_set=`, `exit_ips=`) and the `_alerted`
+      attribute preserved.
+- [x] `port_scan.py`, `exfiltration.py`, `data_hog.py` `_trim` now delegate to
+      `trim_pairs()`. Left `brute_force._trim` (bare-float deque, different shape)
+      and each detector's `_is_local` as-is — `_is_local` differs semantically
+      (configurable `_local_nets` vs fixed prefix tuple), so unifying it would
+      change behavior. All 320 tests still pass.
+
+### Consolidate _fmt_bytes (6 near-duplicate copies)
+
+- [x] `src/netwatchm/util.py` — **new**: single `format_bytes(n, *, precision,
+      units, overflow, float_div)` helper. The six copies differed in precision
+      (`.0f`/`.1f`), unit ceiling (TB vs PB), and the server used **float**
+      division (`1.5 KB`) while package copies floored (`1.0 KB`) — all captured
+      by params.
+- [x] `data_hog.py`, `ui/inventory_view.py`, `__main__.py`,
+      `reports/connection_report.py`, and `netwatchm_server.py` (lazy import to
+      keep the standalone server's no-startup-dependency pattern) now delegate to
+      `format_bytes`. Verified byte-identical to each original across a wide value
+      range. Left `reports/analytics_report.py` as-is — its per-unit integer
+      special-case (`f"{b} B"`) doesn't fit the uniform helper.
+
+### Documentation
+
+- [x] `README.md` — Project Structure now lists `src/netwatchm/util.py` and the
+      `web/` portal directory; `hotdeploy.sh` blurb notes it also copies `web/`.
 
 ## Session 30 — 2026-05-24
 

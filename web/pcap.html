@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — Pcap Analyzer</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb;--purple:#bc8cff;--nintendored:#e4000f}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;color:var(--blue)}
+  nav{display:flex;gap:16px;align-items:center;margin-left:auto}
+  nav a{color:var(--muted);font-size:13px;text-decoration:none}
+  nav a:hover{color:var(--text)}
+  .main{max-width:1200px;margin:0 auto;padding:24px 20px}
+  /* drop zone */
+  .dropzone{border:2px dashed var(--border);border-radius:10px;padding:50px 30px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:28px}
+  .dropzone.over{border-color:var(--blue);background:rgba(88,166,255,.06)}
+  .dropzone h2{font-size:16px;font-weight:500;color:var(--muted);margin-bottom:8px}
+  .dropzone p{color:var(--muted);font-size:12px}
+  .dropzone input{display:none}
+  .btn{background:var(--accent);color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:13px}
+  .btn:hover{opacity:.85}
+  .btn.sec{background:var(--surface);border:1px solid var(--border);color:var(--text)}
+  /* progress */
+  .progress{display:none;text-align:center;padding:30px;color:var(--muted)}
+  .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* sections */
+  section{margin-bottom:32px}
+  section h2{font-size:14px;font-weight:600;color:var(--blue);border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:14px}
+  /* summary cards */
+  .cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:0}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 20px;min-width:150px;flex:1}
+  .card .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+  .card .value{font-size:22px;font-weight:700;color:var(--text)}
+  .card .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  /* tables */
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  tbody tr{border-bottom:1px solid rgba(48,54,61,.6)}
+  tbody tr:hover{background:rgba(255,255,255,.02)}
+  td{padding:7px 10px;vertical-align:middle}
+  .mono{font-family:monospace;font-size:11px}
+  .tag{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;display:inline-block;white-space:nowrap}
+  .tag.nintendo{background:rgba(228,0,15,.15);color:var(--nintendored)}
+  .tag.open{background:rgba(63,185,80,.15);color:var(--green)}
+  .tag.vendor{background:rgba(88,166,255,.12);color:var(--blue)}
+  .lat-good{color:var(--green)}
+  .lat-ok{color:var(--yellow)}
+  .lat-bad{color:var(--red)}
+  .dim{color:var(--muted)}
+  .error-box{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);border-radius:6px;padding:14px 18px;color:var(--red);margin-bottom:20px}
+  #results{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128202; Pcap Analyzer</h1>
+  <nav>
+    <a href="/inventory.html">&#8592; Inventory</a>
+    <a href="/events.html">Events</a>
+    <a href="/connection-report.html">Report</a>
+    <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/firewall.html">&#128737; Firewall</a>
+    <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
+  </nav>
+</header>
+<div class="main">
+
+  <!-- Upload area -->
+  <div class="dropzone" id="dropzone">
+    <h2>&#128229; Drop a .pcap or .pcapng file here</h2>
+    <p>or click to browse &mdash; max 200 MB</p>
+    <p style="margin-top:10px"><button class="btn" onclick="document.getElementById('fileInput').click()">Choose File</button></p>
+    <input type="file" id="fileInput" accept=".pcap,.pcapng,.cap">
+  </div>
+
+  <!-- Progress -->
+  <div class="progress" id="progress">
+    <div class="spinner"></div>
+    <div id="progressMsg">Uploading…</div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-box" id="errorBox" style="display:none"></div>
+
+  <!-- Results -->
+  <div id="results">
+
+    <section>
+      <h2>&#128203; Summary</h2>
+      <div class="cards" id="summaryCards"></div>
+    </section>
+
+    <section>
+      <h2>&#128241; Devices Detected</h2>
+      <div class="tbl-wrap">
+      <table id="devTable">
+        <thead><tr>
+          <th>IP</th><th>MAC</th><th>Vendor</th>
+          <th style="text-align:right">Packets</th>
+          <th>Open Ports</th>
+        </tr></thead>
+        <tbody id="devBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="dnsSection">
+      <h2>&#127758; DNS Resolution Latency</h2>
+      <div class="tbl-wrap">
+      <table id="dnsTable">
+        <thead><tr>
+          <th>Query</th><th>Client IP</th><th>DNS Server</th>
+          <th>Resolved IP</th><th style="text-align:right">Latency</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="dnsBody"></tbody>
+      </table>
+      </div>
+      <p id="dnsEmpty" class="dim" style="display:none;padding:12px 0;font-size:12px">No DNS traffic found in this capture.</p>
+    </section>
+
+    <section id="tlsSection">
+      <h2>&#128274; TLS Handshake Latency</h2>
+      <div class="tbl-wrap">
+      <table id="tlsTable">
+        <thead><tr>
+          <th>Server / SNI</th><th>Client IP</th><th>Server IP</th>
+          <th style="text-align:right">Handshake Time</th><th></th>
+        </tr></thead>
+        <tbody id="tlsBody"></tbody>
+      </table>
+      </div>
+      <p id="tlsEmpty" class="dim" style="display:none;padding:12px 0;font-size:12px">No TLS handshakes found in this capture.</p>
+    </section>
+
+  </div><!-- /results -->
+</div><!-- /main -->
+<script>
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmtLat(ms){
+  const s=parseFloat(ms);
+  const cls=s<50?'lat-good':s<200?'lat-ok':'lat-bad';
+  return `<span class="${cls}">${s.toFixed(1)} ms</span>`;
+}
+function fmtPkts(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n);}
+
+// ── drag and drop ────────────────────────────────────────────────────────────
+const dz=document.getElementById('dropzone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');handleFile(e.dataTransfer.files[0]);});
+document.getElementById('fileInput').addEventListener('change',e=>handleFile(e.target.files[0]));
+
+// ── upload + poll ────────────────────────────────────────────────────────────
+async function handleFile(file){
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(!['pcap','pcapng','cap'].includes(ext)){showError('Please upload a .pcap or .pcapng file.');return;}
+  if(file.size>200*1024*1024){showError('File exceeds 200 MB limit.');return;}
+
+  showProgress('Uploading '+file.name+' ('+fmtMB(file.size)+')…');
+  hideResults();
+
+  let jobId;
+  try{
+    const r=await fetch('/api/pcap/upload?filename='+encodeURIComponent(file.name),{
+      method:'POST',
+      headers:{'Content-Type':'application/octet-stream'},
+      body:file
+    });
+    const j=await r.json();
+    if(!j.job_id){showError(j.error||'Upload failed');return;}
+    jobId=j.job_id;
+  }catch(e){showError('Upload error: '+e);return;}
+
+  setProgress('Analysing with tshark — this may take a moment…');
+  pollStatus(jobId);
+}
+
+function fmtMB(b){return (b/1048576).toFixed(1)+' MB';}
+
+async function pollStatus(jobId){
+  for(let i=0;i<120;i++){
+    await new Promise(r=>setTimeout(r,1500));
+    try{
+      const s=await fetch('/api/pcap/status?id='+jobId).then(r=>r.json());
+      if(s.status==='ready'){hideProgress();renderResults(s.result);return;}
+      if(s.status==='error'){showError(s.error||'Analysis failed');return;}
+    }catch(_){}
+  }
+  showError('Analysis timed out.');
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+function renderResults(r){
+  hideError();
+
+  // Summary
+  const sum=r.summary;
+  document.getElementById('summaryCards').innerHTML=`
+    <div class="card"><div class="label">File</div><div class="value" style="font-size:14px">${esc(sum.filename)}</div></div>
+    <div class="card"><div class="label">Total Packets</div><div class="value">${sum.total_packets.toLocaleString()}</div></div>
+    <div class="card"><div class="label">Duration</div><div class="value">${sum.duration_s}s</div></div>
+    <div class="card"><div class="label">Devices</div><div class="value">${r.devices.length}</div></div>
+    <div class="card"><div class="label">DNS queries</div><div class="value">${r.dns.length}</div></div>
+    <div class="card"><div class="label">TLS handshakes</div><div class="value">${r.tls.length}</div></div>
+  `;
+
+  // Devices
+  const db=document.getElementById('devBody');
+  db.innerHTML=r.devices.map(d=>{
+    const nTag=d.nintendo?`<span class="tag nintendo">Nintendo</span> `:'';
+    const vTag=d.vendor?`<span class="tag vendor">${esc(d.vendor)}</span>`:'<span class="dim">—</span>';
+    const ports=d.open_ports.length
+      ? d.open_ports.map(p=>`<span class="tag open">${esc(p)}</span>`).join(' ')
+      : '<span class="dim">none (all RST)</span>';
+    return `<tr>
+      <td class="mono">${esc(d.ip)}</td>
+      <td class="mono">${esc(d.mac)||'—'}</td>
+      <td>${nTag}${vTag}</td>
+      <td style="text-align:right">${fmtPkts(d.packet_count)}</td>
+      <td>${ports}</td>
+    </tr>`;
+  }).join('');
+
+  // DNS
+  const dnsB=document.getElementById('dnsBody');
+  if(r.dns.length===0){
+    document.getElementById('dnsEmpty').style.display='block';
+    document.getElementById('dnsTable').style.display='none';
+  } else {
+    document.getElementById('dnsEmpty').style.display='none';
+    document.getElementById('dnsTable').style.display='';
+    dnsB.innerHTML=r.dns.map(d=>{
+      const tag=d.nintendo?`<span class="tag nintendo">Nintendo</span>`:'';
+      return `<tr>
+        <td class="mono">${esc(d.query)}</td>
+        <td class="mono">${esc(d.src_ip)}</td>
+        <td class="mono">${esc(d.server_ip)}</td>
+        <td class="mono">${esc(d.resolved_ip)||'—'}</td>
+        <td style="text-align:right">${fmtLat(d.latency_ms)}</td>
+        <td>${tag}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // TLS
+  const tlsB=document.getElementById('tlsBody');
+  if(r.tls.length===0){
+    document.getElementById('tlsEmpty').style.display='block';
+    document.getElementById('tlsTable').style.display='none';
+  } else {
+    document.getElementById('tlsEmpty').style.display='none';
+    document.getElementById('tlsTable').style.display='';
+    tlsB.innerHTML=r.tls.map(t=>{
+      const tag=t.nintendo?`<span class="tag nintendo">Nintendo</span>`:'';
+      return `<tr>
+        <td class="mono">${esc(t.server_name)}</td>
+        <td class="mono">${esc(t.src_ip)}</td>
+        <td class="mono">${esc(t.dst_ip)}</td>
+        <td style="text-align:right">${fmtLat(t.latency_ms)}</td>
+        <td>${tag}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('results').style.display='block';
+}
+
+function showProgress(msg){
+  document.getElementById('dropzone').style.display='none';
+  document.getElementById('progress').style.display='block';
+  document.getElementById('progressMsg').textContent=msg;
+}
+function setProgress(msg){document.getElementById('progressMsg').textContent=msg;}
+function hideProgress(){
+  document.getElementById('progress').style.display='none';
+  document.getElementById('dropzone').style.display='block';
+}
+function showError(msg){
+  document.getElementById('errorBox').textContent=msg;
+  document.getElementById('errorBox').style.display='block';
+  hideProgress();
+}
+function hideError(){document.getElementById('errorBox').style.display='none';}
+function hideResults(){document.getElementById('results').style.display='none';}
+</script>
+</body>
+</html>
