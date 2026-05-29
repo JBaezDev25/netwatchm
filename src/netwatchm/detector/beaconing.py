@@ -43,11 +43,28 @@ class BeaconingDetector(Detector):
     def _is_local(self, ip: str) -> bool:
         return any(ip.startswith(prefix) for prefix in self._local_nets)
 
+    @staticmethod
+    def _is_non_routable(ip: str) -> bool:
+        """Multicast (224-239.x), broadcast, or link-local — never a C2 target.
+
+        IGMP (224.0.0.1/224.0.0.22) and SSDP/UPnP (239.255.255.250) are
+        inherently periodic with low jitter, so without this guard they match
+        the beacon signature and produce false HIGH alerts.
+        """
+        if ip == "255.255.255.255":
+            return True
+        if ip.startswith("169.254."):
+            return True
+        first = ip.partition(".")[0]
+        return first.isdigit() and 224 <= int(first) <= 239
+
     def process(self, packet: Packet) -> Alert | None:
         cfg = self._config
         if not cfg.enabled or not packet.src_ip or not packet.dst_ip:
             return None
         if not self._is_local(packet.src_ip) or self._is_local(packet.dst_ip):
+            return None
+        if self._is_non_routable(packet.dst_ip):
             return None
 
         key = (packet.src_ip, packet.dst_ip)

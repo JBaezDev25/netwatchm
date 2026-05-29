@@ -843,6 +843,15 @@ class TestBeaconingDetector:
         result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=self.EXTERNAL))
         assert result is None
 
+    def test_no_alert_to_multicast(self) -> None:
+        # IGMP / SSDP destinations are periodic but are not C2 beacons.
+        det = self._detector(min_contacts=6)
+        for dst in ("224.0.0.1", "224.0.0.22", "239.255.255.250", "255.255.255.255"):
+            key = (self.LOCAL, dst)
+            self._seed_contacts(det, key, count=5, interval=60.0)
+            result = det.process(make_packet(src_ip=self.LOCAL, dst_ip=dst))
+            assert result is None, f"multicast/broadcast dst {dst} should not beacon"
+
     def test_no_alert_local_to_local(self) -> None:
         det = self._detector(min_contacts=2)
         for _ in range(10):

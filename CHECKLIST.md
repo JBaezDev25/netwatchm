@@ -106,6 +106,24 @@ remaining gaps the operator asked about.
 - [ ] **Deploy** (operator): `bash scripts/deploy-server.sh` (full — grc package
       changed) to apply owned-asset scoping so 1.1 reflects LAN devices.
 
+### Beaconing false-positive fix (investigation of 192.168.1.9)
+- [x] Investigated `192.168.1.9` (MAC 20:c0:47:d3:60:71) beaconing alerts —
+      ALL 58 target multicast (224.0.0.1 IGMP, 224.0.0.22 IGMPv3, 239.255.255.250
+      SSDP/UPnP); zero external/internet destinations in flows.db. **False
+      positive**, not C2. Likely a smart-home/media (DLNA) device.
+- [x] Root cause: `detector/beaconing.py` only excluded `_is_local` dst; multicast/
+      broadcast/link-local fell through as "external" and matched the periodic
+      low-jitter beacon signature.
+- [x] `detector/beaconing.py` — added `_is_non_routable()` (multicast 224-239.x,
+      255.255.255.255, 169.254.x) and skip those destinations in `process()`.
+- [x] `tests/test_detectors.py` — `test_no_alert_to_multicast` regression test.
+      Full suite 358 passing.
+- [x] `scripts/restart-monitor.sh` — restart the `netwatchm` monitor service
+      (runs from repo editable .venv, so source edits go live on restart).
+- [ ] **Apply** (operator): `bash scripts/restart-monitor.sh` to load the fix.
+      Existing 58 historical beaconing alerts for .9 age out via 15-day
+      retention; GRC 13.1 clears for .9/.249 once they do.
+
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 
 ### Backend — auto incident cases on alert
