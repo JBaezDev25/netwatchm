@@ -1489,7 +1489,8 @@ def _forensics_row_to_dict(r: sqlite3.Row) -> dict:
 
 
 def _query_incidents(
-    limit: int = 200, status: str | None = None, ip: str | None = None
+    limit: int = 200, status: str | None = None, ip: str | None = None,
+    priority: str | None = None, assignee: str | None = None
 ) -> list[dict]:
     """Query forensics.db incidents, newest first. Empty list if DB absent."""
     db = Path(FORENSICS_DB)
@@ -1503,6 +1504,12 @@ def _query_incidents(
         if status:
             clauses.append("status = ?")
             params.append(status)
+        if priority:
+            clauses.append("priority = ?")
+            params.append(priority)
+        if assignee:
+            clauses.append("assignee = ?")
+            params.append(assignee)
         if ip:
             clauses.append("(src_ip = ? OR dst_ip = ?)")
             params.extend([ip, ip])
@@ -1536,13 +1543,28 @@ def _get_incident(incident_id: int) -> dict | None:
 def _set_incident_status(incident_id: int, status: str) -> bool:
     if status not in ("open", "reviewed", "false_positive"):
         return False
+    return _update_incident_field(incident_id, "status", status)
+
+
+def _set_incident_priority(incident_id: int, priority: str) -> bool:
+    if priority not in ("low", "medium", "high", "critical"):
+        return False
+    return _update_incident_field(incident_id, "priority", priority)
+
+
+def _set_incident_assignee(incident_id: int, assignee: str) -> bool:
+    return _update_incident_field(incident_id, "assignee", assignee.strip())
+
+
+def _update_incident_field(incident_id: int, column: str, value: str) -> bool:
+    # column is never user-controlled — only the three setters above pass it.
     db = Path(FORENSICS_DB)
     if not db.exists():
         return False
     con = sqlite3.connect(str(db))
     try:
         cur = con.execute(
-            "UPDATE incidents SET status=? WHERE id=?", (status, incident_id)
+            f"UPDATE incidents SET {column}=? WHERE id=?", (value, incident_id)
         )
         con.commit()
         return cur.rowcount > 0
@@ -1550,6 +1572,165 @@ def _set_incident_status(incident_id: int, status: str) -> bool:
         return False
     finally:
         con.close()
+
+
+_ALERT_LEVEL_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+
+
+def _event_stats_by_ip() -> dict[str, dict]:
+    """Per-IP {count, max_level} folded from events.db (best-effort).
+
+    Severity is attributed to the OFFENDER (src_ip) — the scanner, brute-forcer
+    or exfiltrating host. The target (dst_ip) accrues an activity count only and
+    does NOT inherit the alert's severity band, so a host that was merely
+    scanned is not scored as if it were the attacker.
+    """
+    db = Path(EVENT_DB)
+    if not db.exists():
+        return {}
+    con = sqlite3.connect(str(db))
+    out: dict[str, dict] = {}
+
+    def _rec(ip: str) -> dict:
+        return out.setdefault(ip, {"count": 0, "max_rank": 0, "max_level": ""})
+
+    try:
+        cur = con.execute("SELECT level, src_ip, dst_ip FROM events")
+        for level, src, dst in cur.fetchall():
+            rank = _ALERT_LEVEL_RANK.get((level or "").upper(), 0)
+            if src:
+                rec = _rec(src)
+                rec["count"] += 1
+                if rank > rec["max_rank"]:
+                    rec["max_rank"] = rank
+                    rec["max_level"] = (level or "").upper()
+            if dst and dst != src:
+                _rec(dst)["count"] += 1
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        con.close()
+    return out
+
+
+def _intel_verdict_by_ip() -> dict[str, str]:
+    """Worst threat-intel verdict per IP from forensics.db incidents."""
+    db = Path(FORENSICS_DB)
+    if not db.exists():
+        return {}
+    order = {"unknown": 0, "benign": 1, "suspicious": 2, "malicious": 3}
+    con = sqlite3.connect(str(db))
+    out: dict[str, str] = {}
+    try:
+        cur = con.execute("SELECT src_ip, dst_ip, verdict FROM incidents")
+        for src, dst, verdict in cur.fetchall():
+            v = (verdict or "unknown").lower()
+            for ip in (src, dst):
+                if not ip:
+                    continue
+                if order.get(v, 0) > order.get(out.get(ip, "unknown"), 0):
+                    out[ip] = v
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        con.close()
+    return out
+
+
+def _is_assessable_ip(ip_str: str) -> bool:
+    """True for real hosts (private or public). Excludes multicast, broadcast,
+    loopback, link-local, and unspecified pseudo-addresses — these are not
+    assets and would pollute the risk register with ephemeral ports."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    if (ip.is_multicast or ip.is_loopback or ip.is_link_local
+            or ip.is_unspecified or ip.is_reserved):
+        return False
+    if ip.version == 4 and str(ip).endswith(".255"):
+        return False
+    return True
+
+
+def _drop_scan_runs(ports: list[int], run_threshold: int = 4) -> list[int]:
+    """Drop maximal runs of >= run_threshold consecutive ports.
+
+    A sequential block like 1,2,3,4,5,6,7,8 is a port-scan signature recorded
+    in ports_observed, not real listening services. Short adjacent groups
+    (e.g. NetBIOS 137-139, DHCP 67-68) are well under the threshold and kept.
+    """
+    s = sorted(set(ports))
+    keep: list[int] = []
+    i, n = 0, len(s)
+    while i < n:
+        j = i
+        while j + 1 < n and s[j + 1] == s[j] + 1:
+            j += 1
+        run = s[i:j + 1]
+        if len(run) < run_threshold:
+            keep.extend(run)
+        i = j + 1
+    return keep
+
+
+def _build_grc_assessment() -> dict:
+    """Score every inventoried device and run the CIS control assessment."""
+    from netwatchm.grc import assess_controls, assess_device
+
+    inv_path = Path(EVENT_DB).parent / "inventory.json"
+    records: list[dict] = []
+    if inv_path.exists():
+        try:
+            records = json.loads(inv_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            records = []
+
+    aliases = _load_aliases()
+    verified = _load_verified()
+    ev_stats = _event_stats_by_ip()
+    intel = _intel_verdict_by_ip()
+
+    devices: list[dict] = []
+    for r in records:
+        ip = r.get("ip", "")
+        if not ip or not _is_assessable_ip(ip):
+            continue
+        # ports_observed tracks ALL destination ports ever seen, including
+        # ephemeral source ports from this device's outbound flows. Those are
+        # not exposed services — keep only well-known (<1024) + recognized
+        # named-service ports so the exposure score reflects real surface.
+        ports = _drop_scan_runs([
+            p for p in (r.get("ports_observed", []) or [])
+            if p < 1024 or p in _PORT_NAMES
+        ])
+        is_ext = _classify_ip(ip).startswith("External")
+        stats = ev_stats.get(ip, {})
+        risk = assess_device(
+            ip=ip,
+            ports=ports,
+            alert_count=stats.get("count", 0),
+            max_alert_level=stats.get("max_level"),
+            intel_verdict=intel.get(ip, "unknown"),
+            verified=bool(verified.get(ip)),
+            is_external=is_ext,
+            label=aliases.get(ip, ""),
+        )
+        devices.append({
+            "ip": ip,
+            "label": aliases.get(ip, ""),
+            "verified": bool(verified.get(ip)),
+            "ports": list(ports),
+            "risk": risk.to_dict(),
+        })
+
+    devices.sort(key=lambda d: d["risk"]["score"], reverse=True)
+    controls = assess_controls(
+        devices,
+        events_present=bool(ev_stats),
+        monitor_active=True,
+    )
+    return {"devices": devices, **controls}
 
 
 def _query_events_paged(
@@ -2523,6 +2704,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send_static_page("incidents.html")
             return
 
+        if path == "/grc.html":
+            self._send_static_page("grc.html")
+            return
+
+        if path == "/api/grc":
+            try:
+                self._send_json(_build_grc_assessment())
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"error": str(exc)}, 500)
+            return
+
         if path == "/api/incidents":
             qs = parse_qs(parsed.query)
             try:
@@ -2530,6 +2722,8 @@ class Handler(BaseHTTPRequestHandler):
                     limit=int(qs.get("limit", ["200"])[0]),
                     status=(qs.get("status", [""])[0] or None),
                     ip=(qs.get("ip", [""])[0] or None),
+                    priority=(qs.get("priority", [""])[0] or None),
+                    assignee=(qs.get("assignee", [""])[0] or None),
                 )})
             except Exception as exc:  # noqa: BLE001
                 self._send_json({"error": str(exc)}, 500)
@@ -2682,6 +2876,43 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "invalid status or id"}, 400)
                 return
             self._send_json({"ok": True, "id": inc_id, "status": status})
+            return
+
+        if parsed.path.startswith("/api/incidents/") and parsed.path.endswith("/triage"):
+            token = self.headers.get("X-Admin-Token", "")
+            if token != ADMIN_TOKEN:
+                self._send_json({"error": "unauthorized"}, 401)
+                return
+            try:
+                inc_id = int(
+                    parsed.path.removeprefix("/api/incidents/").removesuffix("/triage")
+                )
+            except ValueError:
+                self._send_json({"error": "invalid id"}, 400)
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except (json.JSONDecodeError, ValueError):
+                self._send_json({"error": "invalid JSON"}, 400)
+                return
+            applied = {}
+            if "priority" in body:
+                pr = (body.get("priority") or "").strip()
+                if not _set_incident_priority(inc_id, pr):
+                    self._send_json({"error": "invalid priority or id"}, 400)
+                    return
+                applied["priority"] = pr
+            if "assignee" in body:
+                asg = (body.get("assignee") or "").strip()
+                if not _set_incident_assignee(inc_id, asg):
+                    self._send_json({"error": "invalid id"}, 400)
+                    return
+                applied["assignee"] = asg
+            if not applied:
+                self._send_json({"error": "nothing to update"}, 400)
+                return
+            self._send_json({"ok": True, "id": inc_id, **applied})
             return
 
         if parsed.path == "/api/aliases":

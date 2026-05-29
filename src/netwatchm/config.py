@@ -195,6 +195,22 @@ class ForensicsConfig:
 
 
 @dataclass
+class SiemConfig:
+    """Forward alerts to a SIEM as CEF over syslog (UDP/TCP).
+
+    Compatible with Splunk, QRadar, Elastic, Wazuh, Graylog, and Sentinel.
+    No credentials — transport is plain syslog to a collector host:port.
+    """
+    enabled: bool = False
+    host: str = ""
+    port: int = 514
+    protocol: str = "udp"        # "udp" or "tcp"
+    facility: int = 16           # syslog local0
+    min_level: str = "MEDIUM"
+    timeout: int = 5
+
+
+@dataclass
 class AlertsConfig:
     terminal: bool = True
     log: LogAlertConfig = field(default_factory=LogAlertConfig)
@@ -203,6 +219,7 @@ class AlertsConfig:
     ntfy: NtfyAlertConfig = field(default_factory=NtfyAlertConfig)
     event_store: EventStoreConfig = field(default_factory=EventStoreConfig)
     forensics: ForensicsConfig = field(default_factory=ForensicsConfig)
+    siem: SiemConfig = field(default_factory=SiemConfig)
 
 
 @dataclass
@@ -359,6 +376,7 @@ def load_config(path: str | Path | None = None) -> Config:
     ntfy_raw = alerts_raw.get("ntfy", {})
     es_raw = alerts_raw.get("event_store", {})
     fx_raw = alerts_raw.get("forensics", {})
+    siem_raw = alerts_raw.get("siem", {})
 
     inv_raw = raw.get("inventory", {})
 
@@ -481,6 +499,15 @@ def load_config(path: str | Path | None = None) -> Config:
                 abuseipdb=fx_raw.get("abuseipdb", True),
                 virustotal=fx_raw.get("virustotal", True),
                 intel_timeout=fx_raw.get("intel_timeout", 8),
+            ),
+            siem=SiemConfig(
+                enabled=siem_raw.get("enabled", False),
+                host=siem_raw.get("host", ""),
+                port=siem_raw.get("port", 514),
+                protocol=siem_raw.get("protocol", "udp"),
+                facility=siem_raw.get("facility", 16),
+                min_level=siem_raw.get("min_level", "MEDIUM"),
+                timeout=siem_raw.get("timeout", 5),
             ),
         ),
         inventory=InventoryConfig(

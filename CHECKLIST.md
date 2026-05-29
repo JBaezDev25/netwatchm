@@ -1,6 +1,94 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-28 (session 32)
+Last updated: 2026-05-29 (session 33)
+
+## Session 33 — 2026-05-29 — SIEM forwarding + alert triage + GRC risk assessment
+
+Audit first: **incident response already shipped in Session 32** (forensics
+cases, pcap, threat-intel, /incidents.html). This session closes the three
+remaining gaps the operator asked about.
+
+### SIEM forwarding (CEF over syslog)
+- [x] `src/netwatchm/alerts/siem_alert.py` — `SiemHandler` + `format_cef()`.
+      Renders each alert as ArcSight CEF wrapped in an RFC-3164 syslog header,
+      ships over UDP or TCP. ThreatLevel → CEF severity (LOW=3…CRITICAL=10).
+      Best-effort socket send in a thread executor; never blocks the pipeline.
+      Splunk / QRadar / Elastic / Wazuh / Graylog / Sentinel compatible.
+- [x] `src/netwatchm/config.py` — new `SiemConfig` dataclass (enabled, host,
+      port, protocol, facility, min_level, timeout) + `siem` field on
+      `AlertsConfig` + `siem:` YAML parsing. No credentials (plain syslog).
+- [x] `src/netwatchm/__main__.py` — registers `SiemHandler` when
+      `config.alerts.siem.enabled`.
+- [x] `netwatchm.yaml.example` — documented `alerts.siem` block.
+- [x] `tests/test_siem.py` — 6 tests (CEF structure, severity map, escaping,
+      disabled-without-host, min_level gate, real UDP socket round-trip).
+
+### Alert triage upgrade
+- [x] `src/netwatchm/forensics/store.py` — incidents gain `priority`,
+      `assignee`, `hits`, `last_seen`. Initial priority derived from level.
+      `insert()` now CORRELATES: a repeat (same type + src + dst) into an open
+      case within `correlation_seconds` (default 1h) bumps `hits` instead of
+      duplicating. New `set_priority` / `set_assignee`; `query` filters by
+      priority/assignee. `_migrate()` ALTERs legacy DBs in place.
+- [x] `netwatchm_server.py` — `_query_incidents` gains priority/assignee
+      filters; `_set_incident_priority` / `_set_incident_assignee` via shared
+      `_update_incident_field` (column is never user-controlled);
+      `POST /api/incidents/{id}/triage` (admin-token gated).
+- [x] `web/incidents.html` — Priority dropdown (color-coded), Hits badge,
+      inline Assignee field, priority filter; saves via /triage.
+- [x] `tests/test_triage.py` — 8 tests (priority derivation, set/clamp,
+      correlation dedup + window + closed-case exclusion, filters, legacy
+      migration).
+
+### GRC risk assessment
+- [x] `src/netwatchm/grc/risk.py` — `assess_device()` folds exposure (risky
+      open ports + attack surface), recent alert activity, and (public IPs
+      only) threat-intel verdict into a 0–100 score + level band + concrete
+      recommendations. `assess_controls()` runs a CIS-Controls-v8-aligned
+      catalogue (1.1 inventory, 4.8 cleartext services, 6.4 remote-admin
+      exposure, 8.2 audit logging, 13.1 high-risk devices) → pass/warn/fail +
+      overall compliance %. Pure-Python, no I/O.
+- [x] `src/netwatchm/grc/__init__.py` — package exports.
+- [x] `netwatchm_server.py` — `_event_stats_by_ip`, `_intel_verdict_by_ip`,
+      `_build_grc_assessment` (reads inventory.json + events.db + forensics.db
+      + aliases/verified) and routes `GET /grc.html`, `GET /api/grc`.
+- [x] `web/grc.html` — SPA: compliance scorecards, CIS control table with
+      findings/remediation, device risk register (score bars, factor
+      breakdown, risky-port chips, recommendations), CSV export, theme toggle.
+- [x] `web/events.html` + `web/incidents.html` — added "GRC" nav link.
+- [x] `tests/test_grc.py` — 10 tests (level bands, clean device, risky ports,
+      threat scaling, external-only intel, verified discount, score cap,
+      control pass/fail, empty inventory).
+
+### Verification
+- [x] Full suite green: **356 passed**. Server compiles; `_build_grc_assessment`
+      smoke-tested end-to-end against temp inventory/events/forensics DBs.
+
+### Deploy (operator-run)
+- [x] `bash scripts/hotdeploy.sh` — pushed server + `web/grc.html`; `/grc.html`
+      and `/incidents.html` returned 200. `/api/grc` initially failed:
+      **system venv had stale package** (0.2.37, no `netwatchm.grc`).
+- [x] `bash scripts/deploy-server.sh` — full deploy reinstalls the package into
+      the system venv (`pip install $REPO`), so `netwatchm.grc` resolves;
+      `/api/grc` now returns live JSON. (hotdeploy can't add a new package
+      module — only deploy-server.sh rebuilds the venv.)
+- [x] `netwatchm_server.py` — `_is_assessable_ip()` filters multicast /
+      broadcast / loopback / link-local pseudo-addresses out of the GRC risk
+      register (mDNS `224.0.0.251` was showing up with ephemeral ports).
+      Re-deploy via hotdeploy (server-only change).
+- [x] `netwatchm_server.py` — GRC exposure fix: `_build_grc_assessment` now
+      keeps only well-known (<1024) + recognized `_PORT_NAMES` ports from
+      `ports_observed`, dropping ephemeral source ports that were inflating
+      every device to 100/critical. Re-deploy via hotdeploy.
+- [x] `netwatchm_server.py` — `_drop_scan_runs()`: drops maximal runs of >=4
+      consecutive ports (port-scan signatures like 1-8) from GRC exposure;
+      short adjacent groups (NetBIOS 137-139, DHCP 67-68) kept.
+- [x] `netwatchm_server.py` — `_event_stats_by_ip()` now attributes alert
+      SEVERITY to the offender (src_ip) only; the target (dst_ip) accrues an
+      activity count but does not inherit the attacker's HIGH/CRITICAL band,
+      de-noising control 13.1. Re-deploy via hotdeploy.
+- [ ] **Optional** (operator): restart `netwatchm` monitor service to load the
+      `SiemHandler`. Only needed once `alerts.siem.enabled: true` is set.
 
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 

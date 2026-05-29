@@ -95,6 +95,15 @@ alerts:
     intel_timeout: 8         # per-provider HTTP timeout (seconds)
     # API keys are read from env vars ONLY, never from this file:
     #   NETWATCHM_ABUSEIPDB_KEY, NETWATCHM_VT_KEY, NETWATCHM_GREYNOISE_KEY
+  siem:                      # forward alerts to a SIEM as CEF over syslog
+    enabled: false           # opt-in
+    host: ""                 # SIEM/syslog collector IP or hostname
+    port: 514                # 514 = standard syslog
+    protocol: udp            # "udp" or "tcp"
+    facility: 16             # syslog facility (16 = local0)
+    min_level: MEDIUM        # forward alerts at/above this level
+    timeout: 5               # TCP connect timeout (seconds)
+    # CEF is ingested natively by Splunk, QRadar, Elastic, Wazuh, Graylog, Sentinel.
 
 inventory:
   enabled: true

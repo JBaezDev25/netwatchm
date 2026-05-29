@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatchM — GRC Risk Assessment</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--blue:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--accent:#1f6feb;--purple:#bc8cff}
+  [data-theme="light"]{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#1f2328;--muted:#6e7781;--blue:#0969da;--green:#1a7f37;--yellow:#9a6700;--red:#cf222e;--accent:#0550ae;--purple:#8250df}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;font-weight:600;color:var(--blue)}
+  nav{display:flex;gap:16px;align-items:center;margin-left:auto}
+  nav a{color:var(--muted);font-size:13px;text-decoration:none}
+  nav a:hover{color:var(--text)}
+  .btn{background:var(--accent);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+  .btn:hover{opacity:.85}
+  .wrap{padding:18px 20px}
+  .cards{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+  .scorecard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:150px}
+  .scorecard .big{font-size:30px;font-weight:700}
+  .scorecard .lbl{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+  .pass{color:var(--green)} .warn{color:var(--yellow)} .fail{color:var(--red)}
+  h2{font-size:14px;margin:22px 0 10px;color:var(--text)}
+  table{width:100%;border-collapse:collapse;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:8px 10px;vertical-align:top;border-bottom:1px solid rgba(48,54,61,.5)}
+  tr.main{cursor:pointer}
+  tr.main:hover{background:rgba(255,255,255,.02)}
+  .mono{font-family:monospace;font-size:11px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .b-pass{background:rgba(63,185,80,.15);color:var(--green)}
+  .b-warn{background:rgba(210,153,34,.18);color:var(--yellow)}
+  .b-fail{background:rgba(248,81,73,.18);color:var(--red)}
+  .lvl-critical{background:rgba(248,81,73,.22);color:var(--red)}
+  .lvl-high{background:rgba(248,81,73,.15);color:var(--red)}
+  .lvl-medium{background:rgba(210,153,34,.18);color:var(--yellow)}
+  .lvl-low{background:rgba(63,185,80,.15);color:var(--green)}
+  .bar{height:7px;border-radius:4px;background:var(--border);position:relative;width:90px;display:inline-block;vertical-align:middle}
+  .bar>i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+  .small{color:var(--muted);font-size:11px}
+  .detail td{background:rgba(0,0,0,.12)}
+  ul.recs{margin:4px 0 0 16px} ul.recs li{margin:2px 0}
+  .chip{display:inline-block;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 6px;margin:1px;font-size:11px;font-family:monospace}
+  .count{color:var(--muted);font-size:12px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#3fb950;color:#fff;padding:9px 16px;border-radius:7px;opacity:0;transition:opacity .25s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128737; GRC — Risk &amp; Compliance</h1>
+  <nav>
+    <a href="/events.html">Events</a>
+    <a href="/incidents.html">Incidents</a>
+    <a href="/inventory.html">Inventory</a>
+    <button class="btn" onclick="exportCSV()" style="background:var(--surface);color:var(--muted);border:1px solid var(--border)">&#11015; Export CSV</button>
+    <button class="btn" id="themeBtn" onclick="toggleTheme()" style="background:var(--surface);color:var(--muted);border:1px solid var(--border);padding:4px 10px">&#9788; Light</button>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <h2>CIS-Aligned Controls</h2>
+  <table id="ctrlTbl">
+    <thead><tr>
+      <th style="width:70px">Control</th><th>Title</th><th>Category</th>
+      <th style="width:70px">Status</th><th>Finding</th>
+    </tr></thead>
+    <tbody id="ctrlBody"></tbody>
+  </table>
+
+  <h2>Device Risk Register <span class="count" id="devCount"></span></h2>
+  <table id="devTbl">
+    <thead><tr>
+      <th>Device</th><th style="width:160px">Risk score</th><th>Level</th>
+      <th>Exposure</th><th>Threat</th><th>Intel</th><th>Risky ports</th>
+    </tr></thead>
+    <tbody id="devBody"></tbody>
+  </table>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let _data = {devices:[], controls:[], summary:{}, compliance:0};
+let _open = null;
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function barColor(level){ return ({critical:'var(--red)',high:'var(--red)',medium:'var(--yellow)',low:'var(--green)'})[level]||'var(--muted)'; }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+async function load(){
+  const r = await fetch('/api/grc').then(r=>r.json()).catch(()=>({}));
+  if(r.error){ toast(r.error); return; }
+  _data = r; render();
+}
+
+function render(){
+  const s = _data.summary||{};
+  document.getElementById('cards').innerHTML = `
+    <div class="scorecard"><div class="big ${_data.compliance>=80?'pass':(_data.compliance>=50?'warn':'fail')}">${_data.compliance||0}%</div><div class="lbl">Compliance</div></div>
+    <div class="scorecard"><div class="big pass">${s.passed||0}</div><div class="lbl">Controls passed</div></div>
+    <div class="scorecard"><div class="big warn">${s.warnings||0}</div><div class="lbl">Warnings</div></div>
+    <div class="scorecard"><div class="big fail">${s.failed||0}</div><div class="lbl">Failed</div></div>
+    <div class="scorecard"><div class="big">${s.devices||0}</div><div class="lbl">Devices assessed</div></div>`;
+
+  document.getElementById('ctrlBody').innerHTML = (_data.controls||[]).map(c=>{
+    const aff = c.affected && c.affected.length
+      ? `<div class="small" style="margin-top:5px">Affected: ${c.affected.map(a=>`<span class="chip">${esc(a)}</span>`).join('')}</div>` : '';
+    const rem = c.remediation ? `<div class="small" style="margin-top:5px">&#128161; ${esc(c.remediation)}</div>` : '';
+    return `<tr><td class="mono">${esc(c.control_id)}<div class="small">${esc(c.framework)}</div></td>
+      <td>${esc(c.title)}</td><td class="small">${esc(c.category)}</td>
+      <td><span class="badge b-${c.status}">${c.status}</span></td>
+      <td>${esc(c.detail)}${aff}${rem}</td></tr>`;
+  }).join('');
+
+  document.getElementById('devCount').textContent = '(' + (_data.devices||[]).length + ')';
+  document.getElementById('devBody').innerHTML = (_data.devices||[]).map(d=>devRow(d)).join('')
+    || '<tr><td colspan="7" class="small" style="text-align:center;padding:18px">No devices in inventory yet.</td></tr>';
+}
+
+function devRow(d){
+  const r = d.risk||{}; const f = r.factors||{};
+  const name = d.label ? `${esc(d.label)} <span class="small mono">${esc(d.ip)}</span>` : `<span class="mono">${esc(d.ip)}</span>`;
+  const ports = (r.risky_ports||[]).map(p=>`<span class="chip">${esc(p)}</span>`).join('') || '<span class="small">none</span>';
+  let detail = '';
+  if(_open === d.ip){
+    detail = `<tr class="detail"><td colspan="7">
+      <strong>Recommendations</strong>
+      <ul class="recs">${(r.recommendations||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+      <div class="small" style="margin-top:6px">
+        <a href="/deep-inspect-web.html?ip=${encodeURIComponent(d.ip)}" target="_blank">&#128269; Deep Inspect</a> &nbsp;·&nbsp;
+        <a href="/incidents.html?q=${encodeURIComponent(d.ip)}" target="_blank">&#128737; Incidents</a> &nbsp;·&nbsp;
+        <a href="/events.html?q=${encodeURIComponent(d.ip)}" target="_blank">&#9888; Events</a>
+        ${d.verified?'&nbsp;·&nbsp;<span class="pass">verified</span>':'&nbsp;·&nbsp;<span class="warn">unverified</span>'}
+      </div></td></tr>`;
+  }
+  return `<tr class="main" onclick="toggleDev('${esc(d.ip)}')">
+    <td>${name}</td>
+    <td><div class="bar"><i style="width:${r.score||0}%;background:${barColor(r.level)}"></i></div> <strong>${r.score||0}</strong></td>
+    <td><span class="badge lvl-${r.level}">${esc(r.level)}</span></td>
+    <td>${f.exposure||0}</td><td>${f.threat||0}</td><td>${f.intel||0}</td>
+    <td>${ports}</td></tr>${detail}`;
+}
+
+function toggleDev(ip){ _open = (_open===ip?null:ip); render(); }
+
+function exportCSV(){
+  const rows = [['ip','label','score','level','exposure','threat','intel','verified','risky_ports']];
+  (_data.devices||[]).forEach(d=>{ const r=d.risk||{}, f=r.factors||{};
+    rows.push([d.ip,d.label,r.score,r.level,f.exposure,f.threat,f.intel,d.verified,(r.risky_ports||[]).join(' ')]); });
+  const csv = rows.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='grc-risk-register.csv'; a.click();
+  toast('Exported risk register');
+}
+
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  const nxt=cur==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme',nxt);
+  document.getElementById('themeBtn').textContent=nxt==='light'?'☀ Dark':'☀ Light';
+  try{localStorage.setItem('nwm-theme',nxt);}catch(_){}
+}
+(function(){try{const t=localStorage.getItem('nwm-theme');if(t){document.documentElement.setAttribute('data-theme',t);if(t==='light'){const b=document.getElementById('themeBtn');if(b)b.textContent='☀ Dark';}}}catch(_){}})();
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

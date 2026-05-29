@@ -38,6 +38,13 @@
   .lvl-MEDIUM{color:var(--yellow)}
   .lvl-LOW{color:var(--green)}
   .st{font-size:11px}
+  .asg{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:5px;font-size:11px;width:96px}
+  .asg:focus{outline:none;border-color:var(--blue)}
+  .hits{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;background:rgba(248,81,73,.18);color:var(--red)}
+  select.prio-critical{color:var(--red);font-weight:700}
+  select.prio-high{color:var(--red)}
+  select.prio-medium{color:var(--yellow)}
+  select.prio-low{color:var(--green)}
   .detail{background:rgba(255,255,255,.02)}
   .detail td{padding:14px 20px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
@@ -62,6 +69,7 @@
     <a href="/inventory.html">Inventory</a>
     <a href="/connection-report.html">Report</a>
     <a href="/deep-inspect-web.html">&#128269; Deep Inspect</a>
+    <a href="/grc.html">&#9878; GRC</a>
     <a href="/firewall.html">&#128737; Firewall</a>
     <a href="/ai.html" style="color:#58a6ff;font-weight:bold">&#129302; AI Chat</a>
     <button class="btn" id="themeBtn" onclick="toggleTheme()" style="background:var(--surface);color:var(--muted);border:1px solid var(--border);padding:4px 10px">&#9788; Light</button>
@@ -75,7 +83,14 @@
     <option value="reviewed">Reviewed</option>
     <option value="false_positive">False positive</option>
   </select>
-  <input type="password" id="adminTok" placeholder="Admin token (to change status)" style="width:200px">
+  <select id="priorityFilter">
+    <option value="">All priorities</option>
+    <option value="critical">Critical</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+  </select>
+  <input type="password" id="adminTok" placeholder="Admin token (to triage)" style="width:180px">
   <span class="count" id="countLabel">—</span>
 </div>
 <div class="tbl-wrap">
@@ -84,11 +99,12 @@
       <tr>
         <th style="width:130px">Time</th>
         <th>Type</th>
-        <th>Level</th>
+        <th>Priority</th>
+        <th>Hits</th>
         <th>Source</th>
         <th>Destination</th>
         <th>Verdict</th>
-        <th>Intel</th>
+        <th>Assignee</th>
         <th>PCAP</th>
         <th>Status</th>
       </tr>
@@ -114,7 +130,12 @@ function vClass(v){ return 'v-'+(v||'unknown'); }
 
 async function load(){
   const status = document.getElementById('statusFilter').value;
-  const url = '/api/incidents' + (status ? ('?status='+encodeURIComponent(status)) : '');
+  const priority = document.getElementById('priorityFilter').value;
+  const params = new URLSearchParams();
+  if(status) params.set('status', status);
+  if(priority) params.set('priority', priority);
+  const qs = params.toString();
+  const url = '/api/incidents' + (qs ? ('?'+qs) : '');
   const r = await fetch(url).then(r=>r.json()).catch(()=>({}));
   _rows = Array.isArray(r.incidents) ? r.incidents : [];
   render();
@@ -141,18 +162,23 @@ function rowHTML(r){
     : '<span class="small">none</span>';
   const sel = ['open','reviewed','false_positive'].map(s =>
     `<option value="${s}" ${r.status===s?'selected':''}>${s.replace('_',' ')}</option>`).join('');
+  const prio = r.priority || 'medium';
+  const psel = ['critical','high','medium','low'].map(p =>
+    `<option value="${p}" ${prio===p?'selected':''}>${p}</option>`).join('');
+  const hits = (r.hits && r.hits > 1) ? `<span class="hits">&times;${r.hits}</span>` : '<span class="small">1</span>';
   let detail = '';
   if(_open === r.id){
-    detail = `<tr class="detail"><td colspan="9">${detailHTML(r)}</td></tr>`;
+    detail = `<tr class="detail"><td colspan="10">${detailHTML(r)}</td></tr>`;
   }
   return `<tr class="main" onclick="toggle(${r.id})">
     <td class="small">${fmtTime(r.created_at)}</td>
     <td>${esc(r.alert_type)}</td>
-    <td class="lvl-${esc(r.level)}">${esc(r.level)}</td>
+    <td onclick="event.stopPropagation()"><select class="st prio-${prio}" onchange="setTriage(${r.id}, {priority:this.value})">${psel}</select></td>
+    <td>${hits}</td>
     <td class="mono">${esc(r.src_ip)||'—'}</td>
     <td class="mono">${esc(r.dst_ip)||'—'}</td>
     <td><span class="badge ${vClass(r.verdict)}">${esc(r.verdict)}${r.score?(' '+r.score):''}</span></td>
-    <td class="small">${esc(r.intel_summary)||'—'}</td>
+    <td onclick="event.stopPropagation()"><input class="asg" value="${esc(r.assignee)}" placeholder="unassigned" onchange="setTriage(${r.id}, {assignee:this.value})"></td>
     <td>${pcap}</td>
     <td onclick="event.stopPropagation()"><select class="st" onchange="setStatus(${r.id}, this.value)">${sel}</select></td>
   </tr>${detail}`;
@@ -199,8 +225,25 @@ async function setStatus(id, status){
   } else { toast(r.error||'Failed', false); load(); }
 }
 
+async function setTriage(id, patch){
+  const tok = document.getElementById('adminTok').value.trim();
+  if(!tok){ toast('Admin token required to triage', false); load(); return; }
+  const r = await fetch('/api/incidents/'+id+'/triage', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Admin-Token':tok},
+    body:JSON.stringify(patch)
+  }).then(r=>r.json()).catch(()=>({}));
+  if(r.ok){
+    const row=_rows.find(x=>x.id===id);
+    if(row) Object.assign(row, patch);
+    if('priority' in patch){ render(); toast('Priority → '+patch.priority); }
+    else { toast('Assignee saved'); }
+  } else { toast(r.error||'Failed', false); load(); }
+}
+
 document.getElementById('searchBox').addEventListener('input', render);
 document.getElementById('statusFilter').addEventListener('change', load);
+document.getElementById('priorityFilter').addEventListener('change', load);
 
 const _q = new URLSearchParams(location.search).get('ip') || new URLSearchParams(location.search).get('q');
 if(_q){ document.getElementById('searchBox').value = _q; }

@@ -48,6 +48,31 @@ blocked. Threat-intel API keys come from env vars only —
 `NETWATCHM_ABUSEIPDB_KEY`, `NETWATCHM_VT_KEY`, `NETWATCHM_GREYNOISE_KEY`
 (GreyNoise community works with no key).
 
+**Alert triage:** incidents carry a **priority** (auto-derived from severity,
+editable), an **assignee**, and a **hits** counter — repeat alerts of the same
+type from the same IP within an hour correlate into one case instead of
+flooding the queue. Filter the queue by status, priority, or assignee.
+
+### SIEM forwarding (CEF over syslog)
+
+With `alerts.siem.enabled: true`, every alert at/above `min_level` is forwarded
+to your SIEM as **ArcSight CEF wrapped in syslog** (UDP or TCP) — ingested
+natively by Splunk, IBM QRadar, Elastic, Wazuh, Graylog, and Microsoft
+Sentinel. Severity maps from ThreatLevel; no credentials (plain syslog to a
+collector `host:port`).
+
+### GRC — Risk & Compliance (`/grc.html`)
+
+A governance/risk/compliance view over the whole fleet:
+
+- a **per-device risk score** (0–100) folding network exposure (risky open
+  ports + attack surface), recent alert activity, and threat-intel verdict for
+  public peers — with concrete remediation recommendations,
+- a **CIS Controls v8-aligned assessment** (asset inventory, cleartext-service
+  exposure, remote-admin hardening, audit logging, high-risk devices) scored
+  pass / warn / fail with an overall **compliance %**,
+- an exportable **risk register** (CSV).
+
 ---
 
 ## Quick Start
@@ -81,7 +106,8 @@ https://netwatch.local:8765/events.html
 | Page | URL | Description |
 |------|-----|-------------|
 | Events | `/events.html` | Live security alert feed — search, filter, export CSV |
-| Incidents | `/incidents.html` | Auto incident cases — pcap evidence + threat-intel verdict, status workflow |
+| Incidents | `/incidents.html` | Auto incident cases — pcap evidence + threat-intel verdict, triage (priority/assignee/hits), status workflow |
+| GRC | `/grc.html` | Per-device risk scores + CIS-aligned compliance assessment + exportable risk register |
 | Inventory | `/inventory.html` | All discovered devices — friendly names, nmap scan, verify |
 | Analytics | `/analytics.html` | Flow data charts — device traffic, destinations, protocols, hourly |
 | Connection Report | `/connection-report.html` | Per-flow breakdown with GeoIP, risk scoring, deep inspect |
@@ -303,17 +329,21 @@ Network Interface
                     │   Sound
                     │   Email (Gmail SMTP)
                     │   ntfy push (Android/iOS)
+                    │   SIEM forward (CEF/syslog)
+                    │   Incident case (forensics)
                     └───────────────────────┘
 
 netwatchm_server.py (port 8765, TLS)
   ├── /events.html       — live SPA (SQLite events.db)
-  ├── /incidents.html    — incident cases SPA (SQLite forensics.db)
+  ├── /incidents.html    — incident cases SPA (SQLite forensics.db) + triage
+  ├── /grc.html          — risk & compliance SPA (inventory + events + forensics)
   ├── /inventory.html    — device SPA (inventory.json + aliases.json)
   ├── /history.html      — flow history SPA (flow-history.db)
   ├── /pcap.html         — pcap upload analyzer
   ├── /ai.html           — AI chat UI (OpenAI gpt-4o-mini)
   ├── /api/ai            — AI query endpoint
-  ├── /api/incidents     — incident cases list / detail / pcap download / status
+  ├── /api/incidents     — incident cases list / detail / pcap download / status / triage
+  ├── /api/grc           — fleet risk scores + CIS control assessment
   ├── /api/deep-inspect  — async GeoIP + nmap + SSH/SMB/HTTP inspection
   ├── /api/analytics     — async Chart.js analytics page generator
   ├── /api/aliases       — friendly device names CRUD
@@ -341,10 +371,12 @@ netwatchm/
 │   │                        # data_hog, adult_domain, tracker_domain, tor_exit,
 │   │                        # malware_domain, dns_tunneling, beaconing
 │   ├── alerts/              # terminal, logfile, sound, email_alert, ntfy_alert,
+│   │                        # siem_alert (CEF/syslog forwarding),
 │   │                        # forensic_handler (incident cases),
 │   │                        # alert_labels (plain-English titles + summaries)
 │   ├── enrich/             # reputation (GreyNoise/AbuseIPDB/VirusTotal + GeoIP)
-│   ├── forensics/          # store (incidents.db), capture (short-burst pcap)
+│   ├── forensics/          # store (incidents.db, triage), capture (short-burst pcap)
+│   ├── grc/                # risk scoring + CIS-aligned control assessment
 │   ├── inventory/           # store, resolver, exporter, arp_scanner,
 │   │                        # oui_lookup (IEEE MAC vendor database)
 │   ├── reports/             # connection_report, analytics_report, deep_inspect,
@@ -366,7 +398,7 @@ netwatchm/
 │   └── ...                      # 15+ additional setup and deploy scripts
 ├── netwachmInstall/
 │   └── install.ps1          # Windows installer (GUI progress, upgrade/uninstall)
-├── tests/                   # 174 pytest tests (all passing)
+├── tests/                   # 356 pytest tests (all passing)
 ├── ai.html                  # AI Chat web UI
 ├── web/                      # static portal SPAs (events, inventory, history, pcap)
 ├── netwatchm_server.py      # Combined HTTPS server (8765) + Grafana API (8766)

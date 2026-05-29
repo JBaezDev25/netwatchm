@@ -14,6 +14,7 @@ from rich.console import Console
 
 from .alerts.email_alert import EmailAlert
 from .alerts.ntfy_alert import NtfyAlert
+from .alerts.siem_alert import SiemHandler
 from .alerts.event_handler import EventStoreHandler
 from .alerts.forensic_handler import ForensicHandler
 from .alerts.logfile import LogFileAlert
@@ -134,6 +135,8 @@ async def run_monitor(config: Config, no_ui: bool = False) -> None:
     handlers.append(EventStoreHandler(retention_hours=config.alerts.event_store.retention_hours))
     if config.alerts.forensics.enabled:
         handlers.append(ForensicHandler(config.alerts.forensics, interface=interface))
+    if config.alerts.siem.enabled:
+        handlers.append(SiemHandler(config.alerts.siem))
 
     # --- UI ---
     dashboard = None

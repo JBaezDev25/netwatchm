@@ -1126,7 +1126,7 @@ wheels = [
 
 [[package]]
 name = "netwatchm"
-version = "0.2.40"
+version = "0.2.42"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
