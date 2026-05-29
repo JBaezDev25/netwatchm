@@ -194,10 +194,15 @@ def assess_controls(
     """
     results: list[ControlResult] = []
 
+    # Asset / config / access controls apply only to OWNED devices (your LAN
+    # hosts), not the external peers your fleet merely talked to. A device dict
+    # without an explicit "owned" key is treated as owned (back-compat).
+    owned = [d for d in devices if d.get("owned", True)]
+
     # CIS 1 — Inventory and control of enterprise assets
-    total = len(devices)
-    unverified = [d["ip"] for d in devices if not d.get("verified")]
-    unlabeled = [d["ip"] for d in devices if not (d.get("label") or "").strip()]
+    total = len(owned)
+    unverified = [d["ip"] for d in owned if not d.get("verified")]
+    unlabeled = [d["ip"] for d in owned if not (d.get("label") or "").strip()]
     if total == 0:
         status, detail = "warn", "No devices in inventory yet"
     else:
@@ -219,7 +224,7 @@ def assess_controls(
     # CIS 4 — Secure configuration: cleartext / legacy services exposed
     cleartext = {21, 23, 161, 512}
     affected = sorted({
-        d["ip"] for d in devices
+        d["ip"] for d in owned
         if cleartext & set(d.get("ports", []))
     })
     results.append(ControlResult(
@@ -233,7 +238,7 @@ def assess_controls(
 
     # CIS 6 — Access control: unverified devices exposing remote-admin ports
     admin_exposed = sorted({
-        d["ip"] for d in devices
+        d["ip"] for d in owned
         if not d.get("verified") and (REMOTE_ADMIN_PORTS & set(d.get("ports", [])))
     })
     results.append(ControlResult(
@@ -277,7 +282,8 @@ def assess_controls(
         "passed": passed,
         "warnings": sum(1 for r in results if r.status == "warn"),
         "failed": sum(1 for r in results if r.status == "fail"),
-        "devices": total,
+        "devices": len(devices),
+        "owned_devices": total,
     }
     return {
         "controls": [r.to_dict() for r in results],

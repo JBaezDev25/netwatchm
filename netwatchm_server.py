@@ -1720,6 +1720,7 @@ def _build_grc_assessment() -> dict:
             "ip": ip,
             "label": aliases.get(ip, ""),
             "verified": bool(verified.get(ip)),
+            "owned": not is_ext,
             "ports": list(ports),
             "risk": risk.to_dict(),
         })

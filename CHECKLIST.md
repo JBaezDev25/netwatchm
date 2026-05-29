@@ -90,6 +90,22 @@ remaining gaps the operator asked about.
 - [ ] **Optional** (operator): restart `netwatchm` monitor service to load the
       `SiemHandler`. Only needed once `alerts.siem.enabled: true` is set.
 
+### GRC follow-up — owned-asset scoping + device verification (2026-05-29)
+- [x] `grc/risk.py` — asset/config/access controls (1.1, 4.8, 6.4) now scope to
+      OWNED devices only (`owned` flag, defaults True for back-compat); external
+      peers no longer dilute the inventory ratio or raise findings. 13.1 still
+      spans all. summary adds `owned_devices`. +1 test (11 GRC tests pass).
+- [x] `netwatchm_server.py` — `_build_grc_assessment` sets `owned = not is_ext`
+      per device.
+- [x] Labeled + verified 24 identifiable LAN devices via API (phones, tablets,
+      router, NAS, switch, cameras, printer, workstation). Deliberately left the
+      16 unidentifiable LAN hosts UNverified — incl. beaconing `192.168.1.9`/
+      `.249` and unnamed remote-admin host `192.168.1.194` — for operator review.
+- [x] Live effect (pre-scoping-deploy): 6.4 2→1 unverified admin host, 13.1 7→3
+      high-risk. 1.1 still gated on identifying the remaining LAN hosts.
+- [ ] **Deploy** (operator): `bash scripts/deploy-server.sh` (full — grc package
+      changed) to apply owned-asset scoping so 1.1 reflects LAN devices.
+
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 
 ### Backend — auto incident cases on alert

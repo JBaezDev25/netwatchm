@@ -88,3 +88,25 @@ def test_controls_empty_inventory_warns():
     out = assess_controls([])
     by_id = {c["control_id"]: c for c in out["controls"]}
     assert by_id["1.1"]["status"] == "warn"
+
+
+def test_asset_controls_ignore_external_peers():
+    """Asset/config/access controls (1.1, 4.8, 6.4) count owned devices only;
+    external peers must not dilute the inventory ratio or raise findings."""
+    owned = [
+        dict(_dev("192.168.1.10", ports=[443], verified=True), owned=True),
+        dict(_dev("192.168.1.11", ports=[80], verified=True), owned=True),
+    ]
+    external = [
+        dict(_dev("203.0.113.5", ports=[23], verified=False, level="high"),
+             owned=False),  # external telnet host — should NOT trip 4.8
+    ]
+    out = assess_controls(owned + external)
+    by_id = {c["control_id"]: c for c in out["controls"]}
+    # 1.1 sees only the 2 owned (both verified) → pass, not diluted to 2/3
+    assert by_id["1.1"]["status"] == "pass"
+    # 4.8 ignores the external telnet host
+    assert by_id["4.8"]["status"] == "pass"
+    assert "203.0.113.5" not in by_id["4.8"]["affected"]
+    assert out["summary"]["owned_devices"] == 2
+    assert out["summary"]["devices"] == 3
