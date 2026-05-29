@@ -75,7 +75,22 @@ Last updated: 2026-05-28 (session 32)
       folding, intel-disabled path, handler gating/cooldown/target selection).
       Full suite: **332 passed**.
 
-## Session 31 — 2026-05-24 — Behavior-preserving refactor
+### Git / publish
+- [x] Committed Session 32 (also bundling the pending Session 31 refactor) — 35
+      files. Pushed to `origin/master` as `a449aa4`.
+- [x] **History rewrite to work around a missing OAuth `workflow` scope.** The
+      headless SSH box's gh token had only `repo, read:org, gist`; the pending CI
+      commit `3165e16` edited `.github/workflows/release.yml`, so GitHub rejected
+      the push (`gh auth refresh -s workflow` couldn't complete without a TTY).
+      Rebuilt the two unpushed commits onto `origin/master` with the `release.yml`
+      hunk dropped from the CI commit (CHECKLIST part kept), so the push range
+      touches **0 workflow files**. Pushed clean with `repo` scope only. Saved
+      backup branch `backup-pre-rewrite` (since deleted) and the dropped hunk to
+      `/tmp/release-yml.patch`.
+- [ ] **Re-apply the `release.yml` `uv lock` CI step via GitHub's web editor**
+      (web session bypasses the gh-token scope): add the "Sync uv.lock to bumped
+      version" step after `actions/setup-python`, and add `uv.lock` to the
+      `git add` line in the version-bump step. Source: `/tmp/release-yml.patch`.
 
 ## Session 31 — 2026-05-24 — Behavior-preserving refactor
 
