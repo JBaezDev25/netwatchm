@@ -152,8 +152,19 @@ remaining gaps the operator asked about.
       in plain, non-technical language going forward (user request 2026-05-29).
       Style preference belongs in memory, not a settings.json hook (hooks run
       shell commands, can't change response phrasing).
-- [ ] **Deploy** (operator): `bash scripts/hotdeploy.sh` to apply the sensor-host
-      exclusion to the live GRC dashboard.
+- [x] **Applied**: hotdeploy run; monitor host (192.168.1.180) no longer in GRC
+      register. Two false-positive media devices (.9/.249) remain, aging out.
+- [x] Saved global `~/.claude/CLAUDE.md` — plain-English communication applies
+      across ALL projects/directories from now on (user request).
+
+### Fix update-oui-db.sh permission error (2026-05-29)
+- [x] OUI database never built (vendor=None for all devices). `update-oui-db.sh`
+      step 2 ran `python3` (non-root) writing directly to root-owned
+      `/var/lib/netwatchm/oui.json.tmp` → PermissionError.
+- [x] Fixed: build JSON into a user-writable `/tmp` file, then `sudo cp` into the
+      data dir (the project's write-to-/tmp-then-sudo-cp pattern). `bash -n` OK.
+- [ ] **Run** (operator): `bash scripts/update-oui-db.sh` (enter password) to seed
+      the MAC-vendor database, then restart monitor + re-identify unknown devices.
 
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 

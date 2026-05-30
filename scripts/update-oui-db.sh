@@ -42,9 +42,11 @@ ROWS=$(wc -l < "$TMP_CSV")
 echo "      Downloaded $ROWS rows."
 
 # --- Step 2: Parse CSV and build JSON ---
+# Build into a user-writable temp file first, then copy into the root-owned
+# DATA_DIR with sudo (python itself must not write to /var/lib/netwatchm).
 echo "[2/3] Parsing OUI entries and building JSON …"
-sudo mkdir -p "$DATA_DIR"
-python3 - "$TMP_CSV" "$OUI_JSON" <<'PYEOF'
+TMP_JSON="$(mktemp /tmp/oui-XXXXXX.json)"
+python3 - "$TMP_CSV" "$TMP_JSON" <<'PYEOF'
 import csv
 import json
 import sys
@@ -69,8 +71,13 @@ import tempfile, os, pathlib
 tmp = dst + ".tmp"
 pathlib.Path(tmp).write_text(json.dumps(db, separators=(",", ":")), encoding="utf-8")
 os.replace(tmp, dst)
-print(f"      Wrote {len(db):,} OUI entries to {dst}")
+print(f"      Built {len(db):,} OUI entries")
 PYEOF
+
+# Copy the freshly-built JSON into the root-owned data dir.
+sudo mkdir -p "$DATA_DIR"
+sudo cp "$TMP_JSON" "$OUI_JSON"
+rm -f "$TMP_JSON"
 
 # --- Step 3: Set ownership so netwatchm user can read it ---
 echo "[3/3] Setting file ownership …"
