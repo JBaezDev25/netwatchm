@@ -163,8 +163,9 @@ remaining gaps the operator asked about.
       `/var/lib/netwatchm/oui.json.tmp` → PermissionError.
 - [x] Fixed: build JSON into a user-writable `/tmp` file, then `sudo cp` into the
       data dir (the project's write-to-/tmp-then-sudo-cp pattern). `bash -n` OK.
-- [ ] **Run** (operator): `bash scripts/update-oui-db.sh` (enter password) to seed
-      the MAC-vendor database, then restart monitor + re-identify unknown devices.
+- [x] **Run** (operator, 2026-05-29): `bash scripts/update-oui-db.sh` seeded the
+      MAC-vendor database — `/var/lib/netwatchm/oui.json` now holds 39,478 entries;
+      monitor restarted and device vendors now resolve (Espressif, Hitron, TP-Link, …).
 
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 
