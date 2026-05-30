@@ -1691,10 +1691,18 @@ def _build_grc_assessment() -> dict:
     ev_stats = _event_stats_by_ip()
     intel = _intel_verdict_by_ip()
 
+    # The sensor host monitors others; its own ports_observed is polluted by the
+    # outbound probes/nmap it runs, so it would be risk-scored for services it
+    # does not actually expose. Exclude it from the register (it is the camera,
+    # not a room being inspected). Override the detected IP with NETWATCHM_SERVER_IP.
+    monitor_ip = _get_local_ip()
+
     devices: list[dict] = []
     for r in records:
         ip = r.get("ip", "")
         if not ip or not _is_assessable_ip(ip):
+            continue
+        if ip == monitor_ip:
             continue
         # ports_observed tracks ALL destination ports ever seen, including
         # ephemeral source ports from this device's outbound flows. Those are

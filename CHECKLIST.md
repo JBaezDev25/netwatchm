@@ -135,8 +135,25 @@ remaining gaps the operator asked about.
       `agent/executor.py`, `alerts/ntfy_alert.py`; bodies now
       `text/plain; charset=utf-8`, string-sliced before encode.
 - [x] `tests/test_ascii_header.py` — 4 tests. Full suite 362 passing.
-- [ ] **Apply** (operator): `bash scripts/restart-monitor.sh` to load the
-      digest/ntfy fix into the running monitor.
+- [x] **Applied** (operator): `bash scripts/restart-monitor.sh` — startup logs
+      clean (no digest encode error); ntfy + beaconing fixes live.
+
+### Exclude the sensor host from GRC + plain-English preference (2026-05-29)
+- [x] Investigated "lock down Docker 2375 on 192.168.1.180" request: 192.168.1.180
+      IS the sensor host (ai-rnd-01). dockerd runs `-H fd://` (unix socket only) —
+      nothing listening on 2375/2376. Cross-checked all 8 GRC-flagged ports: 7
+      are NOT listening (false positives from `ports_observed` capturing the
+      sensor's own outbound probes/nmap). No lockdown needed.
+- [x] `netwatchm_server.py` — `_build_grc_assessment` skips the monitor host's
+      own IP (`_get_local_ip()`, override via `NETWATCHM_SERVER_IP`). The sensor
+      is the camera, not a monitored room. Clears the bogus .180 13.1 finding.
+      Server-only change → hotdeploy.
+- [x] Saved feedback memory `plain-english-communication.md` — explain results
+      in plain, non-technical language going forward (user request 2026-05-29).
+      Style preference belongs in memory, not a settings.json hook (hooks run
+      shell commands, can't change response phrasing).
+- [ ] **Deploy** (operator): `bash scripts/hotdeploy.sh` to apply the sensor-host
+      exclusion to the live GRC dashboard.
 
 ## Session 32 — 2026-05-28 — Incident Response: forensics + threat-intel enrichment
 
