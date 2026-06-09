@@ -1,6 +1,21 @@
 # NetWatchM — Project Checklist
 
-Last updated: 2026-05-29 (session 33)
+Last updated: 2026-06-08 (session 34)
+
+## Session 34 — 2026-06-08 — Full-rebuild bootstrap + Linux GUI installer + Frenchie icon
+- [x] `netwachmInstall/reinstall-all.sh` — one-command rebuild: NetWatchM core (via install.sh)
+      → local AI (Ollama + `mistral`, `nomic-embed-text`) → `nic-asst-ai` (clone/uv sync +
+      OPENROUTER_API_KEY in ~/.env). Flags: `--no-ai`, `--no-nic`, `--owner`, `--yes`.
+- [x] `netwachmInstall/installer_gui_linux.py` — tkinter GUI over the bootstrap: checkboxes for
+      local AI / nic-asst-ai, OpenRouter-key field, live streamed log.
+- [x] `netwachmInstall/install-launcher.sh` — installs a `.desktop` entry + hicolor icons so the
+      GUI shows in the app menu (per-user; `--uninstall` supported).
+- [x] Frenchie mascot icon — `netwachmInstall/assets/netwatchm-icon.svg` + PNG sizes (16–1024) +
+      `netwatchm.ico` (a French bulldog watching a teal network = NetWatchM).
+- [x] Fixed stale `github.com/al4nbr3` → `github.com/JBaezDev25` across INSTALL.md, README.md,
+      NetWatchM-guide.md, CHECKLIST.md, installer_gui.py.
+- [x] Docs: INSTALL.md "Full rebuild — one command" + "GUI installer (Linux)" sections; README
+      Installation section updated.
 
 ## Session 33 — 2026-05-29 — SIEM forwarding + alert triage + GRC risk assessment
 
@@ -1089,7 +1104,7 @@ https://localhost:8765/inventory.html
 - [x] All session 3/4 changes pushed to `al4nbr3/netwatchm` (master)
 - [x] `netwachmInstall/` folder tracked in repo (was untracked)
 - [x] `geolite2-city-gzip/` added to `.gitignore` (61 MB binary, not for repo)
-- [x] `INSTALL.md` clone URLs fixed → `https://github.com/al4nbr3/netwatchm.git`
+- [x] `INSTALL.md` clone URLs fixed → `https://github.com/JBaezDev25/netwatchm.git`
 
 ### Windows Installer (`netwachmInstall/install.ps1`)
 - [x] **GUI progress window** — WinForms dark-theme dialog: step label, progress bar 0→100%, color-coded scrolling log
@@ -1112,7 +1127,7 @@ https://localhost:8765/inventory.html
 
 ### Deploy command (Windows — from fresh clone)
 ```
-1. git clone https://github.com/al4nbr3/netwatchm.git
+1. git clone https://github.com/JBaezDev25/netwatchm.git
 2. cd netwatchm
 3. Right-click netwachmInstall\install.ps1 → Properties → Unblock → OK
 4. powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1

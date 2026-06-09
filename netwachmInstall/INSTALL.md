@@ -41,11 +41,45 @@ All installer and build scripts live in this folder (`netwachmInstall/`).
 
 ---
 
+## Full rebuild — one command (NetWatchM + local AI + assistant)
+
+Rebuilding a machine? `reinstall-all.sh` sets up the whole stack in order — the NetWatchM
+monitor + dashboard, the local AI (Ollama + the `mistral` and `nomic-embed-text` models), and
+the `nic-asst-ai` Claude/OpenRouter assistant:
+
+```bash
+git clone https://github.com/JBaezDev25/netwatchm.git
+cd netwatchm
+bash netwachmInstall/reinstall-all.sh          # interactive
+# or fully non-interactive (reads OPENROUTER_API_KEY from the environment):
+bash netwachmInstall/reinstall-all.sh --yes
+```
+
+Options: `--no-ai` (skip Ollama + models), `--no-nic` (skip the assistant),
+`--owner NAME` (GitHub owner for the `nic-asst-ai` clone; default `JBaezDev25`).
+
+### GUI installer (Linux)
+
+Prefer clicks to a terminal? The graphical installer runs the same steps, with checkboxes for
+the optional pieces, an OpenRouter-key field, and a live log:
+
+```bash
+python3 netwachmInstall/installer_gui_linux.py
+```
+
+Add it to your application menu (with the NetWatchM Frenchie icon):
+
+```bash
+bash netwachmInstall/install-launcher.sh        # remove with: --uninstall
+```
+
+---
+
 ## Option A — Linux install (recommended)
 
 ### 1. Clone or download the repo
 ```bash
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 ```
 
@@ -127,7 +161,7 @@ them manually if desired.
 
 ### 1. Download the installer
 Download **`netwatchm-setup.exe`** from the
-[Releases page](https://github.com/al4nbr3/netwatchm/releases).
+[Releases page](https://github.com/JBaezDev25/netwatchm/releases).
 
 ### 2. Run it
 Double-click `netwatchm-setup.exe`.
@@ -167,7 +201,7 @@ sc query netwatchm-web
 
 ### 1. Clone or download the repo
 ```powershell
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 ```
 
@@ -338,7 +372,7 @@ bash netwachmInstall/install.sh
 NetWatchM is not code-signed (certificates cost ~$300–500/year). This means Windows
 SmartScreen and Defender may warn or block the installer. **This is a false positive** —
 NetWatchM is open-source and you can review every line at
-[github.com/al4nbr3/netwatchm](https://github.com/al4nbr3/netwatchm).
+[github.com/JBaezDev25/netwatchm](https://github.com/JBaezDev25/netwatchm).
 
 **To run the PowerShell installer despite the SmartScreen warning:**
 1. Right-click `install.ps1` → **Properties**

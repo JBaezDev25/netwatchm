@@ -20,7 +20,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 APP_VERSION  = "0.2.50"
-GITHUB_ZIP   = "https://github.com/al4nbr3/netwatchm/archive/refs/heads/master.zip"
+GITHUB_ZIP   = "https://github.com/JBaezDev25/netwatchm/archive/refs/heads/master.zip"
 PROGRAMDATA  = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
 DATA_DIR     = PROGRAMDATA / "netwatchm"
 VERSION_FILE = DATA_DIR / "version.txt"

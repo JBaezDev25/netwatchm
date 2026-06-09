@@ -78,7 +78,7 @@ A governance/risk/compliance view over the whole fleet:
 ## Quick Start
 
 ```bash
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 sudo bash install.sh
 ```
@@ -410,10 +410,30 @@ netwatchm/
 
 ## Installation
 
+### Full rebuild — one command (Linux)
+
+Rebuilding a box from scratch? One script installs the whole stack — NetWatchM, the local AI
+(Ollama + `mistral` / `nomic-embed-text`), and the `nic-asst-ai` Claude/OpenRouter assistant:
+
+```bash
+git clone https://github.com/JBaezDev25/netwatchm.git
+cd netwatchm
+bash netwachmInstall/reinstall-all.sh           # --no-ai / --no-nic / --yes
+```
+
+Prefer a window? A **Linux GUI installer** wraps the same steps (checkboxes + live log):
+
+```bash
+python3 netwachmInstall/installer_gui_linux.py
+bash netwachmInstall/install-launcher.sh        # add it to the app menu (Frenchie icon)
+```
+
+See `netwachmInstall/INSTALL.md` for details.
+
 ### Linux (recommended)
 
 ```bash
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 sudo bash install.sh
 ```
@@ -434,7 +454,7 @@ bash scripts/update-oui-db.sh
 ### Windows
 
 ```
-1. git clone https://github.com/al4nbr3/netwatchm.git
+1. git clone https://github.com/JBaezDev25/netwatchm.git
 2. cd netwatchm
 3. Right-click netwachmInstall\install.ps1 → Properties → Unblock → OK
 4. powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1

@@ -210,7 +210,7 @@ export PATH="$HOME/.local/bin:$PATH"   # add to ~/.bashrc for permanence
 ### Option A — Linux (recommended)
 
 ```bash
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 bash netwachmInstall/install.sh
 ```
@@ -238,7 +238,7 @@ bash netwachmInstall/install.sh --uninstall
 ### Option B — Windows (PowerShell — recommended)
 
 ```powershell
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 # Right-click install.ps1 → Properties → check Unblock → OK  (first time only)
 powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1
@@ -274,7 +274,7 @@ powershell -ExecutionPolicy Bypass -File netwachmInstall\install.ps1 -Uninstall
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/al4nbr3/netwatchm.git
+git clone https://github.com/JBaezDev25/netwatchm.git
 cd netwatchm
 
 # 2. Install dependencies
