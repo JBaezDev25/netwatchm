@@ -601,6 +601,57 @@ uv run pytest tests/ -v
 
 ---
 
+## Data Storage & Migration
+
+### Runtime paths (current — after 2026-06-23 migration)
+
+| Resource | Path |
+|---|---|
+| Config | `/etc/netwatchm/netwatchm.yaml` |
+| Databases (`flows`, `events`, `flow-history`, `agent_actions`) | `/mnt/jbaez_data/netwatchm/` |
+| GeoIP DB | `/mnt/jbaez_data/netwatchm/GeoLite2-City.mmdb` |
+| JSON state (`inventory`, `aliases`, `verified`, `suppressed`, `oui`) | `/mnt/jbaez_data/netwatchm/` |
+| Reports | `/mnt/jbaez_data/netwatchm/reports/` |
+| Logs | `/mnt/jbaez_data/netwatchm/logs/netwatchm.log` |
+| SSL certs + `agent_actions.db` | `/var/lib/netwatchm/` (unchanged — hardcoded paths) |
+| Service drop-in | `/etc/systemd/system/netwatchm-web.service.d/nas-migration.conf` |
+
+All configurable paths are set via environment variables in the systemd drop-in — the app code is unchanged.
+
+### Migration history
+
+**2026-06-23 — Data disk migration**
+
+Moved all growing data off the main system drive (`/dev/sda2`, 61% full) onto the secondary data disk (`/dev/sdb1`, 432 GB free) to prevent the main drive from filling up over time.
+
+Steps performed:
+1. **Backup** — full snapshot of `/var/lib/netwatchm/` to `/mnt/jbaez_data/netwatchm-backup-<timestamp>/` with WAL checkpoint before copy
+2. **NAS directories** — created `/volume1/AI-Programming/netwatchm/{reports,logs}` on the UGREEN NAS (`192.168.1.245`) for future archival
+3. **Local data directory** — created `/mnt/jbaez_data/netwatchm/` owned by the `netwatchm` system user
+4. **Data copy** — copied all databases, GeoIP, JSON state files, and reports to new location; archived existing log to NAS
+5. **Service config** — wrote systemd drop-in (`nas-migration.conf`) overriding `WorkingDirectory` and all path env vars; updated `netwatchm.yaml` log path
+6. **Cutover** — restarted both `netwatchm` and `netwatchm-web` services; brief downtime ~10 seconds
+7. **Verification** — all 7 checks passed: services active, databases readable, API responding
+
+**What stayed in place:** SSL certs and `agent_actions.db` remain at `/var/lib/netwatchm/` — their paths are hardcoded in the server and moving them would require a code change.
+
+**NAS live mount (not implemented):** SSHFS and rsync were attempted for live report/log archival to the NAS but are blocked by UGOS SSH limitations. A scheduled sync job via SSH pipe is planned as a follow-up.
+
+### Migration scripts (in `scripts/`)
+
+| Script | Purpose |
+|---|---|
+| `backup-before-nas-migration.sh` | Point-in-time backup before any changes |
+| `setup-local-data-dir.sh` | Create `/mnt/jbaez_data/netwatchm/` with correct ownership |
+| `setup-nas-mount.sh` | SSHFS mount setup (reference only — blocked by UGOS) |
+| `copy-data-to-new-locations.sh` | Copy databases and files to new paths |
+| `update-config-for-nas.sh` | Write systemd drop-in + update yaml log path |
+| `nas-cutover.sh` | Restart services against new paths |
+| `verify-nas-migration.sh` | Verify all services, paths, and API are healthy |
+| `rollback-nas-migration.sh` | Revert to original `/var/lib/netwatchm/` paths |
+
+---
+
 ## Requirements
 
 | Requirement | Version |

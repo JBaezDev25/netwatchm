@@ -112,15 +112,21 @@ Two whitelist mechanisms:
 
 ## Runtime paths (Linux)
 
+Paths were migrated to the data disk on 2026-06-23. The service drop-in at
+`/etc/systemd/system/netwatchm-web.service.d/nas-migration.conf` sets all env vars.
+
 | Resource | Path |
 |---|---|
 | Config | `/etc/netwatchm/netwatchm.yaml` |
-| Inventory | `/var/lib/netwatchm/inventory.json` |
-| Events DB | `/var/lib/netwatchm/events.db` |
-| Flow DB | `/var/lib/netwatchm/flows.db` |
-| GeoIP DB | `/var/lib/netwatchm/GeoLite2-City.mmdb` |
-| Logs | `/var/log/netwatchm/netwatchm.log` |
+| Inventory | `/mnt/jbaez_data/netwatchm/inventory.json` |
+| Events DB | `/mnt/jbaez_data/netwatchm/events.db` |
+| Flow DB | `/mnt/jbaez_data/netwatchm/flows.db` |
+| GeoIP DB | `/mnt/jbaez_data/netwatchm/GeoLite2-City.mmdb` |
+| Logs | `/mnt/jbaez_data/netwatchm/logs/netwatchm.log` |
+| Reports | `/mnt/jbaez_data/netwatchm/reports/` |
+| SSL certs + agent_actions.db | `/var/lib/netwatchm/` (hardcoded, unchanged) |
 | Service | `/etc/systemd/system/netwatchm-web.service` |
+| Service drop-in | `/etc/systemd/system/netwatchm-web.service.d/nas-migration.conf` |
 
 ## Web portals (served by `netwatchm_server.py`)
 
