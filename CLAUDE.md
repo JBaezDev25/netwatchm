@@ -158,3 +158,7 @@ Side-car JSON stores in `/var/lib/netwatchm/`:
 - **CHECKLIST.md reminder**: Remind the user to update CHECKLIST.md every 30 minutes with a countdown. Reset the countdown if the user asks to do it manually.
 - **README.md auto-update**: After any session that adds a new feature, new script, new module, or changes user-facing behavior, update `README.md` to reflect it. Update the relevant section (What It Does, AI Assistant, Architecture, Project Structure, Scripts, etc.). Commit README.md together with the code changes. Also mark the README update in CHECKLIST.md under the session's Documentation entry.
 - **Change confirmation**: After any file(s) in the project are modified, always end the response with a summary block listing every file that was updated, created, or deleted — with a ✅ confirmation that changes are complete.
+
+## Session History
+[Both Claude desktop and opencode update this section after each session.]
+- 2026-06-30 — Built Claude ↔ opencode bridge (registry.json + .project-meta.json)

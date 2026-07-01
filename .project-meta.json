@@ -1,0 +1,10 @@
+{
+  "name": "NetWatch Manager",
+  "desc": "Network monitoring and management",
+  "tags": [
+    "python",
+    "network",
+    "monitoring"
+  ],
+  "icon": "\ud83c\udf10"
+}
