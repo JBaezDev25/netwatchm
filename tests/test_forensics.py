@@ -70,7 +70,7 @@ def test_store_query_filters(tmp_path):
 
 # ── reputation folding ───────────────────────────────────────────────────────
 def test_private_ip_short_circuits():
-    r = enrich_ip("192.168.1.50", ForensicsConfig())
+    r = enrich_ip("10.0.0.50", ForensicsConfig())
     assert r.is_private is True
     assert r.verdict == "benign"
     assert r.providers == {}
@@ -102,12 +102,12 @@ def test_intel_disabled_skips_providers(monkeypatch):
 # ── handler gating ───────────────────────────────────────────────────────────
 def test_is_external():
     assert _is_external("8.8.8.8") is True
-    assert _is_external("192.168.1.1") is False
+    assert _is_external("10.0.0.1") is False
     assert _is_external("127.0.0.1") is False
     assert _is_external(None) is False
 
 
-def _alert(level=ThreatLevel.HIGH, src="192.168.1.10", dst="8.8.8.8"):
+def _alert(level=ThreatLevel.HIGH, src="10.0.0.10", dst="8.8.8.8"):
     return Alert(alert_type="PORT_SCAN", level=level, src_ip=src, dst_ip=dst,
                  description="test")
 
@@ -149,6 +149,6 @@ def test_handler_picks_external_target():
     cfg = ForensicsConfig(enabled=False)
     h = ForensicHandler(cfg)
     # external dst preferred
-    assert h._pick_target(_alert(src="192.168.1.10", dst="8.8.8.8")) == "8.8.8.8"
+    assert h._pick_target(_alert(src="10.0.0.10", dst="8.8.8.8")) == "8.8.8.8"
     # external src when dst is local (e.g. inbound scan)
-    assert h._pick_target(_alert(src="5.6.7.8", dst="192.168.1.10")) == "5.6.7.8"
+    assert h._pick_target(_alert(src="5.6.7.8", dst="10.0.0.10")) == "5.6.7.8"

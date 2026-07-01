@@ -23,7 +23,7 @@ This guide helps you investigate suspicious IP addresses to determine if they're
 The `whois` command queries the regional internet registry (RIR) to find who owns an IP address.
 
 ```bash
-whois 51.11.192.51
+whois 203.0.113.1
 ```
 
 **Key fields to look for:**
@@ -34,7 +34,7 @@ whois 51.11.192.51
 
 **Filtered output:**
 ```bash
-whois 51.11.192.51 | grep -E "origin|org|AS|Organization|Country|netrange|descr"
+whois 203.0.113.1 | grep -E "origin|org|AS|Organization|Country|netrange|descr"
 ```
 
 **Example output for Azure IP:**
@@ -50,9 +50,9 @@ Country:        FR
 Reverse DNS (PTR record) maps an IP to a hostname. Legitimate services usually have reverse DNS.
 
 ```bash
-host 51.11.192.51
-dig +short -x 51.11.192.51
-nslookup 51.11.192.51
+host 203.0.113.1
+dig +short -x 203.0.113.1
+nslookup 203.0.113.1
 ```
 
 **What to look for:**
@@ -73,7 +73,7 @@ curl -s "https://ip-ranges.amazonaws.com/ip-ranges.json" | grep "51.11.192"
 curl -s "https://ip-ranges.azure.com/" | jq -r '.prefixes[] | select(.ip_prefix | contains("51.11"))'
 
 # Or use a third-party service
-curl -s "https://ipinfo.io/51.11.192.51/json"
+curl -s "https://ipinfo.io/203.0.113.1/json"
 ```
 
 ### 4. Check HTTP/HTTPS Service
@@ -82,12 +82,12 @@ Connect to the IP and see what service responds. This reveals what website/servi
 
 **HTTP (port 80):**
 ```bash
-curl -I -v http://51.11.192.51:80 2>&1 | head -50
+curl -I -v http://203.0.113.1:80 2>&1 | head -50
 ```
 
 **HTTPS (port 443):**
 ```bash
-curl -Ik -v https://51.11.192.51:443 2>&1 | head -50
+curl -Ik -v https://203.0.113.1:443 2>&1 | head -50
 ```
 
 **What to look for in response:**
@@ -110,10 +110,10 @@ For HTTPS connections, check what domain the server presents.
 
 ```bash
 # Using OpenSSL
-openssl s_client -connect 51.11.192.51:443 -servername 51.11.192.51 2>&1 | grep -E "subject|issuer|Subject|Issuer"
+openssl s_client -connect 203.0.113.1:443 -servername 203.0.113.1 2>&1 | grep -E "subject|issuer|Subject|Issuer"
 
 # More detailed
-echo | openssl s_client -connect 51.11.192.51:443 2>&1 | openssl x509 -noout -text | grep -A2 "Subject:"
+echo | openssl s_client -connect 203.0.113.1:443 2>&1 | openssl x509 -noout -text | grep -A2 "Subject:"
 ```
 
 ---
@@ -131,12 +131,12 @@ sudo ss -tan state established
 
 **Filter by destination IP:**
 ```bash
-sudo ss -tan state established | grep "51.11.192.51"
+sudo ss -tan state established | grep "203.0.113.1"
 ```
 
 **Filter by source IP (your internal device):**
 ```bash
-sudo ss -tan state established | grep "192.168.1.180"
+sudo ss -tan state established | grep "10.0.0.10"
 ```
 
 **Filter by port:**
@@ -154,7 +154,7 @@ sudo ss -tanp state established
 **Understanding the output:**
 ```
 State      Recv-Q     Send-Q         Local Address:Port          Peer Address:Port
-ESTAB      0          0              192.168.1.180:50387          51.11.192.51:80
+ESTAB      0          0              10.0.0.10:50387          203.0.113.1:80
 ```
 - `State: ESTAB` — Connection is established (active)
 - `Local` — Your device IP and source port
@@ -171,12 +171,12 @@ sudo conntrack -L -p tcp --state ESTABLISHED
 
 **Filter by destination IP:**
 ```bash
-sudo conntrack -L -p tcp --state ESTABLISHED | grep "51.11.192.51"
+sudo conntrack -L -p tcp --state ESTABLISHED | grep "203.0.113.1"
 ```
 
 **Filter by source IP:**
 ```bash
-sudo conntrack -L -p tcp | grep "192.168.1.180"
+sudo conntrack -L -p tcp | grep "10.0.0.10"
 ```
 
 **Check all states (not just ESTABLISHED):**
@@ -191,7 +191,7 @@ sudo conntrack -L -p tcp --state ESTABLISHED | wc -l
 
 **Example output:**
 ```
-tcp      6 431997 ESTABLISHED src=192.168.1.180 dst=51.11.192.51 sport=50387 dport=80 src=51.11.192.51 dst=192.168.1.180 sport=80 dport=50387 [ASSURED]
+tcp      6 431997 ESTABLISHED src=10.0.0.10 dst=203.0.113.1 sport=50387 dport=80 src=203.0.113.1 dst=10.0.0.10 sport=80 dport=50387 [ASSURED]
 ```
 
 ### 8. Live Capture with tcpdump
@@ -205,22 +205,22 @@ sudo tcpdump -i any port 80 or port 443 -nn
 
 **Capture specific IP:**
 ```bash
-sudo tcpdump -i any host 51.11.192.51 -nn
+sudo tcpdump -i any host 203.0.113.1 -nn
 ```
 
 **Capture specific IP + port:**
 ```bash
-sudo tcpdump -i any host 51.11.192.51 and port 80 -nn
+sudo tcpdump -i any host 203.0.113.1 and port 80 -nn
 ```
 
 **Capture with timestamps and ASCII:**
 ```bash
-sudo tcpdump -i any host 51.11.192.51 -ttttnn -A
+sudo tcpdump -i any host 203.0.113.1 -ttttnn -A
 ```
 
 **Save to file for later analysis:**
 ```bash
-sudo tcpdump -i any host 51.11.192.51 -w /tmp/capture.pcap
+sudo tcpdump -i any host 203.0.113.1 -w /tmp/capture.pcap
 ```
 
 **Read saved capture:**
@@ -230,9 +230,9 @@ sudo tcpdump -r /tmp/capture.pcap -nn
 
 **What to look for in tcpdump output:**
 ```
-21:45:30.123456 IP 192.168.1.180.50387 > 51.11.192.51.80: Flags [S], seq 12345678
-21:45:30.234567 IP 51.11.192.51.80 > 192.168.1.180.50387: Flags [S.], seq 87654321, ack 12345679
-21:45:30.345678 IP 192.168.1.180.50387 > 51.11.192.51.80: Flags [.], ack 87654322
+21:45:30.123456 IP 10.0.0.10.50387 > 203.0.113.1.80: Flags [S], seq 12345678
+21:45:30.234567 IP 203.0.113.1.80 > 10.0.0.10.50387: Flags [S.], seq 87654321, ack 12345679
+21:45:30.345678 IP 10.0.0.10.50387 > 203.0.113.1.80: Flags [.], ack 87654322
 ```
 
 Flags: `[S]` = SYN, `[S.]` = SYN-ACK, `[.]` = ACK, `[P]` = PSH, `[F]` = FIN
@@ -243,7 +243,7 @@ Find which process is making the connection.
 
 ```bash
 # Show process for specific IP
-sudo netstat -tnp | grep "51.11.192.51"
+sudo netstat -tnp | grep "203.0.113.1"
 
 # Show all processes with connections
 sudo netstat -tanp
@@ -255,7 +255,7 @@ sudo ss -tnp
 **Example output:**
 ```
 Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
-tcp        0      0 192.168.1.180:50387     51.11.192.51:80         ESTABLISHED 1234/firefox
+tcp        0      0 10.0.0.10:50387     203.0.113.1:80         ESTABLISHED 1234/firefox
 ```
 
 ---
@@ -266,8 +266,8 @@ tcp        0      0 192.168.1.180:50387     51.11.192.51:80         ESTABLISHED 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Your PC (192.168.1.180:50387)  ──────>  Azure Server             │
-│                                        (51.11.192.51:80)            │
+│  Your PC (10.0.0.10:50387)  ──────>  Azure Server             │
+│                                        (203.0.113.1:80)            │
 │         ^source port (ephemeral)               ^destination port   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -325,7 +325,7 @@ IP spoofing = forging the source IP address to make traffic appear to come from 
 ```
 Attacker (real IP: 10.0.0.50)
         |
-        |---spoofed packet---> [src=51.11.192.51] ---> Victim
+        |---spoofed packet---> [src=203.0.113.1] ---> Victim
 ```
 
 ### Can You Spoof Easily?
@@ -365,7 +365,7 @@ If spoofed:
 
 ```bash
 # Ping the IP - do you get responses?
-ping -c 5 51.11.192.51
+ping -c 5 203.0.113.1
 ```
 
 If you get responses, the IP is real.
@@ -409,13 +409,13 @@ Search NetWatchM's event database for alerts involving an IP.
 
 ```bash
 # All events for an IP (as source or destination)
-sqlite3 /var/lib/netwatchm/events.db "SELECT * FROM events WHERE src_ip='51.11.192.51' OR dst_ip='51.11.192.51';"
+sqlite3 /var/lib/netwatchm/events.db "SELECT * FROM events WHERE src_ip='203.0.113.1' OR dst_ip='203.0.113.1';"
 
 # Show last 10 events for IP
-sqlite3 /var/lib/netwatchm/events.db "SELECT timestamp, src_ip, dst_ip, alert_type, threat_level FROM events WHERE src_ip='51.11.192.51' OR dst_ip='51.11.192.51' ORDER BY timestamp DESC LIMIT 10;"
+sqlite3 /var/lib/netwatchm/events.db "SELECT timestamp, src_ip, dst_ip, alert_type, threat_level FROM events WHERE src_ip='203.0.113.1' OR dst_ip='203.0.113.1' ORDER BY timestamp DESC LIMIT 10;"
 
 # Count events by type
-sqlite3 /var/lib/netwatchm/events.db "SELECT alert_type, COUNT(*) FROM events WHERE src_ip='51.11.192.51' OR dst_ip='51.11.192.51' GROUP BY alert_type;"
+sqlite3 /var/lib/netwatchm/events.db "SELECT alert_type, COUNT(*) FROM events WHERE src_ip='203.0.113.1' OR dst_ip='203.0.113.1' GROUP BY alert_type;"
 ```
 
 ### Deep Inspect an IP
@@ -423,7 +423,7 @@ sqlite3 /var/lib/netwatchm/events.db "SELECT alert_type, COUNT(*) FROM events WH
 Run a comprehensive inspection on an IP.
 
 ```bash
-uv run netwatchm deep-inspect --target 51.11.192.51 --output /tmp/report.html
+uv run netwatchm deep-inspect --target 203.0.113.1 --output /tmp/report.html
 ```
 
 This generates a report with:
@@ -514,10 +514,10 @@ curl -sk https://localhost:8765/api/threat-level
 
 ```bash
 # Using ASN
-whois 51.11.192.51 | grep -i "AS.*8075"
+whois 203.0.113.1 | grep -i "AS.*8075"
 
 # Using ipinfo
-curl -s https://ipinfo.io/51.11.192.51/json
+curl -s https://ipinfo.io/203.0.113.1/json
 ```
 
 ---
@@ -528,16 +528,16 @@ curl -s https://ipinfo.io/51.11.192.51/json
 
 ```bash
 # Basic check
-curl -I http://51.11.192.51
+curl -I http://203.0.113.1
 
 # Verbose with headers
-curl -Iv http://51.11.192.51
+curl -Iv http://203.0.113.1
 
 # Follow redirects
-curl -IL http://51.11.192.51
+curl -IL http://203.0.113.1
 
 # Check HTTPS certificate
-echo | openssl s_client -connect 51.11.192.51:443 2>&1 | head -20
+echo | openssl s_client -connect 203.0.113.1:443 2>&1 | head -20
 ```
 
 ### Common Server Headers
@@ -557,13 +557,13 @@ echo | openssl s_client -connect 51.11.192.51:443 2>&1 | head -20
 
 ```bash
 # Get certificate details
-echo | openssl s_client -connect 51.11.192.51:443 2>&1 | openssl x509 -noout -text | grep -A3 "Subject:"
+echo | openssl s_client -connect 203.0.113.1:443 2>&1 | openssl x509 -noout -text | grep -A3 "Subject:"
 
 # Get certificate issuer
-echo | openssl s_client -connect 51.11.192.51:443 2>&1 | openssl x509 -noout -text | grep -A3 "Issuer:"
+echo | openssl s_client -connect 203.0.113.1:443 2>&1 | openssl x509 -noout -text | grep -A3 "Issuer:"
 
 # Check all SANs (Subject Alternative Names)
-echo | openssl s_client -connect 51.11.192.51:443 2>&1 | openssl x509 -noout -text | grep -A10 "Subject Alternative Name"
+echo | openssl s_client -connect 203.0.113.1:443 2>&1 | openssl x509 -noout -text | grep -A10 "Subject Alternative Name"
 ```
 
 ---
@@ -582,8 +582,8 @@ Add to whitelist section:
 
 ```yaml
 whitelist:
-  - 51.11.192.51          # Single IP
-  - 192.168.1.0/24       # Entire subnet (CIDR notation)
+  - 203.0.113.1          # Single IP
+  - 10.0.0.0/24          # Entire subnet (CIDR notation)
   - 10.0.0.0/8           # Class A subnet
 ```
 
@@ -594,9 +594,9 @@ If only specific detectors should ignore:
 ```yaml
 detector_whitelist:
   PORT_SCAN:
-    - 51.11.192.51
+    - 203.0.113.1
   BRUTE_FORCE:
-    - 192.168.1.100
+    - 10.0.0.40
 ```
 
 ### 3. Restart Service
@@ -626,29 +626,29 @@ sudo systemctl restart netwatchm-web
 
 ```bash
 # 1. Who's this IP?
-whois 51.11.192.51 | head -20
+whois 203.0.113.1 | head -20
 
 # 2. What's the hostname?
-host 51.11.192.51
+host 203.0.113.1
 
 # 3. What service?
-curl -I http://51.11.192.51
+curl -I http://203.0.113.1
 
 # 4. Is it a cloud provider?
-curl -s https://ipinfo.io/51.11.192.51/json
+curl -s https://ipinfo.io/203.0.113.1/json
 
 # 5. Any active connections?
-sudo conntrack -L -p tcp --state ESTABLISHED | grep "51.11.192.51"
+sudo conntrack -L -p tcp --state ESTABLISHED | grep "203.0.113.1"
 
 # 6. See it live? (specific IP)
-sudo tcpdump -i any host 51.11.192.51 -nn
+sudo tcpdump -i any host 203.0.113.1 -nn
 
 # 7. Watch all HTTP/HTTPS traffic (20 packets)
 sudo tcpdump -i any port 80 or port 443 -nn -c 20
 
 # 8. Check NetWatchM events
-sqlite3 /var/lib/netwatchm/events.db "SELECT * FROM events WHERE src_ip='51.11.192.51' OR dst_ip='51.11.192.51';"
+sqlite3 /var/lib/netwatchm/events.db "SELECT * FROM events WHERE src_ip='203.0.113.1' OR dst_ip='203.0.113.1';"
 
 # 9. Check device inventory
-uv run netwatchm inventory | grep 51.11.192.51
+uv run netwatchm inventory | grep 203.0.113.1
 ```

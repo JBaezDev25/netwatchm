@@ -578,7 +578,7 @@ simply a new legitimate device.
 - Once an IP is added to `known_ips` it never alerts again for that IP
 
 **Example:** After 5 minutes of learning the network, a Raspberry Pi with
-`192.168.1.250` that was never seen before connects → `NEW_IP` MEDIUM alert.
+`10.0.0.250` that was never seen before connects → `NEW_IP` MEDIUM alert.
 
 ### ThreatScorer (`scorer.py`)
 
@@ -1168,7 +1168,7 @@ When complete, it auto-redirects to the report at `/deep-inspect-{ip}.html`.
 ### CLI
 
 ```bash
-uv run netwatchm deep-inspect --target 192.168.1.100 --output /tmp/report.html
+uv run netwatchm deep-inspect --target 10.0.0.100 --output /tmp/report.html
 ```
 
 ---

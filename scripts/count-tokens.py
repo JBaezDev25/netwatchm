@@ -66,11 +66,11 @@ def _synthetic_db():
     with EventStore(db) as s:
         for _ in range(15):
             s.insert(mk("PORT_SCAN", ThreatLevel.HIGH, "203.0.113.7"))
-        s.insert(mk("EXFILTRATION", ThreatLevel.CRITICAL, "192.168.1.50"))
+        s.insert(mk("EXFILTRATION", ThreatLevel.CRITICAL, "10.0.0.50"))
         for _ in range(3):
-            s.insert(mk("ADULT_DOMAIN", ThreatLevel.MEDIUM, "192.168.1.31"))
+            s.insert(mk("ADULT_DOMAIN", ThreatLevel.MEDIUM, "10.0.0.31"))
         for _ in range(40):
-            s.insert(mk("BEACONING", ThreatLevel.MEDIUM, "192.168.1.22"))
+            s.insert(mk("BEACONING", ThreatLevel.MEDIUM, "10.0.0.22"))
     return db, True
 
 

@@ -1131,7 +1131,7 @@ sudo uv run netwatchm --config /etc/netwatchm/netwatchm.yaml</code></pre>
 │  NetWatchM  │  Interface: enp6s0  │  Threat: <span class="arch-green">LOW</span>  │  Pkts/s: 142     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                         RECENT ALERTS                               │
-│  [16:45:12]  <span class="arch-yellow">MEDIUM</span>  NEW_IP   192.168.1.250 — new device detected     │
+│  [16:45:12]  <span class="arch-yellow">MEDIUM</span>  NEW_IP   10.0.0.20 — new device detected     │
 │  [16:31:05]  <span class="arch-pink">HIGH  </span>  PORT_SCAN 203.0.113.42 — 18 ports in 10s         │
 │                                                                     │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -1249,7 +1249,7 @@ failures. Use SSH key authentication instead of passwords.</p>
 running at an unusual time.</p>
 
 <p><strong>Alert example:</strong></p>
-<pre><code>EXFILTRATION from 192.168.1.45: 15.2 MB sent in 60s window</code></pre>
+<pre><code>EXFILTRATION from 10.0.0.30: 15.2 MB sent in 60s window</code></pre>
 
 <p><strong>What to do:</strong> Identify the device (check the inventory view), then investigate
 what process is sending that data.</p>
@@ -1263,7 +1263,7 @@ what process is sending that data.</p>
 (a guest's phone) or suspicious (an attacker who gained network access).</p>
 
 <p><strong>Alert example:</strong></p>
-<pre><code>NEW_IP detected: 192.168.1.250 — not seen during baseline period</code></pre>
+<pre><code>NEW_IP detected: 10.0.0.20 — not seen during baseline period</code></pre>
 
 <p><strong>What to do:</strong> Check the inventory view to see if you can identify the device
 by its hostname or MAC address.</p>

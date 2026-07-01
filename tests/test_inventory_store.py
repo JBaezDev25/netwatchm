@@ -16,30 +16,30 @@ class TestDeviceStore:
     @pytest.mark.asyncio
     async def test_update_creates_record(self) -> None:
         store = DeviceStore()
-        pkt = make_packet(src_ip="192.168.1.1", dst_ip="8.8.8.8", dst_port=443, length=200)
+        pkt = make_packet(src_ip="10.0.0.1", dst_ip="8.8.8.8", dst_port=443, length=200)
         await store.update(pkt)
         records = await store.get_all()
         ips = {r.ip for r in records}
-        assert "192.168.1.1" in ips
+        assert "10.0.0.1" in ips
         assert "8.8.8.8" in ips
 
     @pytest.mark.asyncio
     async def test_bytes_accumulated(self) -> None:
         store = DeviceStore()
-        pkt = make_packet(src_ip="192.168.1.1", dst_ip="8.8.8.8", length=500)
+        pkt = make_packet(src_ip="10.0.0.1", dst_ip="8.8.8.8", length=500)
         await store.update(pkt)
         await store.update(pkt)
         records = await store.get_all()
-        src_rec = next(r for r in records if r.ip == "192.168.1.1")
+        src_rec = next(r for r in records if r.ip == "10.0.0.1")
         assert src_rec.bytes_sent == 1000
 
     @pytest.mark.asyncio
     async def test_ports_accumulated(self) -> None:
         store = DeviceStore()
         for port in (80, 443, 22):
-            await store.update(make_packet(src_ip="192.168.1.2", dst_port=port))
+            await store.update(make_packet(src_ip="10.0.0.2", dst_port=port))
         records = await store.get_all()
-        src_rec = next(r for r in records if r.ip == "192.168.1.2")
+        src_rec = next(r for r in records if r.ip == "10.0.0.2")
         assert {80, 443, 22} <= src_rec.ports_observed
 
     @pytest.mark.asyncio
@@ -47,12 +47,12 @@ class TestDeviceStore:
         store = DeviceStore()
         await store.update(make_packet(src_ip="10.0.0.1"))
         await store.update(make_packet(src_ip="10.0.0.2"))
-        await store.update(make_packet(src_ip="192.168.1.1"))
+        await store.update(make_packet(src_ip="10.0.0.1"))
         results = await store.get_all("10.0")
         ips = {r.ip for r in results}
         assert "10.0.0.1" in ips
         assert "10.0.0.2" in ips
-        assert "192.168.1.1" not in ips
+        assert "10.0.0.1" not in ips
 
     @pytest.mark.asyncio
     async def test_update_hostname(self) -> None:

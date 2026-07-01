@@ -112,7 +112,7 @@ class TestBruteForceDetector:
 
     def test_no_alert_internal_src(self) -> None:
         det = self._detector(attempts=2)
-        results = [det.process(make_packet(src_ip="192.168.1.50", dst_port=22)) for _ in range(5)]
+        results = [det.process(make_packet(src_ip="10.0.0.50", dst_port=22)) for _ in range(5)]
         assert all(r is None for r in results)
 
     def test_alert_at_threshold(self) -> None:
@@ -153,14 +153,14 @@ class TestExfiltrationDetector:
         det = self._detector(limit=100)
         # Both IPs are local; should not alert
         for _ in range(20):
-            result = det.process(make_packet(src_ip="192.168.1.1", dst_ip="192.168.1.2", length=100))
+            result = det.process(make_packet(src_ip="10.0.0.1", dst_ip="10.0.0.2", length=100))
         assert result is None
 
     def test_alert_outbound_large(self) -> None:
         det = self._detector(limit=500)
         alert = None
         for _ in range(6):
-            r = det.process(make_packet(src_ip="192.168.1.1", dst_ip="8.8.8.8", length=100))
+            r = det.process(make_packet(src_ip="10.0.0.1", dst_ip="8.8.8.8", length=100))
             if r:
                 alert = r
         assert alert is not None
@@ -170,7 +170,7 @@ class TestExfiltrationDetector:
     def test_no_alert_inbound(self) -> None:
         det = self._detector(limit=100)
         for _ in range(20):
-            result = det.process(make_packet(src_ip="8.8.8.8", dst_ip="192.168.1.1", length=100))
+            result = det.process(make_packet(src_ip="8.8.8.8", dst_ip="10.0.0.1", length=100))
         assert result is None
 
 
@@ -221,12 +221,12 @@ class TestTorExitDetector:
 
     def test_no_alert_normal_traffic(self) -> None:
         det = self._detector()
-        result = det.process(make_packet(src_ip="192.168.1.1", dst_ip="8.8.8.8"))
+        result = det.process(make_packet(src_ip="10.0.0.1", dst_ip="8.8.8.8"))
         assert result is None
 
     def test_alert_inbound_tor_src(self) -> None:
         det = self._detector()
-        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
         assert result is not None
         assert result.alert_type == "TOR_EXIT"
         assert result.level == ThreatLevel.HIGH
@@ -235,7 +235,7 @@ class TestTorExitDetector:
 
     def test_alert_outbound_tor_dst(self) -> None:
         det = self._detector()
-        result = det.process(make_packet(src_ip="192.168.1.1", dst_ip=self.TOR_IP))
+        result = det.process(make_packet(src_ip="10.0.0.1", dst_ip=self.TOR_IP))
         assert result is not None
         assert result.alert_type == "TOR_EXIT"
         assert result.level == ThreatLevel.MEDIUM
@@ -244,28 +244,28 @@ class TestTorExitDetector:
 
     def test_dedup_suppresses_second_alert(self) -> None:
         det = self._detector()
-        first = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
-        second = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        first = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
+        second = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
         assert first is not None
         assert second is None
 
     def test_dedup_expires_and_re_alerts(self) -> None:
         det = self._detector(alert_window_seconds=1)
-        first = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        first = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
         assert first is not None
         # Manually backdate the recorded alert time to simulate window expiry
         det._alerted[self.TOR_IP] = time.time() - 2
-        second = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        second = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
         assert second is not None
 
     def test_disabled_no_alert(self) -> None:
         det = self._detector(enabled=False)
-        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        result = det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
         assert result is None
 
     def test_flush_expired_clears_alerted(self) -> None:
         det = self._detector(alert_window_seconds=1)
-        det.process(make_packet(src_ip=self.TOR_IP, dst_ip="192.168.1.1"))
+        det.process(make_packet(src_ip=self.TOR_IP, dst_ip="10.0.0.1"))
         assert self.TOR_IP in det._alerted
         # Backdate to make entry expired
         det._alerted[self.TOR_IP] = time.time() - 2
@@ -325,8 +325,8 @@ class TestAdultDomainDetector:
 
     def test_dedup_per_device(self) -> None:
         det = self._detector()
-        r1 = det.process(make_packet(src_ip="192.168.1.1", dns_query=self.ADULT_DOMAIN))
-        r2 = det.process(make_packet(src_ip="192.168.1.2", dns_query=self.ADULT_DOMAIN))
+        r1 = det.process(make_packet(src_ip="10.0.0.1", dns_query=self.ADULT_DOMAIN))
+        r2 = det.process(make_packet(src_ip="10.0.0.2", dns_query=self.ADULT_DOMAIN))
         assert r1 is not None
         assert r2 is not None
 
@@ -334,7 +334,7 @@ class TestAdultDomainDetector:
         det = self._detector(alert_window_seconds=1)
         first = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
         assert first is not None
-        key = f"192.168.1.100:{self.ADULT_DOMAIN}"
+        key = f"10.0.0.100:{self.ADULT_DOMAIN}"
         det._alerted[key] = time.time() - 2
         second = det.process(make_packet(dns_query=self.ADULT_DOMAIN))
         assert second is not None
@@ -347,7 +347,7 @@ class TestAdultDomainDetector:
     def test_flush_expired_clears_alerted(self) -> None:
         det = self._detector(alert_window_seconds=1)
         det.process(make_packet(dns_query=self.ADULT_DOMAIN))
-        key = f"192.168.1.100:{self.ADULT_DOMAIN}"
+        key = f"10.0.0.100:{self.ADULT_DOMAIN}"
         assert key in det._alerted
         det._alerted[key] = time.time() - 2
         det.flush_expired()
@@ -414,8 +414,8 @@ class TestTrackerDomainDetector:
 
     def test_dedup_per_device(self) -> None:
         det = self._detector()
-        r1 = det.process(make_packet(src_ip="192.168.1.1", dns_query=self.TRACKER))
-        r2 = det.process(make_packet(src_ip="192.168.1.2", dns_query=self.TRACKER))
+        r1 = det.process(make_packet(src_ip="10.0.0.1", dns_query=self.TRACKER))
+        r2 = det.process(make_packet(src_ip="10.0.0.2", dns_query=self.TRACKER))
         assert r1 is not None
         assert r2 is not None
 
@@ -423,7 +423,7 @@ class TestTrackerDomainDetector:
         det = self._detector(alert_window_seconds=1)
         first = det.process(make_packet(dns_query=self.TRACKER))
         assert first is not None
-        key = f"192.168.1.100:{self.TRACKER}"
+        key = f"10.0.0.100:{self.TRACKER}"
         det._alerted[key] = time.time() - 2
         second = det.process(make_packet(dns_query=self.TRACKER))
         assert second is not None
@@ -450,7 +450,7 @@ class TestTrackerDomainDetector:
     def test_flush_expired_clears_alerted(self) -> None:
         det = self._detector(alert_window_seconds=1)
         det.process(make_packet(dns_query=self.TRACKER))
-        key = f"192.168.1.100:{self.TRACKER}"
+        key = f"10.0.0.100:{self.TRACKER}"
         assert key in det._alerted
         det._alerted[key] = time.time() - 2
         det.flush_expired()
@@ -460,7 +460,7 @@ class TestTrackerDomainDetector:
 # ──────────────── Data Hog ────────────────
 
 class TestDataHogDetector:
-    LOCAL = "192.168.1.50"
+    LOCAL = "10.0.0.50"
     EXTERNAL = "8.8.8.8"
 
     def _detector(self, threshold=1000, window=86400, alert_window=10) -> DataHogDetector:
@@ -510,7 +510,7 @@ class TestDataHogDetector:
 
     def test_local_to_local_no_double_count(self) -> None:
         # Local → local: only src_ip counted (no double-count)
-        LOCAL2 = "192.168.1.51"
+        LOCAL2 = "10.0.0.51"
         det = self._detector(threshold=500)
         alerts = []
         for _ in range(6):
@@ -522,7 +522,7 @@ class TestDataHogDetector:
         assert alerts[0].src_ip == self.LOCAL
 
     def test_different_devices_independent(self) -> None:
-        LOCAL2 = "192.168.1.51"
+        LOCAL2 = "10.0.0.51"
         det = self._detector(threshold=500)
         alert1, alert2 = None, None
         for _ in range(6):
@@ -638,8 +638,8 @@ class TestMalwareDomainDetector:
 
     def test_dedup_per_device(self) -> None:
         det = self._detector()
-        r1 = det.process(make_packet(src_ip="192.168.1.10", dns_query=self.MALWARE))
-        r2 = det.process(make_packet(src_ip="192.168.1.11", dns_query=self.MALWARE))
+        r1 = det.process(make_packet(src_ip="10.0.0.10", dns_query=self.MALWARE))
+        r2 = det.process(make_packet(src_ip="10.0.0.11", dns_query=self.MALWARE))
         assert r1 is not None
         assert r2 is not None
 
@@ -647,7 +647,7 @@ class TestMalwareDomainDetector:
         det = self._detector(alert_window_seconds=1)
         first = det.process(make_packet(dns_query=self.MALWARE))
         assert first is not None
-        key = f"192.168.1.100:{self.MALWARE}"
+        key = f"10.0.0.100:{self.MALWARE}"
         det._alerted[key] = time.time() - 2
         second = det.process(make_packet(dns_query=self.MALWARE))
         assert second is not None
@@ -674,7 +674,7 @@ class TestMalwareDomainDetector:
     def test_flush_expired_clears_alerted(self) -> None:
         det = self._detector(alert_window_seconds=1)
         det.process(make_packet(dns_query=self.MALWARE))
-        key = f"192.168.1.100:{self.MALWARE}"
+        key = f"10.0.0.100:{self.MALWARE}"
         assert key in det._alerted
         det._alerted[key] = time.time() - 2
         det.flush_expired()
@@ -684,7 +684,7 @@ class TestMalwareDomainDetector:
 # ──────────────── DNS Tunneling ────────────────
 
 class TestDnsTunnelingDetector:
-    SRC = "192.168.1.50"
+    SRC = "10.0.0.50"
     LONG_LABEL = "a" * 35  # over min_label_length=30
     HIGH_ENTROPY = "f3a91b27c8de460f5a2d"  # 20 chars, varied — high entropy
 
@@ -756,11 +756,11 @@ class TestDnsTunnelingDetector:
         det = self._detector(queries_per_window=3)
         a1 = a2 = None
         for i in range(4):
-            r = det.process(make_packet(src_ip="192.168.1.10", dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+            r = det.process(make_packet(src_ip="10.0.0.10", dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
             if r:
                 a1 = r
         for i in range(4):
-            r = det.process(make_packet(src_ip="192.168.1.11", dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
+            r = det.process(make_packet(src_ip="10.0.0.11", dns_query=f"{self.LONG_LABEL}{i}.evil.com"))
             if r:
                 a2 = r
         assert a1 is not None and a2 is not None
@@ -789,7 +789,7 @@ class TestDnsTunnelingDetector:
 # ──────────────── Beaconing (C2) ────────────────
 
 class TestBeaconingDetector:
-    LOCAL = "192.168.1.50"
+    LOCAL = "10.0.0.50"
     EXTERNAL = "8.8.8.8"
 
     def _detector(self, **kwargs) -> BeaconingDetector:
@@ -855,7 +855,7 @@ class TestBeaconingDetector:
     def test_no_alert_local_to_local(self) -> None:
         det = self._detector(min_contacts=2)
         for _ in range(10):
-            r = det.process(make_packet(src_ip="192.168.1.10", dst_ip="192.168.1.20"))
+            r = det.process(make_packet(src_ip="10.0.0.10", dst_ip="10.0.0.20"))
             assert r is None
 
     def test_no_alert_inbound(self) -> None:

@@ -22,8 +22,8 @@ uv run netwatchm --config netwatchm.yaml.example --interface lo --no-ui
 
 # Subcommands (--interface is a top-level flag, before the subcommand)
 uv run netwatchm --interface lo report --duration 5
-uv run netwatchm inventory --filter 192.168.1
-uv run netwatchm deep-inspect --target 192.168.1.50 --output /tmp/report.html
+uv run netwatchm inventory --filter 10.0.0.0/24
+uv run netwatchm deep-inspect --target 10.0.0.50 --output /tmp/report.html
 uv run netwatchm analytics --output /tmp/analytics.html
 ```
 

@@ -28,7 +28,7 @@ def _make_config(**kwargs) -> NtfyAlertConfig:
 def _alert(
     alert_type: str = "PORT_SCAN",
     level: ThreatLevel = ThreatLevel.HIGH,
-    src_ip: str = "192.168.1.5",
+    src_ip: str = "10.0.0.5",
     dst_ip: str = "10.0.0.1",
     description: str = "test alert",
 ) -> Alert:

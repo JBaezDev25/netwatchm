@@ -114,15 +114,15 @@ remaining gaps the operator asked about.
       per device.
 - [x] Labeled + verified 24 identifiable LAN devices via API (phones, tablets,
       router, NAS, switch, cameras, printer, workstation). Deliberately left the
-      16 unidentifiable LAN hosts UNverified — incl. beaconing `192.168.1.9`/
-      `.249` and unnamed remote-admin host `192.168.1.194` — for operator review.
+      16 unidentifiable LAN hosts UNverified — incl. beaconing `10.0.0.9`/
+      `.249` and unnamed remote-admin host `10.0.0.194` — for operator review.
 - [x] Live effect (pre-scoping-deploy): 6.4 2→1 unverified admin host, 13.1 7→3
       high-risk. 1.1 still gated on identifying the remaining LAN hosts.
 - [ ] **Deploy** (operator): `bash scripts/deploy-server.sh` (full — grc package
       changed) to apply owned-asset scoping so 1.1 reflects LAN devices.
 
-### Beaconing false-positive fix (investigation of 192.168.1.9)
-- [x] Investigated `192.168.1.9` (MAC 20:c0:47:d3:60:71) beaconing alerts —
+### Beaconing false-positive fix (investigation of 10.0.0.9)
+- [x] Investigated `10.0.0.9` (MAC 20:c0:47:d3:60:71) beaconing alerts —
       ALL 58 target multicast (224.0.0.1 IGMP, 224.0.0.22 IGMPv3, 239.255.255.250
       SSDP/UPnP); zero external/internet destinations in flows.db. **False
       positive**, not C2. Likely a smart-home/media (DLNA) device.
@@ -154,7 +154,7 @@ remaining gaps the operator asked about.
       clean (no digest encode error); ntfy + beaconing fixes live.
 
 ### Exclude the sensor host from GRC + plain-English preference (2026-05-29)
-- [x] Investigated "lock down Docker 2375 on 192.168.1.180" request: 192.168.1.180
+- [x] Investigated "lock down Docker 2375 on 10.0.0.180" request: 10.0.0.180
       IS the sensor host (ai-rnd-01). dockerd runs `-H fd://` (unix socket only) —
       nothing listening on 2375/2376. Cross-checked all 8 GRC-flagged ports: 7
       are NOT listening (false positives from `ports_observed` capturing the
@@ -167,7 +167,7 @@ remaining gaps the operator asked about.
       in plain, non-technical language going forward (user request 2026-05-29).
       Style preference belongs in memory, not a settings.json hook (hooks run
       shell commands, can't change response phrasing).
-- [x] **Applied**: hotdeploy run; monitor host (192.168.1.180) no longer in GRC
+- [x] **Applied**: hotdeploy run; monitor host (10.0.0.180) no longer in GRC
       register. Two false-positive media devices (.9/.249) remain, aging out.
 - [x] Saved global `~/.claude/CLAUDE.md` — plain-English communication applies
       across ALL projects/directories from now on (user request).
@@ -783,12 +783,12 @@ Note: first tick after enable will be slow (~30-60s) while Ollama loads the mode
 bash scripts/deploy-server.sh   # reinstall netwatchm package with new detectors + restart
 ```
 
-### Evidence-gathering script for 192.168.1.180 → 142.251.163.83 investigation
-- [x] `scripts/investigate-192-168-1-180.sh` — gathers events, flows, inventory, DNS/WHOIS, log slice + runs deep-inspect into `/tmp/investigate-192.168.1.180/`. Self-sudoing where needed.
-- [x] **Investigation result** — destination `142.251.163.83` (PTR `wv-in-f83.1e100.net`) is benign Google service traffic. The 5 BEACONING alerts on 2026-05-08 19:30-19:54 from 192.168.1.180 fan out to Google + Cloudflare/Discord (`162.159.140.33`) + AWS CloudFront — ~45s heartbeat fingerprint of desktop SaaS apps (Discord, Workspace, etc.), not C2.
+### Evidence-gathering script for 10.0.0.180 → 203.0.113.100 investigation
+- [x] `scripts/investigate-10-0-0-10.sh` — gathers events, flows, inventory, DNS/WHOIS, log slice + runs deep-inspect into `/tmp/investigate-10.0.0.180/`. Self-sudoing where needed.
+- [x] **Investigation result** — destination `203.0.113.100` (PTR `wv-in-f83.1e100.net`) is benign Google service traffic. The 5 BEACONING alerts on 2026-05-08 19:30-19:54 from 10.0.0.180 fan out to Google + Cloudflare/Discord (`203.0.113.200`) + AWS CloudFront — ~45s heartbeat fingerprint of desktop SaaS apps (Discord, Workspace, etc.), not C2.
 
 ### Detector tuning — silence monitor-host self-noise from new detectors
-- [x] `scripts/whitelist-monitor-beacon.sh` — programmatically adds `192.168.1.180` to `detector_whitelist.BEACONING` and `detector_whitelist.TRACKER_DOMAIN` in live config (`/etc/netwatchm/netwatchm.yaml`), shows a diff, prompts before applying, backs up, and restarts `netwatchm`. Uses the system venv's PyYAML for safe in-place YAML edit.
+- [x] `scripts/whitelist-monitor-beacon.sh` — programmatically adds `10.0.0.180` to `detector_whitelist.BEACONING` and `detector_whitelist.TRACKER_DOMAIN` in live config (`/etc/netwatchm/netwatchm.yaml`), shows a diff, prompts before applying, backs up, and restarts `netwatchm`. Uses the system venv's PyYAML for safe in-place YAML edit.
 
 ---
 
@@ -827,7 +827,7 @@ bash scripts/deploy-server.sh        # reinstall netwatchm package with new emai
 ## Session 20 — 2026-04-15
 
 ### Detector whitelist — suppress monitor host false positives
-- [x] `/tmp/netwatchm-updated.yaml` — `PORT_SCAN` and `DATA_HOG` detector_whitelist entries added for `192.168.1.180`; `ADULT_DOMAIN` was already suppressed for that IP; `BRUTE_FORCE`/`EXFILTRATION`/`TOR_EXIT` remain active
+- [x] `/tmp/netwatchm-updated.yaml` — `PORT_SCAN` and `DATA_HOG` detector_whitelist entries added for `10.0.0.180`; `ADULT_DOMAIN` was already suppressed for that IP; `BRUTE_FORCE`/`EXFILTRATION`/`TOR_EXIT` remain active
 - [x] `scripts/suppress-monitor-host.sh` — backs up live config, applies update, restarts `netwatchm`
 - [x] **Run**: applied manually — `sudo cp /tmp/netwatchm-updated.yaml /etc/netwatchm/netwatchm.yaml && sudo systemctl restart netwatchm`
 
@@ -929,7 +929,7 @@ bash scripts/deploy-server.sh        # reinstall netwatchm package with new emai
 
 ### mDNS Hostname (`netwatch.local`)
 - [x] `scripts/setup-hostname.sh` — creates Avahi service XML + `netwatch-mdns.service` systemd unit; publishes `netwatch.local` → LAN IP via `avahi-publish -a -R`
-- [x] Verified: `avahi-resolve -n netwatch.local` → `192.168.1.180`; all pages accessible from any LAN device by hostname
+- [x] Verified: `avahi-resolve -n netwatch.local` → `10.0.0.180`; all pages accessible from any LAN device by hostname
 
 ### AI Chat Nav Link — All Pages
 - [x] `netwatchm_server.py` — AI Chat link added to dynamically rendered nav bars: events.html topbar, inventory.html nav, history.html nav, pcap.html nav
@@ -1175,7 +1175,7 @@ https://localhost:8765/inventory.html
 - [x] "📊 Pcap" nav link added to `inventory.html`
 - [x] `scripts/capture-targetip.sh` — interactive: prompts for target IP, save path, duration (seconds), interface; pre-creates output file with `touch + chmod 644` to avoid tshark permission denied error
   - Renamed from `capture-switch.sh`
-- [x] Nintendo Switch investigation: `scannIp.pcapng` identified `192.168.1.217` as Nintendo Co.,Ltd (MAC `98:e2:55:d4:be:85`); port scan showed all RST (no open ports), no DNS/TLS because Switch was passive during scan
+- [x] Nintendo Switch investigation: `scannIp.pcapng` identified `10.0.0.217` as Nintendo Co.,Ltd (MAC `98:e2:55:d4:be:85`); port scan showed all RST (no open ports), no DNS/TLS because Switch was passive during scan
 
 #### Flow History (`/history.html`)
 - [x] `flow-history.db` (SQLite) — `active_snapshot` + `flow_history` tables
@@ -1193,9 +1193,9 @@ https://localhost:8765/inventory.html
 - [x] `scripts/patch-report-dashboard-btn.sh` — one-time script to apply buttons to existing live `connection-report.html` (writes to `/tmp/`, then `sudo cp`)
 
 #### Adult Domain Alert Fix
-- [x] **Root cause 1:** `192.168.1.180` (user's own machine) was in the whitelist — whitelist suppresses ALL alerts from that src_ip, including ADULT_DOMAIN when browsing from that machine
+- [x] **Root cause 1:** `10.0.0.180` (user's own machine) was in the whitelist — whitelist suppresses ALL alerts from that src_ip, including ADULT_DOMAIN when browsing from that machine
 - [x] **Root cause 2:** `interface: auto` in config (though enp6s0 was being selected anyway)
-- [x] Fix: remove `192.168.1.180` from whitelist; set `interface: enp6s0` explicitly; add explicit `adult_domain` config block
+- [x] Fix: remove `10.0.0.180` from whitelist; set `interface: enp6s0` explicitly; add explicit `adult_domain` config block
 - [x] `scripts/apply-config-fix.sh` — backs up `/etc/netwatchm/netwatchm.yaml`, applies `/tmp/netwatchm-fixed.yaml`, restarts `netwatchm` service
 - [x] `/tmp/netwatchm-fixed.yaml` — corrected config (Twingate relays whitelisted, user's own IP removed)
 
@@ -1225,7 +1225,7 @@ https://localhost:8765/inventory.html
 ### Deploy
 ```bash
 bash scripts/hotdeploy.sh              # deploy netwatchm_server.py → live server (port 8765/8766)
-bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168.1.180 from whitelist)
+bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 10.0.0.180 from whitelist)
 ```
 
 ---
@@ -1255,15 +1255,15 @@ bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168
 ## Session 8 — Remote Access + URL Fix  ✅ COMPLETE (2026-03-08)
 
 ### Grafana Remote Access
-- [x] `scripts/configure-grafana-remote.sh` — patches `/etc/grafana/grafana.ini`: sets `domain = 192.168.1.180` + `root_url = http://192.168.1.180:3000/`; opens ufw port 3000; restarts grafana-server
-- [x] Verified: Grafana accessible from remote machine at `http://192.168.1.180:3000`
+- [x] `scripts/configure-grafana-remote.sh` — patches `/etc/grafana/grafana.ini`: sets `domain = 10.0.0.180` + `root_url = http://10.0.0.180:3000/`; opens ufw port 3000; restarts grafana-server
+- [x] Verified: Grafana accessible from remote machine at `http://10.0.0.180:3000`
 
-### NetWatchM Portal Remote Access (`https://192.168.1.180:8765`)
+### NetWatchM Portal Remote Access (`https://10.0.0.180:8765`)
 - [x] TLS cert regenerated with `subjectAltName` (DNS:localhost, IP:127.0.0.1, IP:\<LAN IP\>) — old cert had `CN=localhost` only, breaking remote browser connections
 - [x] `_ensure_cert()` in `netwatchm_server.py` now auto-detects LAN IP and embeds it in SAN; override with `NETWATCHM_SERVER_IP` env var
 - [x] `scripts/enable-remote-access.sh` — opens ufw port 8765, regenerates cert with LAN IP SAN, restarts `netwatchm-web`
 - [x] Grafana nav link (`📊 Dashboard`) changed from hardcoded `http://localhost:3000/...` to `javascript: window.open('http://'+location.hostname+':3000/...')` — works from any host
-- [x] Verified: portal accessible from remote machine at `https://192.168.1.180:8765`
+- [x] Verified: portal accessible from remote machine at `https://10.0.0.180:8765`
 
 ### Events Portal URL Fix
 - [x] `events.html` pre-fill now handles `?q=` param (alongside `?ip=` and `?search=`) — deep-inspect "View Events" links use `?q={ip}`
@@ -1280,7 +1280,7 @@ bash scripts/apply-config-fix.sh       # fix adult domain alerts (remove 192.168
 - [x] Purple row centered-right under Analytics using `.ext-row` class (`justify-content:center; padding-left:200px`)
 
 ### Whitelist Update
-- [x] `192.168.1.248` added to global whitelist in `/etc/netwatchm/netwatchm.yaml`; service restarted
+- [x] `10.0.0.248` added to global whitelist in `/etc/netwatchm/netwatchm.yaml`; service restarted
 
 ### Deploy commands (session 8)
 ```bash
@@ -1291,7 +1291,7 @@ bash scripts/configure-grafana-remote.sh  # patch grafana.ini, open port 3000, r
 
 **Windows cert install (run on Windows machine as Administrator):**
 ```powershell
-powershell -ExecutionPolicy Bypass -File \\192.168.1.180\...\install-cert-windows.ps1
+powershell -ExecutionPolicy Bypass -File \\10.0.0.180\...\install-cert-windows.ps1
 # or download the script and run it locally
 ```
 

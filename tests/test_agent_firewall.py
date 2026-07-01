@@ -63,7 +63,7 @@ def _gr(
 
 @pytest.mark.parametrize(
     "ip",
-    ["10.0.0.5", "172.16.5.5", "192.168.1.5", "127.0.0.1", "169.254.1.1"],
+    ["10.0.0.5", "172.16.5.5", "10.0.0.5", "127.0.0.1", "169.254.1.1"],
 )
 def test_check_block_refuses_internal_or_loopback(tmp_path: Path, ip: str) -> None:
     gr = _gr(tmp_path)
@@ -426,7 +426,7 @@ def test_executor_add_block_blocked_by_guardrails(tmp_path: Path) -> None:
     ex, store = _build_executor(tmp_path, controller=controller)
     res = ex.dispatch(
         "add_temporary_block",
-        {"ip": "192.168.1.5", "reason": "x"},  # RFC1918 → refused
+        {"ip": "10.0.0.5", "reason": "x"},  # RFC1918 → refused
         decision_id=1,
     )
     assert res["ok"] is False

@@ -12,7 +12,7 @@ def test_em_dash_replaced():
 
 
 def test_arrow_and_quotes():
-    assert ascii_header("192.168.1.9 → 224.0.0.1") == "192.168.1.9 -> 224.0.0.1"
+    assert ascii_header("10.0.0.9 → 224.0.0.1") == "10.0.0.9 -> 224.0.0.1"
     assert ascii_header("“quoted” ‘x’") == '"quoted" \'x\''
     assert ascii_header("a…") == "a..."
 

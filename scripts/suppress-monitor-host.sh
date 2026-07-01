@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suppress PORT_SCAN and DATA_HOG alerts from the monitoring machine (192.168.1.180).
+# Suppress PORT_SCAN and DATA_HOG alerts from the monitoring machine (10.0.0.180).
 # ADULT_DOMAIN was already suppressed for this IP (session 6).
 # BRUTE_FORCE, EXFILTRATION, TOR_EXIT remain active — real threats from the host still fire.
 set -euo pipefail
@@ -23,5 +23,5 @@ echo "Restarting netwatchm service..."
 sudo systemctl restart netwatchm
 
 
-echo "Done. 192.168.1.180 is now suppressed for PORT_SCAN and DATA_HOG."
+echo "Done. 10.0.0.180 is now suppressed for PORT_SCAN and DATA_HOG."
 echo "BRUTE_FORCE, EXFILTRATION, TOR_EXIT, and NEW_IP remain active for that host."

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Evidence-gathering script for investigating 192.168.1.180 → 142.251.163.83.
+# Evidence-gathering script for investigating 10.0.0.180 → 203.0.113.100.
 #
 # Reads (root-owned):
 #   /var/lib/netwatchm/events.db
@@ -8,13 +8,13 @@
 #   /var/lib/netwatchm/aliases.json
 #   /var/log/netwatchm/netwatchm.log
 #
-# Writes a fresh evidence dump under /tmp/investigate-192.168.1.180/.
-# Also runs `netwatchm deep-inspect` (active port scan) on 192.168.1.180.
+# Writes a fresh evidence dump under /tmp/investigate-10.0.0.180/.
+# Also runs `netwatchm deep-inspect` (active port scan) on 10.0.0.180.
 
 set -euo pipefail
 
-SRC="192.168.1.180"
-DST="142.251.163.83"
+SRC="10.0.0.180"
+DST="203.0.113.100"
 EVENT_TS="2026-05-08T19:30:08"
 
 OUT_DIR="/tmp/investigate-${SRC}"
@@ -96,7 +96,7 @@ sudo sqlite3 -header -column "${FLOWS_DB}" "
 " | sudo tee "${OUT_DIR}/02-flows-ports.txt" > /dev/null
 
 # ────────────────────────────────────────────────────────────────────────────
-# 3. Inventory & alias for 192.168.1.180
+# 3. Inventory & alias for 10.0.0.180
 # ────────────────────────────────────────────────────────────────────────────
 echo
 echo "[3/6] inventory.json — record for ${SRC}"
@@ -121,7 +121,7 @@ print('alias:', data.get('${SRC}', '(none)'))
 fi
 
 # ────────────────────────────────────────────────────────────────────────────
-# 4. Reverse DNS + WHOIS for 142.251.163.83
+# 4. Reverse DNS + WHOIS for 203.0.113.100
 # ────────────────────────────────────────────────────────────────────────────
 echo
 echo "[4/6] DNS + WHOIS for ${DST}"
@@ -146,7 +146,7 @@ else
 fi
 
 # ────────────────────────────────────────────────────────────────────────────
-# 6. Active deep-inspect of 192.168.1.180
+# 6. Active deep-inspect of 10.0.0.180
 # ────────────────────────────────────────────────────────────────────────────
 echo
 echo "[6/6] netwatchm deep-inspect ${SRC}  (active port scan, ~30-60s)"

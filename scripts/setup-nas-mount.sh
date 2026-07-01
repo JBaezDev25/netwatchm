@@ -22,7 +22,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Mount]
-What=YUNKE-01@192.168.1.245:/volume1/AI-Programming/netwatchm
+What=YUNKE-01@10.0.0.245:/volume1/AI-Programming/netwatchm
 Where=/mnt/nas_netwatchm
 Type=fuse.sshfs
 Options=_netdev,IdentityFile=/home/jbaez120/.ssh/nas_ugreen,allow_other,default_permissions,ServerAliveInterval=15,ServerAliveCountMax=3,reconnect,uid=995,gid=982,umask=027

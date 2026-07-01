@@ -52,7 +52,7 @@ def test_port_scan_closed():
 
 def test_geoip_lookup_private_ip():
     """Private IPs should return None without touching the DB."""
-    result = _geoip_lookup("192.168.1.1", db_path="/nonexistent/path.mmdb")
+    result = _geoip_lookup("10.0.0.1", db_path="/nonexistent/path.mmdb")
     assert result is None
 
 

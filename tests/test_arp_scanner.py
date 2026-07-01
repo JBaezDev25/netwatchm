@@ -43,13 +43,13 @@ async def test_new_device_emits_alert() -> None:
     store = DeviceStore()
     alert_queue: asyncio.Queue = asyncio.Queue()
 
-    scan_results = [("192.168.1.50", "aa:bb:cc:dd:ee:ff", "Acme Corp")]
+    scan_results = [("10.0.0.50", "aa:bb:cc:dd:ee:ff", "Acme Corp")]
     await _run_once(store, scan_results, alert_queue)
 
     assert not alert_queue.empty()
     alert = alert_queue.get_nowait()
     assert alert.alert_type == "NEW_DEVICE"
-    assert alert.src_ip == "192.168.1.50"
+    assert alert.src_ip == "10.0.0.50"
     assert alert.level == ThreatLevel.MEDIUM
     assert "aa:bb:cc:dd:ee:ff" in alert.description
     assert "Acme Corp" in alert.description
@@ -62,9 +62,9 @@ async def test_known_device_no_alert() -> None:
     alert_queue: asyncio.Queue = asyncio.Queue()
 
     # Pre-populate inventory so the device is already known
-    await store.update_arp("192.168.1.1", "11:22:33:44:55:66", "Router Corp")
+    await store.update_arp("10.0.0.1", "11:22:33:44:55:66", "Router Corp")
 
-    scan_results = [("192.168.1.1", "11:22:33:44:55:66", "Router Corp")]
+    scan_results = [("10.0.0.1", "11:22:33:44:55:66", "Router Corp")]
     await _run_once(store, scan_results, alert_queue)
 
     assert alert_queue.empty()
@@ -88,7 +88,7 @@ async def test_unknown_vendor_fallback() -> None:
     store = DeviceStore()
     alert_queue: asyncio.Queue = asyncio.Queue()
 
-    scan_results = [("192.168.1.99", "de:ad:be:ef:00:01", None)]
+    scan_results = [("10.0.0.99", "de:ad:be:ef:00:01", None)]
     await _run_once(store, scan_results, alert_queue)
 
     assert not alert_queue.empty()

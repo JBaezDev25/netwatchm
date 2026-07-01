@@ -19,8 +19,8 @@ now = time.time()
 flows = [
     # HIGH RISK — RDP to external IP
     FlowRecord(
-        src_ip="192.168.1.180", src_hostname="ai-rnd-01",
-        dst_ip="185.220.101.47", dst_port=3389,
+        src_ip="10.0.0.180", src_hostname="ai-rnd-01",
+        dst_ip="198.51.100.47", dst_port=3389,
         protocol="Unknown", service="RDP",
         domain="—", app_name="rdesktop", username="jbaez120",
         packet_count=312, bytes_total=48200,
@@ -28,8 +28,8 @@ flows = [
     ),
     # HIGH RISK — SMB to external IP
     FlowRecord(
-        src_ip="192.168.1.180", src_hostname="ai-rnd-01",
-        dst_ip="185.220.101.47", dst_port=445,
+        src_ip="10.0.0.180", src_hostname="ai-rnd-01",
+        dst_ip="198.51.100.47", dst_port=445,
         protocol="SMB", service="SMB",
         domain="—", app_name="smbclient", username="jbaez120",
         packet_count=88, bytes_total=12400,
@@ -37,8 +37,8 @@ flows = [
     ),
     # MEDIUM RISK — SSH to external
     FlowRecord(
-        src_ip="192.168.1.180", src_hostname="ai-rnd-01",
-        dst_ip="52.14.88.201", dst_port=22,
+        src_ip="10.0.0.180", src_hostname="ai-rnd-01",
+        dst_ip="198.51.100.88", dst_port=22,
         protocol="SSH/TCP", service="SSH",
         domain="—", app_name="ssh", username="jbaez120",
         packet_count=45, bytes_total=8800,
@@ -46,7 +46,7 @@ flows = [
     ),
     # LOW RISK — HTTPS to known service
     FlowRecord(
-        src_ip="192.168.1.180", src_hostname="ai-rnd-01",
+        src_ip="10.0.0.180", src_hostname="ai-rnd-01",
         dst_ip="34.149.66.137", dst_port=443,
         protocol="HTTPS/TCP", service="HTTPS",
         domain="relays-do.twingate.com", app_name="claude", username="jbaez120",
@@ -55,7 +55,7 @@ flows = [
     ),
     # LOW RISK — HTTPS telemetry
     FlowRecord(
-        src_ip="192.168.1.180", src_hostname="ai-rnd-01",
+        src_ip="10.0.0.180", src_hostname="ai-rnd-01",
         dst_ip="20.189.173.3", dst_port=443,
         protocol="HTTPS/TCP", service="HTTPS",
         domain="browser.events.data.microsoft.com", app_name="Web Browser (HTTPS)", username="— (remote)",
@@ -64,7 +64,7 @@ flows = [
     ),
     # LOW RISK — SSDP multicast
     FlowRecord(
-        src_ip="192.168.1.245", src_hostname="DXP4800-BAB8",
+        src_ip="10.0.0.245", src_hostname="DXP4800-BAB8",
         dst_ip="239.255.255.250", dst_port=1900,
         protocol="Unknown", service="1900",
         domain="239.255.255.250:1900", app_name="Port 1900 App", username="— (remote)",
@@ -74,7 +74,7 @@ flows = [
 ]
 
 out = "/tmp/connection-report.html"
-render_html(flows, out, network="192.168.1.0/24 (demo)", duration=30)
+render_html(flows, out, network="10.0.0.0/24 (demo)", duration=30)
 
 import shutil
 shutil.copy(out, "/var/lib/netwatchm/connection-report.html")

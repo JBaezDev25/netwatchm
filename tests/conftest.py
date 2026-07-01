@@ -25,7 +25,7 @@ from netwatchm.models import Packet, ThreatLevel
 
 
 def make_packet(
-    src_ip: str = "192.168.1.100",
+    src_ip: str = "10.0.0.100",
     dst_ip: str = "10.0.0.1",
     src_port: int | None = 54321,
     dst_port: int | None = 80,

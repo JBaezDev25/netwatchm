@@ -14,7 +14,7 @@ from netwatchm.forensics.store import (
 
 
 def _inc(alert_type="PORT_SCAN", level="HIGH", src="203.0.113.5",
-         dst="192.168.1.10", description="x", **kw) -> Incident:
+         dst="10.0.0.10", description="x", **kw) -> Incident:
     return Incident(alert_type=alert_type, level=level, src_ip=src, dst_ip=dst,
                     description=description, **kw)
 

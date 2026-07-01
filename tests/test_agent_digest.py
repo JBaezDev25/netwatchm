@@ -16,7 +16,7 @@ from netwatchm.config import AgentConfig, NtfyAlertConfig
 from netwatchm.models import Alert, ThreatLevel
 
 
-def _alert(alert_type, level=ThreatLevel.HIGH, src_ip="192.168.1.5", ts=None):
+def _alert(alert_type, level=ThreatLevel.HIGH, src_ip="10.0.0.5", ts=None):
     a = Alert(
         alert_type=alert_type, level=level, src_ip=src_ip,
         dst_ip="10.0.0.1", description="x",
@@ -31,9 +31,9 @@ def _seed(db_path):
         for _ in range(3):
             s.insert(_alert("PORT_SCAN", ThreatLevel.HIGH, "203.0.113.7"))
         s.insert(_alert("PORT_SCAN", ThreatLevel.HIGH, "203.0.113.9"))
-        s.insert(_alert("EXFILTRATION", ThreatLevel.CRITICAL, "192.168.1.50"))
+        s.insert(_alert("EXFILTRATION", ThreatLevel.CRITICAL, "10.0.0.50"))
         for _ in range(10):
-            s.insert(_alert("BEACONING", ThreatLevel.MEDIUM, "192.168.1.22"))
+            s.insert(_alert("BEACONING", ThreatLevel.MEDIUM, "10.0.0.22"))
 
 
 # --- build_digest ---

@@ -687,9 +687,9 @@ def main() -> None:
     )
     rep_parser.add_argument(
         "--network",
-        default="192.168.1.0/24",
+        default="10.0.0.0/24",
         metavar="CIDR",
-        help="source network filter (default: 192.168.1.0/24)",
+        help="source network filter (default: 10.0.0.0/24)",
     )
     rep_parser.add_argument(
         "--output",

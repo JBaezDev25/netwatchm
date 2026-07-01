@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Add 192.168.1.180 (this monitoring host) to detector_whitelist for
+# Add 10.0.0.180 (this monitoring host) to detector_whitelist for
 # BEACONING and TRACKER_DOMAIN, and restart netwatchm.
 #
 # Why: this host runs Discord/Edge/Office/Slack-style apps whose 45s
@@ -8,7 +8,7 @@
 # DNS_TUNNELING, NEW_IP) remain active for this host.
 set -euo pipefail
 
-MONITOR_IP="192.168.1.180"
+MONITOR_IP="10.0.0.180"
 CONFIG_DST="/etc/netwatchm/netwatchm.yaml"
 CONFIG_TMP="/tmp/netwatchm-updated.yaml"
 BACKUP="/etc/netwatchm/netwatchm.yaml.bak-$(date +%Y%m%d-%H%M%S)"

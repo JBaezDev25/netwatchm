@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_IP="192.168.1.180"
+REMOTE_IP="10.0.0.180"
 GRAFANA_INI="/etc/grafana/grafana.ini"
 BACKUP="${GRAFANA_INI}.bak.$(date +%Y%m%d%H%M%S)"
 

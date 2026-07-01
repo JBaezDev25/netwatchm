@@ -1,7 +1,7 @@
 # NetWatchM - Install self-signed certificate on Windows
 # Run this in PowerShell as Administrator
 
-$ServerIP = "192.168.1.180"
+$ServerIP = "10.0.0.10"
 $Port     = 8765
 $CertUrl  = "https://${ServerIP}:${Port}/cert"
 $CertFile = "$env:TEMP\netwatchm.crt"

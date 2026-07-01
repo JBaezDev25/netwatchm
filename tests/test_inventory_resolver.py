@@ -14,14 +14,14 @@ class TestDNSResolver:
     async def test_resolve_success(self) -> None:
         resolver = DNSResolver(timeout=2.0)
         with patch("netwatchm.inventory.resolver._sync_resolve", return_value="myhost.local"):
-            result = await resolver.resolve("192.168.1.1")
+            result = await resolver.resolve("10.0.0.1")
         assert result == "myhost.local"
 
     @pytest.mark.asyncio
     async def test_resolve_failure_returns_none(self) -> None:
         resolver = DNSResolver(timeout=2.0)
         with patch("netwatchm.inventory.resolver._sync_resolve", return_value=None):
-            result = await resolver.resolve("192.168.1.99")
+            result = await resolver.resolve("10.0.0.99")
         assert result is None
 
     @pytest.mark.asyncio
@@ -35,8 +35,8 @@ class TestDNSResolver:
             return None
 
         with patch("netwatchm.inventory.resolver._sync_resolve", side_effect=slow_resolver):
-            await resolver.resolve("192.168.1.50")
-            await resolver.resolve("192.168.1.50")  # Should hit negative cache
+            await resolver.resolve("10.0.0.50")
+            await resolver.resolve("10.0.0.50")  # Should hit negative cache
 
         assert call_count == 1
 

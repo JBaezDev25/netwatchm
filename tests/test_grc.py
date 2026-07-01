@@ -14,14 +14,14 @@ def test_risk_level_bands():
 
 
 def test_clean_device_is_low_risk():
-    r = assess_device(ip="192.168.1.10", ports=[443], verified=True)
+    r = assess_device(ip="10.0.0.10", ports=[443], verified=True)
     assert r.level == "low"
     assert r.score == 0
     assert r.recommendations == ["No elevated risk indicators"]
 
 
 def test_risky_ports_drive_exposure():
-    r = assess_device(ip="192.168.1.20", ports=[23, 445, 3389])
+    r = assess_device(ip="10.0.0.20", ports=[23, 445, 3389])
     assert "23/Telnet" in r.risky_ports
     assert r.exposure > 0
     assert any("Close or firewall" in rec for rec in r.recommendations)
@@ -36,7 +36,7 @@ def test_threat_activity_scales_score():
 
 def test_external_intel_counts_only_for_public():
     ext = assess_device(ip="203.0.113.5", intel_verdict="malicious", is_external=True)
-    internal = assess_device(ip="192.168.1.5", intel_verdict="malicious", is_external=False)
+    internal = assess_device(ip="10.0.0.5", intel_verdict="malicious", is_external=False)
     assert ext.intel == 40
     assert internal.intel == 0
 
@@ -65,7 +65,7 @@ def _dev(ip, ports=(), verified=True, label="x", level="low"):
 
 
 def test_controls_all_pass_for_clean_fleet():
-    devices = [_dev("192.168.1.10", ports=[443]), _dev("192.168.1.11", ports=[80])]
+    devices = [_dev("10.0.0.10", ports=[443]), _dev("10.0.0.11", ports=[80])]
     out = assess_controls(devices, events_present=True, monitor_active=True)
     assert out["compliance"] == 100
     assert out["summary"]["failed"] == 0
@@ -73,12 +73,12 @@ def test_controls_all_pass_for_clean_fleet():
 
 def test_controls_flag_cleartext_and_admin_exposure():
     devices = [
-        _dev("192.168.1.20", ports=[23], verified=False, level="high"),  # telnet, unverified
+        _dev("10.0.0.20", ports=[23], verified=False, level="high"),  # telnet, unverified
     ]
     out = assess_controls(devices)
     by_id = {c["control_id"]: c for c in out["controls"]}
     assert by_id["4.8"]["status"] == "fail"          # cleartext service
-    assert "192.168.1.20" in by_id["4.8"]["affected"]
+    assert "10.0.0.20" in by_id["4.8"]["affected"]
     assert by_id["6.4"]["status"] == "fail"          # unverified admin port
     assert by_id["13.1"]["status"] == "fail"         # high-risk device
     assert out["compliance"] < 100
@@ -94,8 +94,8 @@ def test_asset_controls_ignore_external_peers():
     """Asset/config/access controls (1.1, 4.8, 6.4) count owned devices only;
     external peers must not dilute the inventory ratio or raise findings."""
     owned = [
-        dict(_dev("192.168.1.10", ports=[443], verified=True), owned=True),
-        dict(_dev("192.168.1.11", ports=[80], verified=True), owned=True),
+        dict(_dev("10.0.0.10", ports=[443], verified=True), owned=True),
+        dict(_dev("10.0.0.11", ports=[80], verified=True), owned=True),
     ]
     external = [
         dict(_dev("203.0.113.5", ports=[23], verified=False, level="high"),

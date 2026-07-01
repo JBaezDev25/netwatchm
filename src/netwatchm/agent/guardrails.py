@@ -132,7 +132,7 @@ def _ip_route_default_gateways() -> list[str]:
         return []
     gateways: list[str] = []
     for line in (cp.stdout or "").splitlines():
-        # Lines look like:  default via 192.168.1.1 dev eth0 ...
+        # Lines look like:  default via 10.0.0.1 dev eth0 ...
         parts = line.split()
         if len(parts) >= 3 and parts[0] == "default" and parts[1] == "via":
             try:
@@ -163,7 +163,7 @@ def _ip_addr_host_ips() -> list[str]:
         return []
     ips: list[str] = []
     for line in (cp.stdout or "").splitlines():
-        # Each line like:  2: eth0    inet 192.168.1.180/24 brd ...
+        # Each line like:  2: eth0    inet 10.0.0.180/24 brd ...
         parts = line.split()
         try:
             family_idx = parts.index("inet")

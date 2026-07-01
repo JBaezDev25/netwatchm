@@ -122,7 +122,7 @@ https://netwatch.local:8765/events.html
 
 The built-in AI Chat (`/ai.html`) uses OpenAI `gpt-4o-mini` to answer natural-language questions about your network:
 
-- "What is 192.168.1.50 doing on the network?"
+- "What is 10.0.0.50 doing on the network?"
 - "Which devices contacted port 443 in the last 72 hours?"
 - "Summarize all devices and flag anything suspicious"
 - "Are there any unidentified devices I should investigate?"
@@ -475,7 +475,7 @@ bash scripts/setup-hostname.sh
 
 ```bash
 # Linux client
-bash scripts/install-cert-linux.sh 192.168.1.180
+bash scripts/install-cert-linux.sh 10.0.0.180
 
 # Windows client (run as Administrator)
 powershell -ExecutionPolicy Bypass -File scripts/install-cert-windows.ps1
@@ -524,12 +524,12 @@ alerts:
     min_level: MEDIUM
 
 whitelist:
-  - 192.168.1.1          # router
+  - 10.0.0.1          # router
   - 10.0.0.0/8           # CIDR blocks supported
 
 detector_whitelist:
   PORT_SCAN:
-    - 192.168.1.50       # suppress port scan alerts from this IP only
+    - 10.0.0.50       # suppress port scan alerts from this IP only
 ```
 
 > **Email/ntfy credentials:** never put passwords in YAML. Use env vars or systemd drop-ins.
@@ -626,7 +626,7 @@ Moved all growing data off the main system drive (`/dev/sda2`, 61% full) onto th
 
 Steps performed:
 1. **Backup** — full snapshot of `/var/lib/netwatchm/` to `/mnt/jbaez_data/netwatchm-backup-<timestamp>/` with WAL checkpoint before copy
-2. **NAS directories** — created `/volume1/AI-Programming/netwatchm/{reports,logs}` on the UGREEN NAS (`192.168.1.245`) for future archival
+2. **NAS directories** — created `/volume1/AI-Programming/netwatchm/{reports,logs}` on the UGREEN NAS (`10.0.0.245`) for future archival
 3. **Local data directory** — created `/mnt/jbaez_data/netwatchm/` owned by the `netwatchm` system user
 4. **Data copy** — copied all databases, GeoIP, JSON state files, and reports to new location; archived existing log to NAS
 5. **Service config** — wrote systemd drop-in (`nas-migration.conf`) overriding `WorkingDirectory` and all path env vars; updated `netwatchm.yaml` log path

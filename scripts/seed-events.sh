@@ -14,11 +14,11 @@ from netwatchm.alerts.event_store import EventStore
 from netwatchm.models import Alert, ThreatLevel
 
 events = [
-    Alert('PORT_SCAN',    ThreatLevel.HIGH,     '10.0.0.5',     '192.168.1.1',  'Port scan detected: 23 ports in 10s'),
-    Alert('TOR_EXIT',     ThreatLevel.HIGH,     '198.51.100.1', '192.168.1.50', 'Tor exit node inbound from Tor: 198.51.100.1'),
-    Alert('ADULT_DOMAIN', ThreatLevel.MEDIUM,   '192.168.1.42', '8.8.8.8',      'Adult domain accessed (DNS): xvideos.com'),
-    Alert('DATA_HOG',     ThreatLevel.HIGH,     '192.168.1.20', '0.0.0.0',      'Data hog 192.168.1.20: 11.2 GB in 24h (threshold: 10.0 GB)'),
-    Alert('BRUTE_FORCE',  ThreatLevel.HIGH,     '10.0.0.99',    '192.168.1.1',  'Brute force SSH: 47 attempts in 30s'),
+    Alert('PORT_SCAN',    ThreatLevel.HIGH,     '10.0.0.5',     '10.0.0.1',  'Port scan detected: 23 ports in 10s'),
+    Alert('TOR_EXIT',     ThreatLevel.HIGH,     '198.51.100.1', '10.0.0.50', 'Tor exit node inbound from Tor: 198.51.100.1'),
+    Alert('ADULT_DOMAIN', ThreatLevel.MEDIUM,   '10.0.0.42', '8.8.8.8',      'Adult domain accessed (DNS): xvideos.com'),
+    Alert('DATA_HOG',     ThreatLevel.HIGH,     '10.0.0.20', '0.0.0.0',      'Data hog 10.0.0.20: 11.2 GB in 24h (threshold: 10.0 GB)'),
+    Alert('BRUTE_FORCE',  ThreatLevel.HIGH,     '10.0.0.99',    '10.0.0.1',  'Brute force SSH: 47 attempts in 30s'),
     Alert('NEW_IP',       ThreatLevel.LOW,      '172.16.0.88',  None,           'New IP observed: 172.16.0.88'),
 ]
 

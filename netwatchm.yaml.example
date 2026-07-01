@@ -112,20 +112,20 @@ inventory:
   dns_cache_ttl: 300      # seconds to cache failed lookups
   export_dir: .           # default directory for CSV exports (. = cwd)
   local_networks:         # only track IPs in these ranges; empty = track all
-    - 192.168.1.0/24
+    - 10.0.0.0/24
   arp_scan:
     enabled: true
     interval: 300         # seconds between active scans
-    network: auto         # "auto" = --localnet, or explicit CIDR e.g. 192.168.1.0/24
+    network: auto         # "auto" = --localnet, or explicit CIDR e.g. 10.0.0.0/24
 
 whitelist:
   enabled: true
   ips:
-    - 192.168.1.1          # gateway/router
-    - 192.168.1.180        # this machine
-    - 107.170.66.130       # Twingate relay (DigitalOcean NJ)
-    - 162.243.34.191       # Twingate relay (DigitalOcean NJ)
-    - 167.99.149.114       # Twingate relay (DigitalOcean NJ)
+    - 10.0.0.1          # gateway/router
+    - 10.0.0.10        # this machine
+    - 203.0.113.10       # Twingate relay (DigitalOcean NJ)
+    - 203.0.113.20       # Twingate relay (DigitalOcean NJ)
+    - 203.0.113.30       # Twingate relay (DigitalOcean NJ)
 
 detector_whitelist:
   # Suppress specific alert types from specific IPs only.
@@ -134,12 +134,12 @@ detector_whitelist:
   #                   TOR_EXIT, ADULT_DOMAIN, TRACKER_DOMAIN, DATA_HOG,
   #                   MALWARE_DOMAIN, DNS_TUNNELING, BEACONING)
   # Value = list of src_ip addresses to suppress for that type
-  PORT_SCAN: []          # e.g. [192.168.1.180]  — suppress port scan from your own machine
-  BRUTE_FORCE: []        # e.g. [192.168.1.50]   — suppress brute force from a scanner
-  TRACKER_DOMAIN: []     # e.g. [192.168.1.10]   — suppress tracker alerts from a specific device
+  PORT_SCAN: []          # e.g. [10.0.0.10]  — suppress port scan from your own machine
+  BRUTE_FORCE: []        # e.g. [10.0.0.50]   — suppress brute force from a scanner
+  TRACKER_DOMAIN: []     # e.g. [10.0.0.10]   — suppress tracker alerts from a specific device
   MALWARE_DOMAIN: []     # rarely needed — only suppress for confirmed false positives
-  DNS_TUNNELING: []      # e.g. [192.168.1.10]   — suppress for known long-DNS apps (some VPNs)
-  BEACONING: []          # e.g. [192.168.1.10]   — suppress for legit periodic clients (NTP, telemetry)
+  DNS_TUNNELING: []      # e.g. [10.0.0.10]   — suppress for known long-DNS apps (some VPNs)
+  BEACONING: []          # e.g. [10.0.0.10]   — suppress for legit periodic clients (NTP, telemetry)
 
 agent:
   # Autonomous decision loop. Two modes:

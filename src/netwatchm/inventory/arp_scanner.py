@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Matches: "192.168.1.1    aa:bb:cc:dd:ee:ff    NETGEAR"
+# Matches: "10.0.0.1    aa:bb:cc:dd:ee:ff    NETGEAR"
 _LINE_RE = re.compile(
     r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+'
     r'([0-9a-f]{2}(?::[0-9a-f]{2}){5})\s*'

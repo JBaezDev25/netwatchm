@@ -14,7 +14,7 @@ from netwatchm.models import DeviceRecord, ThreatLevel
 
 
 def make_record(
-    ip: str = "192.168.1.1",
+    ip: str = "10.0.0.1",
     hostname: str | None = "myhost.local",
     mac: str | None = "aa:bb:cc:dd:ee:ff",
     ports: set[int] | None = None,
@@ -40,7 +40,7 @@ class TestExportInventory:
         rec = make_record()
         result = export_inventory([rec], None)
         assert isinstance(result, str)
-        assert "192.168.1.1" in result
+        assert "10.0.0.1" in result
 
     def test_csv_has_all_columns(self) -> None:
         rec = make_record()
@@ -55,7 +55,7 @@ class TestExportInventory:
         assert csv_str is not None
         reader = csv.DictReader(io.StringIO(csv_str))
         row = next(reader)
-        assert row["IP"] == "192.168.1.1"
+        assert row["IP"] == "10.0.0.1"
         assert row["Hostname"] == "myhost.local"
         assert row["MAC"] == "aa:bb:cc:dd:ee:ff"
         assert row["Threat Level"] == "HIGH"
@@ -72,13 +72,13 @@ class TestExportInventory:
             assert result is None
             assert path.exists()
             content = path.read_text()
-            assert "192.168.1.1" in content
+            assert "10.0.0.1" in content
 
     def test_stdout_flag(self) -> None:
         rec = make_record()
         result = export_inventory([rec], "-")
         assert isinstance(result, str)
-        assert "192.168.1.1" in result
+        assert "10.0.0.1" in result
 
     def test_empty_records(self) -> None:
         csv_str = export_inventory([], None)

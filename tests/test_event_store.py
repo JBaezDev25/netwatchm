@@ -13,7 +13,7 @@ from netwatchm.models import Alert, ThreatLevel
 def _alert(
     alert_type: str = "PORT_SCAN",
     level: ThreatLevel = ThreatLevel.HIGH,
-    src_ip: str = "192.168.1.5",
+    src_ip: str = "10.0.0.5",
     dst_ip: str = "10.0.0.1",
     description: str = "test alert",
     ts: float | None = None,
@@ -48,7 +48,7 @@ class TestEventStore:
         assert len(results) == 1
         assert results[0]["alert_type"] == "PORT_SCAN"
         assert results[0]["level"] == "HIGH"
-        assert results[0]["src_ip"] == "192.168.1.5"
+        assert results[0]["src_ip"] == "10.0.0.5"
 
     def test_multiple_events_newest_first(self, store):
         store.insert(_alert(alert_type="A", ts=time.time() - 10))

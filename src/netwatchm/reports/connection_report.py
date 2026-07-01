@@ -258,7 +258,7 @@ def _parse_report_line(line: str) -> dict | None:
 def capture_flows(
     interface: str,
     duration: int = 30,
-    network: str = "192.168.1.0/24",
+    network: str = "10.0.0.0/24",
 ) -> list[FlowRecord]:
     """Run tshark for `duration` seconds, return aggregated FlowRecords sorted by bytes desc."""
 
@@ -266,7 +266,7 @@ def capture_flows(
         net = ipaddress.ip_network(network, strict=False)
     except ValueError:
         logger.error("Invalid network CIDR: %s", network)
-        net = ipaddress.ip_network("192.168.1.0/24")
+        net = ipaddress.ip_network("10.0.0.0/24")
 
     # Load hostname map and process snapshot before capture
     hostnames = _load_hostnames()
@@ -484,7 +484,7 @@ def render_csv(flows: list[FlowRecord], output: str | None) -> None:
 def render_html(
     flows: list[FlowRecord],
     output: str | None,
-    network: str = "192.168.1.0/24",
+    network: str = "10.0.0.0/24",
     duration: int = 30,
 ) -> None:
     total_packets = sum(r.packet_count for r in flows)

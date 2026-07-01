@@ -26,18 +26,18 @@ from netwatchm.alerts.event_store import EventStore
 from netwatchm.models import Alert, ThreatLevel
 
 events = [
-    Alert('EXFILTRATION', ThreatLevel.CRITICAL, '192.168.1.180', '203.0.113.50',
+    Alert('EXFILTRATION', ThreatLevel.CRITICAL, '10.0.0.180', '203.0.113.50',
           '[TEST] CRITICAL — Exfiltration: 500 MB outbound to 203.0.113.50'),
-    Alert('PORT_SCAN',    ThreatLevel.HIGH,      '10.0.0.5',     '192.168.1.1',
+    Alert('PORT_SCAN',    ThreatLevel.HIGH,      '10.0.0.5',     '10.0.0.1',
           '[TEST] HIGH — Port scan: 45 ports in 8s from 10.0.0.5'),
-    Alert('BRUTE_FORCE',  ThreatLevel.HIGH,      '10.0.0.99',    '192.168.1.1',
+    Alert('BRUTE_FORCE',  ThreatLevel.HIGH,      '10.0.0.99',    '10.0.0.1',
           '[TEST] HIGH — Brute force SSH: 60 attempts in 30s from 10.0.0.99'),
-    Alert('DATA_HOG',     ThreatLevel.HIGH,      '192.168.1.20', '0.0.0.0',
-          '[TEST] HIGH — Data hog 192.168.1.20: 11.2 GB in 24h'),
-    Alert('TOR_EXIT',     ThreatLevel.HIGH,      '198.51.100.1', '192.168.1.50',
+    Alert('DATA_HOG',     ThreatLevel.HIGH,      '10.0.0.20', '0.0.0.0',
+          '[TEST] HIGH — Data hog 10.0.0.20: 11.2 GB in 24h'),
+    Alert('TOR_EXIT',     ThreatLevel.HIGH,      '198.51.100.1', '10.0.0.50',
           '[TEST] HIGH — Tor exit node connection from 198.51.100.1'),
-    Alert('ADULT_DOMAIN', ThreatLevel.MEDIUM,    '192.168.1.42', '8.8.8.8',
-          '[TEST] MEDIUM — Adult domain accessed: xvideos.com from 192.168.1.42'),
+    Alert('ADULT_DOMAIN', ThreatLevel.MEDIUM,    '10.0.0.42', '8.8.8.8',
+          '[TEST] MEDIUM — Adult domain accessed: xvideos.com from 10.0.0.42'),
 ]
 
 with EventStore('/var/lib/netwatchm/events.db') as s:
@@ -66,17 +66,17 @@ send_ntfy() {
 
 send_ntfy "CRITICAL" "5" \
     "[TEST] CRITICAL Alert — NetWatchM" \
-    "EXFILTRATION detected: 500 MB outbound to 203.0.113.50 from 192.168.1.180" \
+    "EXFILTRATION detected: 500 MB outbound to 203.0.113.50 from 10.0.0.180" \
     "rotating_light,skull"
 
 send_ntfy "HIGH" "4" \
     "[TEST] HIGH Alert — NetWatchM" \
-    "PORT_SCAN: 45 ports in 8s from 10.0.0.5 → 192.168.1.1" \
+    "PORT_SCAN: 45 ports in 8s from 10.0.0.5 → 10.0.0.1" \
     "warning,fire"
 
 send_ntfy "MEDIUM" "3" \
     "[TEST] MEDIUM Alert — NetWatchM" \
-    "ADULT_DOMAIN: xvideos.com accessed from 192.168.1.42 (DNS)" \
+    "ADULT_DOMAIN: xvideos.com accessed from 10.0.0.42 (DNS)" \
     "eyes"
 echo ""
 

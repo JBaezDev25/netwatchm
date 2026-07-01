@@ -3,7 +3,7 @@
 # Run from your Linux laptop/desktop that needs to trust the NetWatchM portal
 set -euo pipefail
 
-SERVER_IP="${1:-192.168.1.180}"
+SERVER_IP="${1:-10.0.0.180}"
 PORT="${2:-8765}"
 CERT_URL="https://${SERVER_IP}:${PORT}/cert"
 CERT_FILE="/tmp/netwatchm.crt"

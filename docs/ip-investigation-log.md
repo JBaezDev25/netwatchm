@@ -4,13 +4,13 @@ This document shows a real IP investigation step-by-step, using an actual case f
 
 ---
 
-## Case: 51.11.192.51 — Investigation Log
+## Case: 203.0.113.1 — Investigation Log
 
 ### Initial Alert
 
 NetWatchM showed a connection:
 ```
-51.11.192.51    192.168.1.180    80    50387
+203.0.113.1    10.0.0.10    80    50387
 ```
 
 The user wanted to know:
@@ -24,12 +24,12 @@ The user wanted to know:
 
 Command:
 ```bash
-whois 51.11.192.51 | head -20
+whois 203.0.113.1 | head -20
 ```
 
 Result:
 ```
-inetnum:        51.11.0.0 - 51.11.255.255
+inetnum:        203.0.113.0 - 203.0.113.255
 netname:        cloud
 country:        EU
 admin-c:        DH5439-RIPE
@@ -47,12 +47,12 @@ abuse-contact:  'abuse@microsoft.com'
 
 Command:
 ```bash
-host 51.11.192.51
+host 203.0.113.1
 ```
 
 Result:
 ```
-Host 51.192.11.51.in-addr.arpa. not found: 3(NXDOMAIN)
+Host 1.113.0.203.in-addr.arpa. not found: 3(NXDOMAIN)
 ```
 
 **Finding:** No reverse DNS — common for Azure IPs.
@@ -63,13 +63,13 @@ Host 51.192.11.51.in-addr.arpa. not found: 3(NXDOMAIN)
 
 Command:
 ```bash
-curl -s https://ipinfo.io/51.11.192.51/json
+curl -s https://ipinfo.io/203.0.113.1/json
 ```
 
 Result:
 ```json
 {
-  "ip": "51.11.192.51",
+  "ip": "203.0.113.1",
   "city": "Paris",
   "region": "Île-de-France",
   "country": "FR",
@@ -91,7 +91,7 @@ Result:
 
 Command:
 ```bash
-sudo conntrack -L -p tcp --state ESTABLISHED | grep "51.11.192.51"
+sudo conntrack -L -p tcp --state ESTABLISHED | grep "203.0.113.1"
 ```
 
 Result: (no output)
@@ -104,12 +104,12 @@ Result: (no output)
 
 Command:
 ```bash
-sqlite3 /var/lib/netwatchm/events.db "SELECT * FROM events WHERE src_ip='51.11.192.51' OR dst_ip='51.11.192.51';"
+sqlite3 /var/lib/netwatchm/events.db "SELECT * FROM events WHERE src_ip='203.0.113.1' OR dst_ip='203.0.113.1';"
 ```
 
 Result:
 ```
-1502|1773369756.92098|NEW_IP|LOW|51.11.192.51||New IP address observed: 51.11.192.51
+1502|1773369756.92098|NEW_IP|LOW|203.0.113.1||New IP address observed: 203.0.113.1
 ```
 
 **Finding:** Only alert was `NEW_IP` (LOW threat) — just informing about new external IP.
@@ -120,13 +120,13 @@ Result:
 
 Command:
 ```bash
-cat /var/lib/netwatchm/inventory.json | grep "192.168.1.180"
+cat /var/lib/netwatchm/inventory.json | grep "10.0.0.10"
 ```
 
 Result:
 ```json
 {
-  "ip": "192.168.1.180",
+  "ip": "10.0.0.10",
   "hostname": "ai-rnd-01",
   "first_seen": "2026-02-21T16:29:32",
   "last_seen": "2026-03-12T23:32:09"
@@ -146,17 +146,17 @@ sudo tcpdump -i any port 80 or port 443 -nn -c 20
 
 Result (captured other traffic):
 ```
-23:35:40.081421 enp6s0 Out 192.168.1.180.43458 > 52.168.117.171.443: Flags [P.]
-23:35:40.199594 enp6s0 Out 192.168.1.180.44990 > 140.82.112.25.443: Flags [.]
-23:35:45.752543 enp6s0 In  54.175.191.201.443 > 192.168.1.180.52838: Flags [.]
+23:35:40.081421 enp6s0 Out 10.0.0.10.43458 > 203.0.113.2.443: Flags [P.]
+23:35:40.199594 enp6s0 Out 10.0.0.10.44990 > 203.0.113.3.443: Flags [.]
+23:35:45.752543 enp6s0 In  203.0.113.4.443 > 10.0.0.10.52838: Flags [.]
 ```
 
 Other IPs seen:
 | IP | Service |
 |----|---------|
-| 140.82.112.25 | GitHub |
-| 52.168.117.171 | AWS/Azure |
-| 54.175.191.201 | AWS |
+| 203.0.113.3 | GitHub |
+| 203.0.113.2 | AWS/Azure |
+| 203.0.113.4 | AWS |
 | 2606:4700::6812:17de | Cloudflare |
 
 **Finding:** Normal server traffic — package updates, cloud APIs, CDN.

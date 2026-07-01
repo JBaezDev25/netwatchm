@@ -403,11 +403,11 @@
             <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                 <div class="form-group">
                     <label>Target IP</label>
-                    <input type="text" id="targetIp" placeholder="e.g., 192.168.1.100">
+                    <input type="text" id="targetIp" placeholder="e.g., 10.0.0.100">
                 </div>
                 <div class="form-group">
                     <label>Local Device IP (optional)</label>
-                    <input type="text" id="deviceIp" placeholder="e.g., 192.168.1.50">
+                    <input type="text" id="deviceIp" placeholder="e.g., 10.0.0.50">
                 </div>
                 <div class="form-group">
                     <label>Duration (seconds)</label>
@@ -526,14 +526,14 @@
                 <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                     <div class="form-group">
                         <label>Target IP / Hostname</label>
-                        <input type="text" id="diagTargetIp" placeholder="e.g., 192.168.1.1">
+                        <input type="text" id="diagTargetIp" placeholder="e.g., 10.0.0.1">
                     </div>
                     <div class="form-group">
                         <label>Quick Select</label>
                         <select id="iperfServer" onchange="document.getElementById('diagTargetIp').value = this.value">
                             <option value="">-- Select --</option>
-                            <option value="192.168.1.1">Local Gateway</option>
-                            <option value="192.168.1.180">ai-rnd-01</option>
+                            <option value="10.0.0.1">Local Gateway</option>
+                            <option value="10.0.0.180">ai-rnd-01</option>
                             <option value="iperf.he.net">iperf.he.net (Public)</option>
                             <option value="speedtest.tele2.net">speedtest.tele2.net (Public)</option>
                             <option value="los-angeles.lga1.wl.iperf.uk">iperf.uk (US West)</option>
@@ -543,7 +543,7 @@
                 </div>
 
                 <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; align-items: center;">
-                    <input type="text" id="conntrackIp" placeholder="Target IP (e.g., 192.168.1.1)" style="width: 200px;">
+                    <input type="text" id="conntrackIp" placeholder="Target IP (e.g., 10.0.0.1)" style="width: 200px;">
                     <button class="btn btn-primary" onclick="runConntrack()">
                         🔗 Conntrack (Connections)
                     </button>
@@ -570,7 +570,7 @@
                 <h3>Bandwidth per Device</h3>
                 <div class="form-group">
                     <label>Device IP</label>
-                    <input type="text" id="bandwidthIp" placeholder="e.g., 192.168.1.217">
+                    <input type="text" id="bandwidthIp" placeholder="e.g., 10.0.0.217">
                 </div>
                 <button class="btn btn-primary" onclick="checkBandwidth()">
                     📈 Check Bandwidth

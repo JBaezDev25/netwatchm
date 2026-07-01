@@ -16,7 +16,7 @@ def _alert(level=ThreatLevel.HIGH, **kw) -> Alert:
         alert_type="PORT_SCAN",
         level=level,
         src_ip="203.0.113.5",
-        dst_ip="192.168.1.10",
+        dst_ip="10.0.0.10",
         description="scan of 12 ports",
         timestamp=datetime(2026, 5, 28, 10, 0, 0),
     )
@@ -30,7 +30,7 @@ def test_format_cef_structure():
     # severity field for HIGH is 8
     assert "|8|" in line
     assert "src=203.0.113.5" in line
-    assert "dst=192.168.1.10" in line
+    assert "dst=10.0.0.10" in line
     assert "msg=scan of 12 ports" in line
     assert "NetWatchMThreatLevel=HIGH" in line
 
